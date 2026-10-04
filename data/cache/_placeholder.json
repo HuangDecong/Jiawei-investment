@@ -1,0 +1,3 @@
+[
+{"task":"holdings","quarter":"2025Q1","payload":{"data":{"data":[{"columns":[{"name":"申万一级行业名称","type":"string"},{"name":"该申万一级行业基金重仓股的总市值","type":"number","unit":"亿元"}],"rows":[]}]}}}
+]

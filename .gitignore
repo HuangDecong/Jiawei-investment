@@ -1,0 +1,43 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+build/
+dist/
+
+# ===== 虚拟环境 =====
+.venv/
+venv/
+env/
+ENV/
+
+# ===== Streamlit 敏感配置（绝不提交到仓库）=====
+.streamlit/secrets.toml
+
+# ===== 系统临时文件 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*.docx
+~$*.xlsx
+~$*.ppt
+
+# ===== 日志与运行临时文件 =====
+*.log
+output/_*.log
+output/_*.txt
+output/run_log.txt
+output/scheduled_run_log.txt
+output/scheduled_status.md
+
+# ===== 调试截图（历史产物，非运行必需）=====
+output/shots/
+assets/
+
+# ===== 编辑器 =====
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,22 @@
+# 公募基金拥挤度与集中度仪表盘 —— 部署依赖清单
+#
+# 安装：pip install -r requirements.txt
+#
+# 版本号与本地已验证环境严格一致（2026-10-03 核对，Python 3.13）：
+#   streamlit==1.64.0 / pandas==3.0.3 / numpy==2.4.6 / plotly==7.1.0
+#   scipy==1.17.1   / openpyxl==3.1.5
+# 说明：应用只读取本地 Excel/CSV/JSON 文件，无外部行情接口依赖，可离线运行。
+
+# ---- 仪表盘 ----
+streamlit==1.64.0
+
+# ---- 核心计算 ----
+pandas==3.0.3
+numpy==2.4.6
+scipy==1.17.1
+
+# ---- 可视化 ----
+plotly==7.1.0
+
+# ---- 读写 Excel（pandas read_excel / ExcelWriter 引擎）----
+openpyxl==3.1.5
