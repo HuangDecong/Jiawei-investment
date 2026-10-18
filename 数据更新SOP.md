@@ -149,3 +149,16 @@ python tools/apptest_all_pages.py
   不需要。看板已移除 ETF 资金流页，季频模型不依赖 ETF 数据（`seed_daily_raw.py` 仅用于刷新日度成交额覆盖率）。
 - **Q：更新会影响部署到云端的版本吗？**
   会。云端版本读的是同一份 `data/` + `output/`，本地更新后需重新提交/部署云端才同步。
+
+## 附：如何确认「线上已经是新版本」
+
+打开 https://jiawei-investment.streamlit.app ，看右上角小字：
+
+```
+版本 2026.10.18-r14.3　数据指纹 81d8ba58
+```
+
+- **版本**：每次实质改动手动递增（`app.py` 里的 `APP_VERSION`）。
+- **数据指纹**：对 `data/raw` + `data/cache` + 长历史序列做内容哈希（文本已做换行归一），**同一批数据在本地和线上应完全一致**。
+- 若线上版本号落后：push 后等 3~5 分钟（云端有构建队列），仍不变再点 Cloud 控制台的 **Reboot app**。
+

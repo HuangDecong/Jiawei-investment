@@ -32,6 +32,45 @@ _SRC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
+# ---------------------------------------------------------------------------
+# src/ 模块热重载（解决云端“入口更新了、模块还是旧的”问题）
+# ---------------------------------------------------------------------------
+# 现象：Streamlit 每次交互会重跑脚本，但**已 import 的模块留在 sys.modules**；
+#       云端部署更新后只有 app.py 被重新执行，src/*.py 的改动不会生效，
+#       曾导致 app.py 调用了新函数、而 data_loader 还是旧版 → AttributeError。
+# 处理：用 src/*.py 的最大 mtime 与上次记录比较，一旦变新就把本项目模块从
+#       sys.modules 里摘掉，让下面的 import 重新加载。代价仅 12 次 stat，可忽略。
+# ---------------------------------------------------------------------------
+_LOCAL_MODULES = ("config", "data_loader", "factor_engine", "backtest", "research",
+                  "research3", "research4", "rigor", "signal_generator",
+                  "insights", "guide", "factor_docs")
+
+
+def _reload_local_modules_if_changed() -> None:
+    import tempfile
+    try:
+        stamp = max(os.path.getmtime(os.path.join(_SRC_DIR, f))
+                    for f in os.listdir(_SRC_DIR) if f.endswith(".py"))
+    except Exception:
+        return
+    marker = os.path.join(tempfile.gettempdir(), ".fcd_src_stamp")
+    try:
+        with open(marker, encoding="utf-8") as fh:
+            prev = float(fh.read().strip() or 0)
+    except Exception:
+        prev = 0.0
+    if stamp > prev + 1e-6:
+        for _m in _LOCAL_MODULES:
+            sys.modules.pop(_m, None)
+        try:
+            with open(marker, "w", encoding="utf-8") as fh:
+                fh.write(str(stamp))
+        except Exception:
+            pass
+
+
+_reload_local_modules_if_changed()
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -359,7 +398,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.18-r14.3"
+APP_VERSION = "2026.10.18-r14.4"
 
 
 def _fp_short() -> str:
