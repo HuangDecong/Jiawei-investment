@@ -152,6 +152,24 @@ def fingerprint() -> str:
     return "|".join(items)
 
 
+def fingerprint_display() -> str:
+    """展示用的数据指纹：只取文件名 + 大小（不含修改时间）。
+
+    为什么不含 mtime：本地与云端是两次 checkout，mtime 必然不同；
+    用内容长度（size）才能保证「同一批数据 ⇒ 同一个指纹」，
+    用户拿本地与线上对比时才有意义。缓存失效仍用 fingerprint()（含 mtime）。
+    """
+    items = []
+    paths = []
+    paths += sorted(glob.glob(os.path.join(C.DATA_RAW, "*")))
+    paths += sorted(glob.glob(os.path.join(C.DATA, "cache", "*.json")))
+    paths.append(os.path.join(C.DATA, "wind_raw", "holdings_v2", "eq_series.json"))
+    for p in paths:
+        if os.path.isfile(p):
+            items.append(f"{os.path.basename(p)}:{os.path.getsize(p)}")
+    return "|".join(items)
+
+
 # ============================================================================
 # Bundle
 # ============================================================================

@@ -359,13 +359,13 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.18-r14"
+APP_VERSION = "2026.10.18-r14.1"
 
 
 def _fp_short() -> str:
-    """数据指纹的短串：用 md5 而非内置 hash()，保证跨进程/跨重启稳定。"""
+    """展示用数据指纹：只依赖文件内容（名称+大小），本地与云端应完全一致。"""
     import hashlib
-    return hashlib.md5(FP.encode("utf-8")).hexdigest()[:8]
+    return hashlib.md5(dl.fingerprint_display().encode("utf-8")).hexdigest()[:8]
 
 # 数据先加载：顶栏需要显示「截至哪个季度」，因此必须排在顶栏之前
 B, V, FACT = load_bundle(FP)
