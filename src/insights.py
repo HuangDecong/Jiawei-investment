@@ -480,6 +480,8 @@ def build_verdict(mkt: dict, b, ind: dict, summary: dict) -> dict:
     top1_name = str(mkt["F6_Top1行业"].dropna().iloc[-1])
     q0 = str(hhi_s.index[0])
     n_hq = len(getattr(b, "over_quarters", []) or [])
+    # 长历史期数动态取（避免每次补数据后文案数字过期）
+    n_long = len(getattr(b, "over_ext_quarters", []) or [])
     n_ex = int(summary.get("n_extreme", 0))
     n_un = int(summary.get("n_under", 0))
 
@@ -542,17 +544,17 @@ def build_verdict(mkt: dict, b, ind: dict, summary: dict) -> dict:
         title="信号方向：主口径呈动量，但长历史下所有拥挤度因子的预测力均不稳健",
         evidence=(f"F11 综合拥挤度 {_e_f11}（9 期）；F3 超配历史分位 {_e_f3}（7 期）；"
                   f"F1 原始超配比例 {_e_f1}；"
-                  f"36 期长历史 F3e 超配分位 {_e_f3e}"),
+                  f"长历史 F3e 超配分位 {_e_f3e}"),
         meaning=("主口径（2024Q1 起，10 期）下拥挤度呈「动量」——越挤的行业下一期"
-                 "超额收益越高；但把超配历史延到 2016 年（36 期）后，长历史扩窗因子"
+                 "超额收益越高；但把超配历史延到 2016 年后，长历史扩窗因子"
                  "（F2e/F3e/F4be/F15e）的 IC 全部回落到 |IC|≤0.06、p>0.10 的不显著区间。"
                  "**这证明短样本下的「显著」是小样本伪显著**，拥挤度因子在更长历史里"
                  "没有稳定的截面预测力。结论应更审慎：本模型的价值在「风险描述」，"
                  "而非「可交易的拥挤度信号」。")))
     reasons.append(dict(
-        title=f"样本声明：可建模区间 {n_hq} 期，长历史版已回填至 2016（36 期）",
+        title=f"样本声明：可建模区间 {n_hq} 期，长历史版已回填至 2016（{n_long} 期）",
         evidence=(f"主口径可建模区间 {n_hq} 期（holdings ∩ 沪深300）；"
-                  f"偏股混合超配长历史已回填至 2016Q2（36 期，2026-10-03 抓取 hs300 权重"
+                  f"偏股混合超配长历史已回填至 2016Q2（{n_long} 期，2026-10-03 抓取 hs300 权重"
                   f"21 期 + 行业收益 12 期），长历史扩窗因子 F2e/F3e/F4be/F15e 现可取值并"
                   f"完成 27~30 期 IC 检验。"),
         meaning=(f"长历史检验的结论是：拥挤度因子（含长历史版）在 27~30 期观测下"
