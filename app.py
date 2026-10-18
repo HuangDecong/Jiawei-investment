@@ -358,6 +358,15 @@ def load_backtest(fp: str):
 
 FP = dl.fingerprint()
 
+# 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
+APP_VERSION = "2026.10.18-r14"
+
+
+def _fp_short() -> str:
+    """数据指纹的短串：用 md5 而非内置 hash()，保证跨进程/跨重启稳定。"""
+    import hashlib
+    return hashlib.md5(FP.encode("utf-8")).hexdigest()[:8]
+
 # 数据先加载：顶栏需要显示「截至哪个季度」，因此必须排在顶栏之前
 B, V, FACT = load_bundle(FP)
 IND, MKT = FACT["ind"], FACT["mkt"]
@@ -389,8 +398,8 @@ with h3:
     if c_a.button("🔄 重新读取数据", width="stretch"):
         st.cache_data.clear()
         st.rerun()
-    _h(f'<div class="tiny" style="padding-top:6px">数据指纹 '
-       f'{abs(hash(FP)) % 10**8:08d}</div>')
+    _h(f'<div class="tiny" style="padding-top:6px">版本 {APP_VERSION}　'
+       f'数据指纹 <b>{_fp_short()}</b></div>')
 
 # ============================================================================
 # 三栏

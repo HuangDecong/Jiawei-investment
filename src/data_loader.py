@@ -134,9 +134,18 @@ def _numeric(df: pd.DataFrame, cols) -> pd.DataFrame:
 
 
 def fingerprint() -> str:
-    """data/raw 目录指纹：文件名 + 大小 + 修改时间。变化即触发缓存失效。"""
+    """数据指纹：data/raw + data/cache + 长历史序列的文件名/大小/修改时间。
+
+    用途：① 变化即触发缓存失效；② 页头展示，用来确认「线上跑的是哪一批数据」。
+    注意：调用方必须用**稳定哈希**（md5/sha）把它转成短串，
+    不能用内置 hash()——Python 的字符串哈希每个进程随机化，重启就变。
+    """
     items = []
-    for p in sorted(glob.glob(os.path.join(C.DATA_RAW, "*"))):
+    paths = []
+    paths += sorted(glob.glob(os.path.join(C.DATA_RAW, "*")))
+    paths += sorted(glob.glob(os.path.join(C.DATA, "cache", "*.json")))
+    paths.append(os.path.join(C.DATA, "wind_raw", "holdings_v2", "eq_series.json"))
+    for p in paths:
         if os.path.isfile(p):
             st = os.stat(p)
             items.append(f"{os.path.basename(p)}:{st.st_size}:{int(st.st_mtime)}")
