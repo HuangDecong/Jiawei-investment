@@ -74,7 +74,7 @@ def opportunity_card(M: dict, IND: dict | None, C, LATEST: str) -> str:
         opp_lines.append(
             f"<b>关注名单（低拥挤）</b>：{under_txt} 当前「显著低配」（历史分位 ≤10）。"
             "<b>注意</b>：低拥挤 ≠ 超卖反转（历史事件研究：超配首次突破 P90 后 12 个月超额收益"
-            "中位数为正，低拥挤同样不等于必然反弹），需叠加「动量转正 + ETF 资金净流入」才升级为机会。")
+            "中位数为正，低拥挤同样不等于必然反弹），需叠加「超配动量转正」才升级为机会。")
     else:
         opp_lines.append("<b>暂无显著低配行业</b>：当前资金分布相对均衡，缺乏明显的「逆向布局」候选。")
 
@@ -149,8 +149,8 @@ def render_investment_framework(C) -> str:
     <ul>
       <li><b>低拥挤</b>：显著低配（分位 ≤10）→ 列入关注名单</li>
       <li><b>拐点确认</b>：动量 Z（F4b）由负转正 → 资金边际转向</li>
-      <li><b>快层佐证</b>：ETF 资金净流入（F14）→ 日频增量确认</li>
-      <li>满足 <b>≥2/3</b>（低拥挤 + 动量转正 + 资金流入）→ 升级为「试探性机会」</li>
+      <li><b>拐点确认</b>：超配动量（F4b）由负转正 → 资金边际转向</li>
+      <li>满足 <b>两条</b>（低拥挤 + 动量转正）→ 升级为「试探性机会」</li>
     </ul>
     <div class="opp-why">依据：低拥挤只说明「不脆弱」，不等于「会涨」；必须叠加
     资金边际转向的确认，避免把「无人问津」误读为「即将反转」。</div>
@@ -194,7 +194,6 @@ def render_operation_guide() -> str:
     <ul>
       <li><b>② 拥挤度总览</b>：单行业钻取 + 31 行业拥挤等级明细 + 信号触发记录。</li>
       <li><b>③ 行业占比变迁</b>：堆叠面积图 / 热力图 / 瀑布图，看资金在行业间的「搬家路径」。</li>
-      <li><b>④ ETF 资金流</b>：宽基 + 行业 ETF 的日度资金动向（快层信号）。</li>
     </ul>
   </div>
   <div class="opp-col">
@@ -240,7 +239,7 @@ def render_update_guide() -> str:
     <ul>
       <li><code>python tools/wind_fetch.py build</code> —— 重建超配比例、HHI/CR、因子面板。</li>
       <li><code>python src/update_pipeline.py</code> —— 重跑 IC/分层/稳健性检验，重建 <code>output/ic_report.xlsx</code> 等审计产物。</li>
-      <li><code>python tools/seed_daily_raw.py</code> —— 刷新 ETF 日度资金流（如需）。</li>
+      <li><code>python tools/seed_daily_raw.py</code> —— 刷新日度成交额与覆盖率（如需）。</li>
       <li><code>python tools/data_quality_report.py</code> —— 刷新数据质量报告。</li>
     </ul>
   </div>

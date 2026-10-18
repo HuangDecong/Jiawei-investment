@@ -397,9 +397,8 @@ with h3:
 # ============================================================================
 # 页面切换
 # ============================================================================
-PAGES = ["① 总览仪表盘", "② 拥挤度总览", "③ 行业占比变迁",
-         "④ ETF 资金流", "⑤ 因子研究", "⑥ 轮动策略与因子裁决",
-         "⑦ 稳健性检验", "⑧ 数据质量与溯源", "⑨ 方法说明与数据来源"]
+PAGES = ["① 总览", "② 行业拥挤度", "③ 集中度与结构",
+         "④ 因子与检验", "⑤ 数据与方法"]
 _P = st.radio("页面", PAGES, horizontal=True, label_visibility="collapsed", key="page")
 
 _PROV = B.provenance if getattr(B, "provenance", None) is not None else None
@@ -422,9 +421,9 @@ def _note(txt):
 
 
 # ============================================================================
-# 页面 ① 总览仪表盘（第 4 轮新增：一屏看完结论）
+# 页面 ① 总览
 # ============================================================================
-if _P == "① 总览仪表盘":
+if _P == "① 总览":
     _SNAP = DETAIL_ALL[DETAIL_ALL["季度"] == LATEST].copy()
     _nm = {r["行业"]: r for _, r in _SNAP.iterrows()}
     _fci_s = MKT["FCI_因子拥挤指数"].dropna()
@@ -944,7 +943,7 @@ if _P == "① 总览仪表盘":
     st.stop()
 
 
-if _P == "③ 行业占比变迁":
+if _P == "③ 集中度与结构":
     _h('<div class="sec">行业配置结构变迁（主动权益基金 · 申万一级 · 前十大重仓口径）'
                 '</div>')
     # 全历史序列：2019Q1~2023Q4 偏股混合单类型（Wind 逐期重抓）+ 2024Q1~2026Q2 主口径
@@ -1102,210 +1101,34 @@ if _P == "③ 行业占比变迁":
     st.stop()
 
 
-if _P == "④ ETF 资金流":
-    _h('<div class="sec">ETF 日度资金流向（份额折算已复权）</div>')
-    _ed = getattr(B, "etf_daily", None)
-    if _ed is None or _ed.empty:
-        st.warning("未发现 data/raw/etf_flow_daily.xlsx，ETF 页面不可用。")
-        st.stop()
-    _d1, _d2 = st.columns([0.5, 0.5])
-    _codes = sorted(_ed["代码"].unique())
-    with _d1:
-        _pick = st.multiselect("ETF", _codes, default=_codes, key="etf_pick",
-                               format_func=lambda x: f"{x} "
-                               f"{_ed.loc[_ed['代码'] == x, '名称'].iloc[0]}")
-    with _d2:
-        _metric = st.radio("指标", ["累计净申赎（亿元）", "累计资金流强度（%）",
-                                    "场内流通份额（亿份）"], horizontal=True, key="etf_m")
-    _ed = _ed.copy()
-    _parts = []
-    for _code, _gg in _ed.groupby("代码"):
-        _gg = _gg.sort_values("日期").copy()
-        _a0 = float(_gg["复权份额"].iloc[0] * _gg["复权净值"].iloc[0])
-        _gg["累计净申赎亿元"] = _gg["净申赎亿元"].fillna(0).cumsum()
-        _gg["累计资金流强度%"] = (_gg["累计净申赎亿元"] / _a0 * 100).round(C.DEC_PCT) \
-            if _a0 > 0 else np.nan
-        _gg["期内累计成交额亿元"] = _gg["成交额"].fillna(0).cumsum()
-        _parts.append(_gg)
-    _ed = pd.concat(_parts, ignore_index=True)
-    _edf = _ed[_ed["代码"].isin(_pick)]
-    _col = {"累计净申赎（亿元）": "累计净申赎亿元",
-            "累计资金流强度（%）": "累计资金流强度%",
-            "场内流通份额（亿份）": "复权份额"}[_metric]
-
-    _f5 = go.Figure()
-    for _i, (_code, _g) in enumerate(_edf.groupby("代码")):
-        _g = _g.sort_values("日期")
-        _nm = _g["名称"].iloc[0]
-        _ind = _g["申万一级"].iloc[0]
-        _f5.add_trace(go.Scatter(
-            x=_g["日期"], y=_g[_col], name=f"{_code} {_nm}",
-            mode="lines+markers", line=dict(color=_palette[_i % len(_palette)], width=2),
-            marker=dict(size=3),
-            hovertemplate=f"{_code} {_nm}（{_ind}）<br>%{{x}}　%{{y:,.2f}}<extra></extra>"))
-    _f5.update_layout(height=C.CHART_H_MAIN, template=C.PLOTLY_TEMPLATE,
-                      margin=dict(l=56, r=20, t=16, b=30), hovermode="x unified",
-                      title=dict(text=f"对比指标：{_metric}", font=dict(size=11.5), x=0.01),
-                      paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                      font=dict(family="Microsoft YaHei", size=11),
-                      legend=dict(orientation="h", y=1.12, font=dict(size=10)))
-    _f5.update_yaxes(gridcolor=C.COLOR["grid"])
-    _f5.update_xaxes(showgrid=False)
-    st.plotly_chart(_f5, width="stretch", config={"displayModeBar": False})
-    _es = _edf.groupby("代码")["累计净申赎亿元"].last().dropna()
-    _ins(_es, "ETF 累计净申赎", unit="亿元", pct=False,
-         title="① 分析与结论 · ETF 资金流",
-         higher_means=("各只 ETF 的累计净申赎在区间内总体{direction}（最大 {last}，{q}）。"
-                       "**这是「快层」信息**：ETF 资金流是日频增量，季报持仓是季频存量，"
-                       "两者相差一个季度；方向不一致时不是矛盾，而是时间维度不同。"))
-
-    # ===== 宽基 ETF 资金动向分析（本轮新增：主要宽基 ETF 的规模与资金信号）=====
-    _broad = _ed[_ed["申万一级"] == "宽基指数"]
-    if not _broad.empty:
-        _h('<div class="sec">宽基 ETF 资金动向（沪深300 / 中证500 / 创业板 / 科创50）</div>')
-        _bf = go.Figure()
-        _brows = []
-        for _code, _g in _broad.groupby("代码"):
-            _g = _g.sort_values("日期")
-            _nm = _g["名称"].iloc[0]
-            _a0 = float(_g["复权份额"].iloc[0] * _g["复权净值"].iloc[0])
-            _g["累计净申赎亿元"] = _g["净申赎亿元"].fillna(0).cumsum()
-            _g["累计资金流强度%"] = (_g["累计净申赎亿元"] / _a0 * 100).round(C.DEC_PCT) \
-                if _a0 > 0 else np.nan
-            _bf.add_trace(go.Scatter(
-                x=_g["日期"], y=_g["累计净申赎亿元"], name=f"{_code} {_nm}",
-                mode="lines", line=dict(color=_palette[list(_broad["代码"].unique()).index(_code)
-                                                         % len(_palette)], width=2.2),
-                hovertemplate=f"{_nm}<br>%{{x}}　累计净申赎 %{{y:+,.2f}} 亿元<extra></extra>"))
-            _brows.append(dict(代码=_code, 名称=_nm,
-                               期初份额亿份=round(float(_g["复权份额"].iloc[0]), 2),
-                               期末份额亿份=round(float(_g["复权份额"].iloc[-1]), 2),
-                               份额增幅=round(float(_g["复权份额"].iloc[-1]
-                                                / _g["复权份额"].iloc[0] - 1) * 100, 2),
-                               累计净申赎亿元=round(float(_g["净申赎亿元"].sum(skipna=True)), 2),
-                               累计强度=round(float(_g["净申赎亿元"].sum(skipna=True)) / _a0 * 100, 2)
-                               if _a0 else np.nan))
-        _bf.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1))
-        _bf.update_layout(height=C.CHART_H_SMALL + 40, template=C.PLOTLY_TEMPLATE,
-                          margin=dict(l=52, r=20, t=16, b=30), hovermode="x unified",
-                          paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                          font=dict(family="Microsoft YaHei", size=11),
-                          legend=dict(orientation="h", y=1.12, font=dict(size=10)))
-        _bf.update_yaxes(title_text="累计净申赎 (亿元)", gridcolor=C.COLOR["grid"])
-        _bf.update_xaxes(showgrid=False)
-        st.plotly_chart(_bf, width="stretch", config={"displayModeBar": False})
-        _bdf = pd.DataFrame(_brows).sort_values("份额增幅", ascending=False)
-        st.dataframe(_bdf.style.format({"份额增幅": "{:+.2f}",
-                                        "累计净申赎亿元": "{:+,.2f}",
-                                        "累计强度": "{:+.2f}"}, na_rep="—"),
-                     width="stretch", height=180, hide_index=True)
-        # 综合判断：由宽基份额/净申赎序列驱动
-        _bseries = _broad.groupby("代码").apply(
-            lambda g: float(g.sort_values("日期")["复权份额"].iloc[-1]
-                            - g.sort_values("日期")["复权份额"].iloc[0]),
-            include_groups=False).dropna()
-        _bmax = _bdf.iloc[0] if len(_bdf) else None
-        _top2 = _bdf.head(2)["名称"].tolist()
-        _h(concl([dict(
-            title="宽基 ETF 综合判断：增量资金大举通过宽基入市，风险偏好显著抬升",
-            concl=(f"四只主要宽基 ETF 期初→期末份额全部正增长："
-                   f"{_bmax['名称'] if _bmax is not None else ''} +{_bmax['份额增幅']:.0f}% 居首"
-                   if _bmax is not None else "样本不足"),
-            why={
-                "特征": (f"科创50 与创业板份额近乎翻倍（+90% 以上），中证500、沪深300 "
-                         f"分别约 +36%、+31%——资金从大盘蓝筹到科技成长全面进场。"
-                         if _bmax is not None else "样本不足"),
-                "拐点": ("集中出现在 7 月中旬：沪深300 于 07-16~07-20 单周净申购约 70 亿份，"
-                         "科创50 于 07-16~07-30 份额由 346 亿份升至 539 亿份（+56%），"
-                         "创业板 07-17~07-20 由 149 亿份升至 176 亿份。"),
-                "判断理由": ("① 宽基 ETF 是场内外增量资金的「入口温度计」——四只同步净申购"
-                         "说明这不是个别品种的套利，而是全市场的 risk-on；"
-                         "② 与季报持仓对照：主动权益正把仓位向电子单一行业集中（电子 43.2%），"
-                         "而宽基净申购提供了增量弹药——「宽基铺底 + 主动向科技集中」的组合，"
-                         "意味着科技成长方向同时获得被动与主动两路资金，拥挤度被进一步放大；"
-                         "③ 需要警惕：宽基净申购既有增量资金也有「行业 ETF 向宽基 ETF 切换」"
-                         "的成分，若为后者则总量水分较大，须结合行业 ETF 净申赎交叉验证。"),
-                "与拥挤度结论的联动": ("本页宽基净申购与 ①页「电子单一行业拥挤、HHI 创"
-                                     "2016 年以来新高」相互印证：增量资金 + 存量集中，"
-                                     "科技成长方向的拥挤度处于 11 年极值区。"),
-            },
-        )]))
-        _note("宽基 ETF 数据来源：Wind（2026-10-03 抓取，2026Q3 全交易日）。"
-              "净申赎＝Δ复权份额 × 复权净值；宽基 ETF 季度内无份额折算。")
-
-    # 单日净申赎柱状
-    _h('<div class="sec">单日净申赎</div>')
-    _one = st.selectbox("ETF", _codes, key="etf_one",
-                        format_func=lambda x: f"{x} "
-                        f"{_ed.loc[_ed['代码'] == x, '名称'].iloc[0]}")
-    _g = _ed[_ed["代码"] == _one].sort_values("日期")
-    _f6 = go.Figure(go.Bar(
-        x=_g["日期"], y=_g["净申赎亿元"],
-        marker=dict(color=[C.COLOR["flow_pos"] if (v or 0) >= 0 else C.COLOR["flow_neg"]
-                           for v in _g["净申赎亿元"].fillna(0)],
-                    line=dict(width=0)),
-        hovertemplate="%{x}　净申赎 %{y:+,.2f} 亿元<extra></extra>"))
-    _f6.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1))
-    _f6.update_layout(height=C.CHART_H_SMALL, template=C.PLOTLY_TEMPLATE,
-                      margin=dict(l=52, r=20, t=16, b=30), showlegend=False,
-                      paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                      font=dict(family="Microsoft YaHei", size=10.5))
-    _f6.update_yaxes(title_text="净申赎 (亿元)", gridcolor=C.COLOR["grid"])
-    _f6.update_xaxes(showgrid=False)
-    st.plotly_chart(_f6, width="stretch", config={"displayModeBar": False})
-    _ins(None, title="② 分析与结论 · 单日净申赎",
-         feature=("柱状图给出日度申赎的方向与量级。份额折算日（拆分/合并）已用"
-                  "「累计单位净值 ÷ 单位净值」法识别并剔除——"
-                  "**否则折算会被误计为巨额申购**"
-                  "（实测 512480 折算日会凭空多出 +116.68 亿元、515880 多出 +248.19 亿元）。"))
-
-    _h('<div class="sec">ETF 汇总与明细</div>')
-    _sum = []
-    for _code, _g in _ed.groupby("代码"):
-        _g = _g.sort_values("日期")
-        _aum0 = float(_g["复权份额"].iloc[0] * _g["复权净值"].iloc[0])
-        _net = float(_g["净申赎亿元"].sum(skipna=True))
-        _cum_turnover = float(_g["成交额"].sum(skipna=True))
-        _sum.append(dict(代码=_code, 名称=_g["名称"].iloc[0], 所属行业=_g["申万一级"].iloc[0],
-                         交易日数=len(_g), 期初AUM亿元=round(_aum0, 2),
-                         累计净申赎亿元=round(_net, 2),
-                         累计资金流强度=round(_net / _aum0 * 100, 2) if _aum0 else np.nan,
-                         期末份额亿份=round(float(_g["复权份额"].iloc[-1]), 2),
-                         期末规模亿元=round(float(_g["复权份额"].iloc[-1]
-                                              * _g["复权净值"].iloc[-1]), 2),
-                         区间成交额亿元=round(_cum_turnover, 2),
-                         净申赎占成交额比=round(_net / _cum_turnover * 100, 2)
-                         if _cum_turnover else np.nan,
-                         份额折算日="、".join(_g.loc[_g["份额折算"], "日期"].tolist()) or "无"))
-    _sumdf = pd.DataFrame(_sum).sort_values("累计资金流强度", ascending=False)
-    st.dataframe(_sumdf.style.format({"累计资金流强度": "{:+.2f}",
-                                      "累计净申赎亿元": "{:+,.2f}",
-                                      "期初AUM亿元": "{:,.2f}",
-                                      "期末规模亿元": "{:,.2f}"}, na_rep="—"),
-                 width="stretch", height=200, hide_index=True)
-    _note("⚠️ <b>净申赎为推算值</b>：＝Δ复权份额 × 复权净值。份额折算（拆分/合并）日"
-          "用「累计单位净值环比 ÷ 单位净值环比」识别并复权，折算比例见「折算倍数K」列。"
-          "数据来源：" + _prov_line(["ETF日度份额/净值/成交额"]))
-    with st.expander("ETF 日度明细（含折算标记）", expanded=False):
-        st.dataframe(_ed.style.format(
-            {"成交额": "{:,.4f}", "场内流通份额": "{:,.4f}", "单位净值": "{:,.4f}",
-             "复权份额": "{:,.4f}", "复权净值": "{:,.4f}", "净申赎亿元": "{:+,.4f}",
-             "折算倍数K": "{:,.0f}"}, na_rep="—"),
-            width="stretch", height=360, hide_index=True)
-    # 投资机会解读（快层资金动向 → 方向确认）
-    _h(guide.opportunity_hint(M_SUM, C, "ETF 资金流（快层）"))
-    st.stop()
-
-
-if _P == "⑤ 因子研究":
-    _h('<div class="sec">因子有效性研究（第 1 轮自主迭代）</div>')
-    # 因子手册：为什么选 · 怎么算 · 衡量什么 · 经济内容 · 判定标准 · 标准依据
-    # （用户要求逐因子说明；公式与阈值取自 factor_engine/config 的真实实现）
+if _P == "④ 因子与检验":
+    # 因子与检验：定义一览（表格）+ 完整说明（可展开）+ IC/分层/稳健性
     import factor_docs
-    _h('<div class="sec">因子手册 · 选择理由 / 计算公式 / 衡量对象 / 经济内容 / 判定标准 / 标准依据</div>')
-    _h(concl(factor_docs.as_concl(IND)))
-    # 投资机会判断框架（基于拥挤度模型的三层法）
-    _h(guide.render_investment_framework(C))
+    import re as _re
+
+    def _plain(s):
+        s = _re.sub(r"<br\s*/?>", " ", str(s))
+        s = _re.sub(r"</?(code|b|i|strong|em|u)>", "", s)
+        return (s.replace("&gt;", ">").replace("&lt;", "<")
+                 .replace("&amp;", "&").strip())
+
+    _cards = factor_docs.as_concl(IND)
+    _rows = []
+    for _c in _cards:
+        _why = _c.get("why", {})
+        _rows.append({
+            "因子": _plain(_c.get("title", "")),
+            "衡量什么": _plain(_c.get("concl", "")),
+            "计算公式": _plain(_why.get("计算公式", _why.get("RankIC", ""))),
+            "判定标准": _plain(_why.get("判定标准",
+                              _why.get("IC_IR", _why.get("显著性", "")))),
+        })
+    _h('<div class="sec">因子定义一览（公式与阈值取自代码真实实现）</div>')
+    st.dataframe(pd.DataFrame(_rows), width="stretch", height=560,
+                 hide_index=True)
+    with st.expander("展开：每个因子的完整说明（为什么选 / 经济内容 / 标准依据）",
+                     expanded=False):
+        _h(concl(_cards))
     _BTR = load_backtest(FP)
     _icf = st.multiselect("因子", list(_BTR["ic"]["因子"]),
                           default=[f for f in ["F15_拥挤背离", "R_F2_超配Z_残差",
@@ -1578,13 +1401,12 @@ if _P == "⑤ 因子研究":
             {"均值": "{:+.2f}", "中位数": "{:+.2f}", "负收益概率": "{:.1f}",
              "t值": "{:+.2f}", "p值": "{:.3f}"}, na_rep="—"),
             width="stretch", height=300, hide_index=True)
-    st.stop()
 
 
 # ============================================================================
 # 页面 ⑤ 轮动策略与因子裁决（第 2 轮自主迭代）
 # ============================================================================
-if _P == "⑥ 轮动策略与因子裁决":
+if _P == "④ 因子与检验":
     _BTR = load_backtest(FP)
     _h('<div class="sec">因子分级裁决（4 项独立检验合成可用性结论）</div>')
     _vd = rs.factor_verdict_table(IND, B, _BTR["ic"], doos=_BTR["doos"],
@@ -1874,13 +1696,12 @@ if _P == "⑥ 轮动策略与因子裁决":
           f"样本 {len(QUARTERS)} 个季度，季度调仓，成本假设双边 20bp。")
     # 投资机会解读（因子裁决结论 → 可操作方向）
     _h(guide.opportunity_hint(M_SUM, C, "轮动策略与因子裁决"))
-    st.stop()
 
 
 # ============================================================================
 # 页面 ⑥ 稳健性检验（第 3 轮自主迭代）
 # ============================================================================
-if _P == "⑦ 稳健性检验":
+if _P == "④ 因子与检验":
     _BTR = load_backtest(FP)
     R3 = _BTR["r3"]
 
@@ -2107,10 +1928,10 @@ if _P == "⑦ 稳健性检验":
 
 
 # ============================================================================
-# 页面 ⑧ 数据质量与溯源（第 5 轮：数据源切换 Wind 后新增）
+# 页面 ⑤ 数据与方法（数据质量 + 方法说明）
 # ============================================================================
-if _P == "⑧ 数据质量与溯源":
-    _h('<div class="sec">数据源：Wind 金融终端</div>')
+if _P == "⑤ 数据与方法":
+    _h('<div class="sec">一、数据来源 · Wind 金融终端</div>')
     _h(f"""<div class="kpis">
           <div class="kpi"><div class="k">数据源</div><div class="v" style="font-size:15px">Wind</div>
             <div class="s">MCP 结构化取数</div></div>
@@ -2477,11 +2298,10 @@ python tools/run_wind_pipeline.py           # 全链条：数据→校验→因�
 python tools/data_quality_report.py         # 生成数据质量与口径审计报告
 cd src && python -c "import data_loader as d; b=d.load_all(); print(d.validate(b)['log_text'])\"""",
             language="bash")
-    st.stop()
 
 
-if _P == "⑨ 方法说明与数据来源":
-    _h('<div class="sec">数据来源登记表</div>')
+if _P == "⑤ 数据与方法":
+    _h('<div class="sec">数据来源明细（逐项登记）</div>')
     if _PROV is None:
         st.warning("未发现 output/data_provenance.csv，请先运行 src/update_pipeline.py。")
     else:
@@ -2496,7 +2316,7 @@ if _P == "⑨ 方法说明与数据来源":
     else:
         st.info("未生成覆盖率清单。")
 
-    _h('<div class="sec">扩窗（无前视）口径说明</div>')
+    _h('<div class="sec">方法说明 · 扩窗（无前视）口径</div>')
     _h(f"""<div class="alert" style="border-color:{C.COLOR["price"]}">
     <b>「扩窗（无前视）」是什么意思？</b><br>
     「扩窗」指计算某因子的历史分布时，样本窗口从最早一期开始、逐期<b>只向后延伸、不回看未来</b>——
@@ -2510,7 +2330,7 @@ if _P == "⑨ 方法说明与数据来源":
     两者差异越大，说明结论越依赖「上帝视角」，越不可信。
     </div>""")
 
-    _h('<div class="sec">口径与风险提示（必读）</div>')
+    _h('<div class="sec">口径边界与风险提示（必读）</div>')
     for _t in [
         "<b>前十大重仓口径 ≠ 全部持仓。</b>行业配置比例基于季报披露的前十大重仓股，"
         "系统性低估分散型行业、高估集中型行业。所有行业同口径，故横向可比，绝对水平有偏。",
@@ -2847,8 +2667,8 @@ with R:
     </div>""")
     _h('<div class="tiny" style="margin-top:4px">'
        '市场层面的完整综合判断、判断理由、特征与拐点见 '
-       '<b>① 总览仪表盘</b>；因子的检验表与说明书见 '
-       '<b>⑤ 因子研究</b>。本页专注单行业钻取。</div>')
+       '<b>① 总览</b>；因子的定义与检验见 '
+       '<b>④ 因子与检验</b>。本页专注单行业钻取。</div>')
 
     _h('<div class="sec">当前预警</div>')
     sev_color = {"高": C.COLOR["up"], "中": C.COLOR["level_偏拥挤"], "低": C.COLOR["text_dim"]}
@@ -2933,14 +2753,99 @@ with R:
                        "**个股集中度 Z 与 HHI 的同向性**是判断「行业抱团」"
                        "与「个股抱团」是否同步的关键：两者同升时踩踏风险最高。"))
 
+# ============================================================================
+# 拥挤度变化榜（季度环比 / 年度同比 可切换）
+# ============================================================================
+_h('<div class="sec">拥挤度变化榜 · 谁在变挤 / 谁在变松</div>')
+_ch1, _ch2 = st.columns([0.45, 0.55])
+with _ch1:
+    _chg_mode = st.radio("变化口径", ["季度环比", "年度同比"], horizontal=True,
+                         key="chg_mode", label_visibility="collapsed")
+with _ch2:
+    _chg_n = st.slider("显示条数", 3, 10, 5, key="chg_n",
+                       label_visibility="collapsed")
+
+_f11_all = IND["F11_综合拥挤度_推荐权重"]          # index=季度, columns=行业
+_q_now = LATEST
+if _chg_mode == "季度环比":
+    _q_base = QUARTERS[-2] if len(QUARTERS) >= 2 else LATEST
+    _chg_label = f"{_q_now} vs {_q_base}（环比）"
+else:
+    _q_base = QUARTERS[-5] if len(QUARTERS) >= 5 else QUARTERS[0]
+    _chg_label = f"{_q_now} vs {_q_base}（同比，去年同季）"
+_delta = (_f11_all.loc[_q_now] - _f11_all.loc[_q_base]).dropna().sort_values()
+_delta = _delta[_delta.abs() > 1e-9]
+if _delta.empty:
+    st.info("当前样本不足以计算变化（需至少两期）。")
+else:
+    _top_inc = _delta.tail(_chg_n)      # 变挤
+    _top_dec = _delta.head(_chg_n)      # 变松
+    _sel_chg = pd.concat([_top_dec, _top_inc]).sort_values()
+    _colors_chg = [C.COLOR["down"] if v < 0 else C.COLOR["up"]
+                   for v in _sel_chg.values]
+    _f_chg = go.Figure(go.Bar(
+        x=_sel_chg.values, y=_sel_chg.index, orientation="h",
+        marker=dict(color=_colors_chg),
+        text=[f"{v:+.2f}" for v in _sel_chg.values], textposition="outside",
+        hovertemplate="%{y}　变化 %{x:+.3f}<extra></extra>"))
+    _f_chg.update_layout(height=max(280, 34 * len(_sel_chg) + 70),
+                         template=C.PLOTLY_TEMPLATE,
+                         margin=dict(l=70, r=40, t=18, b=30),
+                         paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+                         font=dict(family="Microsoft YaHei", size=10.5),
+                         xaxis_title="综合拥挤度变化（Z）")
+    _f_chg.update_xaxes(gridcolor=C.COLOR["grid"], zeroline=True,
+                        zerolinecolor=C.COLOR["line"])
+    _f_chg.update_yaxes(showgrid=False)
+    st.plotly_chart(_f_chg, width="stretch", config={"displayModeBar": False})
+    _inc_names = "、".join(_top_inc.index[::-1][:3])
+    _dec_names = "、".join(_top_dec.index[:3])
+    _note(f"口径：{_chg_label}。红＝拥挤度上升（变挤），绿＝下降（变松）；"
+          f"仅显示变化最大的各 {_chg_n} 个行业。"
+          f"变挤前三：<b>{_inc_names}</b>；变松前三：<b>{_dec_names}</b>。"
+          "变化值基于 F11 综合拥挤度（截面 Z），跨期可比。")
+
+# ============================================================================
+# 拥挤度热力图（31 行业 × 季度，红色系，标注数值）
+# ============================================================================
+_h('<div class="sec">拥挤度热力图 · 31 行业 × 季度</div>')
+# 只保留 F11 有值的季度（主口径持仓 10 期），避免大片空白
+_valid_q = [q for q in QUARTERS
+            if q in _f11_all.index and _f11_all.loc[q].notna().any()]
+_hm = (_f11_all.loc[_valid_q].T if _valid_q else _f11_all.T)
+_hm_arr = _hm.to_numpy(dtype=float)
+_hm_txt = [["" if (v != v or abs(v) < 0.8) else f"{v:.1f}" for v in row]
+           for row in _hm_arr]
+_f_hm = go.Figure(go.Heatmap(
+    z=_hm_arr, x=list(_hm.columns), y=list(_hm.index),
+    text=_hm_txt, texttemplate="%{text}",
+    textfont=dict(size=8, color="white"),
+    colorscale=[[0, "#FFFFFF"], [0.15, "#FFF7F5"], [0.35, "#FDE4DD"],
+                [0.55, "#F7BDB4"], [0.75, "#EC8A7D"], [0.90, "#D84A40"],
+                [1, "#A6150A"]],
+    zmid=0,
+    colorbar=dict(title=dict(text="拥挤度Z", side="right"),
+                  thickness=13, len=0.92, tickfont=dict(size=9),
+                  ticks="outside", tickformat=".1f"),
+    hovertemplate="%{y}　%{x}　拥挤度 <b>%{z:.2f}</b><extra></extra>"))
+_f_hm.update_layout(height=880, template=C.PLOTLY_TEMPLATE,
+                    margin=dict(l=70, r=34, t=16, b=30),
+                    paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+                    font=dict(family="Microsoft YaHei", size=10))
+_f_hm.update_xaxes(showgrid=False, side="top", tickangle=45)
+_f_hm.update_yaxes(showgrid=False, autorange="reversed")
+st.plotly_chart(_f_hm, width="stretch", config={"displayModeBar": False})
+_note("颜色越深＝拥挤度越高（红色系）；<b>|Z| ≥ 0.8 的格子已标注数值</b>，"
+      "其余悬停可查精确值。行＝31 个申万一级行业，列＝季度。"
+      "数据来源：Wind（前十大重仓口径，F11 综合拥挤度截面 Z）。")
+
 # 投资机会解读（行业钻取页）
 _h(guide.opportunity_hint(M_SUM, C, "行业钻取"))
 
 # ============================================================================
-# 底部说明：因子有效性检验表已整体迁移至 ⑤ 因子研究页（与因子说明书同页），
-# 避免②行业钻取页与⑤/⑦内容重复（用户指出的去重要求，2026-10-03）。
+# 底部说明：因子有效性检验表已整体迁移至 ④ 因子与检验页。
 # ============================================================================
-_h('<div class="tiny" style="border-top:1px solid ' + C.COLOR["line"] + ';padding-top:6px;margin-top:8px">完整因子检验表（RankIC 汇总 / 分层回测 / 样本内外 / 牛熊 / 参数敏感性 / 正交化 / 事件研究 / Bootstrap / 衰减 / FCI / 多信号共振，共 11 张表）已移至 <b>⑤ 因子研究</b> 页底部展开查看。</div>')
+_h('<div class="tiny" style="border-top:1px solid ' + C.COLOR["line"] + ';padding-top:6px;margin-top:8px">完整因子检验表（RankIC 汇总 / 分层回测 / 样本内外 / 牛熊 / 参数敏感性 / 正交化 / 事件研究 / Bootstrap / 衰减 / FCI / 多信号共振）已移至 <b>④ 因子与检验</b> 页查看。</div>')
 
 _h(f'<div class="tiny" style="border-top:1px solid {C.COLOR["line"]};'
     'padding-top:6px;margin-top:8px">'
