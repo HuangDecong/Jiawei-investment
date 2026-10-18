@@ -2004,7 +2004,7 @@ if _P == "⑤ 数据与方法":
     st.stop()
 
 
-L, M, R = st.columns([15, 50, 35], gap="small")
+L, M = st.columns([15, 85], gap="small")
 
 # ---------------------------------------------------------------- 左栏
 with L:
@@ -2162,6 +2162,12 @@ with M:
     pct_4 = _at(q4, "超配分位%")
     dpct = pct_now - pct_4 if pd.notna(pct_now) and pd.notna(pct_4) else np.nan
     lv_now, lv_4 = LEVEL_MAP[q1].get(sel), LEVEL_MAP[q4].get(sel)
+    # 主口径扩窗需 8 期历史，2025Q2 及更早的等级为「数据不足」；
+    # 同比/四季对比改用长历史等级（F11e，37 期）兜底，避免展示无意义的「数据不足」。
+    _lve = IND.get("F11e_等级_长历史")
+    if lv_4 in (None, "数据不足") and _lve is not None and q4 in _lve.index:
+        _v = _lve.loc[q4, sel]
+        lv_4 = _v if isinstance(_v, str) and _v else lv_4
     rk_now = int(latest_rank.rank(ascending=False)[sel])
     rk_4 = int(IND["F11_综合拥挤度_推荐权重"].loc[q4].rank(ascending=False)[sel])
 
@@ -2177,7 +2183,7 @@ with M:
         <div class="mrow"><span>共振得分</span><span>{num(_at(q1,'共振得分'), ' 分')}</span></div>
         <div class="mrow"><span>上一季动量</span><span>{sgn(_at(q2,'超配动量'), ' pct')}</span></div>
       </div>
-      <div class="mcard"><div class="h">近四季（{q4} → {q1}）</div>
+      <div class="mcard"><div class="h">近四季（{q4} → {q1}；等级用长历史口径）</div>
         <div class="mrow"><span>超配分位变化</span><span>{sgn(dpct, ' pct', 1)}</span></div>
         <div class="mrow"><span>拥挤等级变化</span><span>{lv_4} → {lv_now}</span></div>
         <div class="mrow"><span>综合排名变化</span><span>{rk_4} → {rk_now}</span></div>
@@ -2293,32 +2299,8 @@ with M:
                 '「前十占净值比」是集中度代理，<b>不是真实股票仓位</b>。</div>')
 
 # ---------------------------------------------------------------- 右栏
-with R:
-    # 全市场速览（压缩版）：数字与①总览仪表盘同源；综合判断/特征/拐点在①，
-    # 本页定位是「单行业钻取」，市场背景只保留 4 个最关键读数，避免整页重复。
-    _fci_s = MKT["FCI_因子拥挤指数"].dropna()
-    _fci_last = float(_fci_s.iloc[-1]) if len(_fci_s) else np.nan
-    _fp = MKT["FCI_分位"].dropna()
-    _fci_pct = float(_fp.iloc[-1]) if len(_fp) else np.nan
-    hhi = M_SUM["HHI"]
-    hist_pct = M_SUM["HHI_pct"]
-    _h('<div class="sec">全市场速览</div>')
-    _h(f"""<div class="kpis">
-      <div class="kpi"><div class="k">市场状态</div>
-        <div class="v" style="font-size:13px">{M_SUM['state']}</div>
-        <div class="s">{LATEST}</div></div>
-      <div class="kpi"><div class="k">HHI</div><div class="v">{hhi:.4f}</div>
-        <div class="s">{M_SUM['HHI_level']}　历史分位 {hist_pct:.0f}%</div></div>
-      <div class="kpi"><div class="k">CR3</div><div class="v">{M_SUM['CR3']:.2f}%</div>
-        <div class="s">CR5 {M_SUM['CR5']:.1f}%</div></div>
-      <div class="kpi"><div class="k">极度拥挤 / 显著低配</div>
-        <div class="v">{M_SUM['n_extreme']} / {M_SUM['n_under']}</div>
-        <div class="s">行业数（K型分化阈值 {C.SIGNAL_N_UNDER}）</div></div>
-    </div>""")
-    _h('<div class="tiny" style="margin-top:4px">'
-       '市场层面的完整综合判断、判断理由、特征与拐点见 '
-       '<b>① 总览</b>；因子的定义与检验见 '
-       '<b>④ 因子与检验</b>。本页专注单行业钻取。</div>')
+with M:
+    # 全市场速览 / 综合判断已整合到 ① 总览，本页不再重复（2026-10-18 精简）。
 
     _h('<div class="sec">当前预警</div>')
     sev_color = {"高": C.COLOR["up"], "中": C.COLOR["level_偏拥挤"], "低": C.COLOR["text_dim"]}
@@ -2377,34 +2359,9 @@ with R:
              "触发后3月超额%": "{:+.2f}", "触发后6月超额%": "{:+.2f}",
              "触发后12月超额%": "{:+.2f}"}, na_rep="—"),
             width="stretch", height=300, hide_index=True)
+# 投资建议：紧跟行业结论之后（用户要求「投资建议放在结论后面」）
+_h(guide.opportunity_hint(M_SUM, C, "行业钻取"))
 
-    _h('<div class="sec">市场指标时序</div>')
-    mi = fe.market_indicators(MKT, B)
-    fig2 = go.Figure()
-    fig2.add_trace(go.Scatter(x=mi["季度"], y=mi["HHI"], name="HHI", mode="lines+markers",
-                              line=dict(color=C.COLOR["price"], width=2)))
-    fig2.add_hline(y=C.SIGNAL_HHI_EXTREME, line=dict(color=C.COLOR["threshold"],
-                                                     width=1.2, dash="dash"))
-    fig2.add_trace(go.Scatter(x=mi["季度"], y=mi["个股集中度Z"], name="个股集中度Z",
-                              mode="lines+markers", yaxis="y2",
-                              line=dict(color=C.COLOR["accent"], width=1.6)))
-    fig2.update_layout(height=C.CHART_H_SMALL, template=C.PLOTLY_TEMPLATE,
-                       hovermode="x unified", margin=dict(l=42, r=42, t=22, b=28),
-                       paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                       font=dict(family="Microsoft YaHei", size=10.5),
-                       legend=dict(orientation="h", y=1.14, font=dict(size=10)),
-                       yaxis2=dict(overlaying="y", side="right", showgrid=False))
-    fig2.update_yaxes(gridcolor=C.COLOR["grid"])
-    st.plotly_chart(fig2, width="stretch", config={"displayModeBar": False})
-    _ins(MKT["F5_HHI"].dropna(), "HHI",
-         title="分析与结论 · 市场指标时序",
-         higher_means=("HHI 的{direction}至 {last}（{q}）。虚线为极高集中阈值 "
-                       f"{C.SIGNAL_HHI_EXTREME}。"
-                       "**个股集中度 Z 与 HHI 的同向性**是判断「行业抱团」"
-                       "与「个股抱团」是否同步的关键：两者同升时踩踏风险最高。"))
-
-# ============================================================================
-# 拥挤度变化榜（季度环比 / 年度同比 可切换）
 # ============================================================================
 _h('<div class="sec">拥挤度变化榜 · 谁在变挤 / 谁在变松</div>')
 _ch1, _ch2 = st.columns([0.45, 0.55])
@@ -2500,8 +2457,6 @@ _note(f"颜色越深＝拥挤度越高（红色系）；<b>|Z| ≥ 1.0 的格子
       "数据来源 Wind 前十大重仓股。<b>深红＝该行业相对自身历史处于极端拥挤</b>，"
       "白色＝接近自身历史中位。")
 
-# 投资机会解读（行业钻取页）
-_h(guide.opportunity_hint(M_SUM, C, "行业钻取"))
 
 # ============================================================================
 # 底部说明：因子有效性检验表已整体迁移至 ④ 因子与检验页。

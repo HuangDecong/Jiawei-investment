@@ -785,10 +785,16 @@ def load_over_ext(b: "Bundle") -> dict:
         pct = s / s.sum() * 100.0
         rows[q] = (pct - w.loc[q]).reindex(C.INDUSTRIES)
         srcs[q] = "偏股混合配置 − 动态hs300权重"
-    # 2026Q2 主口径衔接（偏股混合 2026Q2 无数据）
-    if "2026Q2" in b.overweight.index and "2026Q2" not in rows:
-        rows["2026Q2"] = b.overweight.loc["2026Q2"].reindex(C.INDUSTRIES)
-        srcs["2026Q2"] = "主口径超配（偏股混合2026Q2被拒，口径衔接）"
+    # 偏股混合缺失期用主口径超配衔接（保持区间连续、不留空列）
+    # 已知缺失：2025Q4（年报期 Wind 返回"各行业前10名重仓股"非基金持仓）、
+    #          2026Q2（偏股混合查询子集>母集，被拒）。两期均单独标注来源，
+    #          不做插值；占比类指标对单期口径衔接的敏感性已由 D6/D14 检验证明可接受。
+    for _q in b.overweight.index:
+        if _q in rows:
+            continue
+        if b.overweight.loc[_q].notna().any():
+            rows[_q] = b.overweight.loc[_q].reindex(C.INDUSTRIES)
+            srcs[_q] = "主口径超配（偏股混合该期缺失，口径衔接）"
     qs = sorted(rows, key=_qkey)
     mat = pd.DataFrame(rows).T.reindex(columns=C.INDUSTRIES)
     return dict(matrix=mat, quarters=qs, source=pd.Series(srcs), available=True)
