@@ -359,22 +359,29 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.18-r14.2"
+APP_VERSION = "2026.10.18-r14.3"
 
 
 def _fp_short() -> str:
-    """展示用数据指纹：直接在此计算（只依赖文件名+大小），
-    不跨模块调用，避免云端增量部署时入口与 src 模块版本不同步导致 AttributeError。
-    只取「名称 + 大小」而非 mtime：本地与云端是两次 checkout，mtime 必然不同；
-    用内容长度才能保证「同一批数据 ⇒ 同一个指纹」。"""
+    """展示用数据指纹：文本文件按「换行归一化后的内容」哈希，二进制按大小。
+    - 不用 mtime：本地与云端是两次 checkout，mtime 必然不同；
+    - 文本先做 CRLF→LF 归一：Windows 检出为 CRLF、Linux 为 LF，不归一则会不一致。
+    这样「同一批数据 ⇒ 同一个指纹」，本地与线上可直接对比。"""
     import hashlib
     items = []
     paths = sorted(glob.glob(os.path.join(C.DATA_RAW, "*")))
     paths += sorted(glob.glob(os.path.join(C.DATA, "cache", "*.json")))
     paths.append(os.path.join(C.DATA, "wind_raw", "holdings_v2", "eq_series.json"))
     for p in paths:
-        if os.path.isfile(p):
-            items.append(f"{os.path.basename(p)}:{os.path.getsize(p)}")
+        if not os.path.isfile(p):
+            continue
+        name = os.path.basename(p)
+        if p.lower().endswith((".json", ".csv", ".txt", ".md")):
+            with open(p, "rb") as f:
+                body = f.read().replace(b"\r\n", b"\n")
+            items.append(f"{name}:{hashlib.md5(body).hexdigest()[:10]}")
+        else:
+            items.append(f"{name}:{os.path.getsize(p)}")
     return hashlib.md5("|".join(items).encode("utf-8")).hexdigest()[:8]
 
 # 数据先加载：顶栏需要显示「截至哪个季度」，因此必须排在顶栏之前
