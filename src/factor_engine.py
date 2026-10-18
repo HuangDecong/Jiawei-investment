@@ -222,6 +222,38 @@ def build_all(b) -> dict:
             {i: expanding_z(_oe_mom[i]) for i in INDUSTRIES}, index=Q)[INDUSTRIES]
         ind["F15e_拥挤背离_长历史"] = cz(_oe) - cz(ind["F2e_超配Z_长历史"])
 
+        # ---- F11e 长历史综合拥挤度 --------------------------------------
+        # 目的：主口径 F11 只在 10 个季度有值，无法回答「各行业拥挤度的长期变化」。
+        # 做法：在与主口径**完全相同的合成逻辑**下（横截面 Z + 权重归一），
+        #       把分量换成偏股混合长历史口径（F1e / F12e / F3e / F4be）。
+        # 口径：偏股混合单类型（2016Q2~2026Q2），与 F2e/F3e 同源，无口径断点。
+        # 权重：沿用 config.W_INDUSTRY_RAW 中可用的四项（F14 无历史、F9 不在此权重族），
+        #       缺失分量由 weighted_z_composite 在可用分量间重新归一化。
+        _ae = getattr(b, "alloc_ext", None)
+        if _ae is not None and not _ae.empty:
+            _Qe = [q for q in _oe.index if q in _ae.index]
+            if _Qe:
+                _oe2 = _oe.reindex(index=_Qe, columns=INDUSTRIES)
+                _ae2 = _ae.reindex(index=_Qe, columns=INDUSTRIES)
+                _wm = getattr(b, "weight_matrix", None)
+                _comp_e = {"F1e_超配比例": _oe2}
+                if _wm is not None and not _wm.empty:
+                    _wb = _wm.reindex(index=_Qe, columns=INDUSTRIES)
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        _comp_e["F12e_配置系数"] = _ae2 / _wb.replace(0, np.nan)
+                _comp_e["F3e_超配分位"] = ind["F3e_超配分位_长历史"].reindex(_Qe)
+                _comp_e["F4be_动量Z"] = ind["F4be_动量Z_长历史"].reindex(_Qe)
+                _w_e = {"F1e_超配比例": 0.20, "F12e_配置系数": 0.25,
+                        "F3e_超配分位": 0.15, "F4be_动量Z": 0.10}
+                _f11e, _ = weighted_z_composite(_comp_e, _w_e, _Qe, INDUSTRIES, 2)
+                ind["F11e_综合拥挤度_长历史"] = _f11e.reindex(index=Q,
+                                                       columns=INDUSTRIES)
+                # 长历史等级：与主口径同一套阈值（Z/PCT/配置系数/超配方向）
+                _cf_e = _comp_e.get("F12e_配置系数")
+                ind["F11e_等级_长历史"] = _levels(
+                    _f11e, _comp_e["F3e_超配分位"], _cf_e, _oe2).reindex(
+                        index=Q, columns=INDUSTRIES)
+
     # =============== F5 HHI（时序） ===============
     mkt["F5_HHI"] = b.cr_hhi["HHI"].copy()
     mkt["F5b_HHI标准化"] = b.cr_hhi["HHI标准化"].copy()

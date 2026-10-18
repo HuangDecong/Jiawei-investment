@@ -137,8 +137,8 @@ def build():
     _heading(doc, "第二层 · 机会识别（关注 / 试探）", 3)
     for s in ["低拥挤：显著低配（分位≤10）→ 列入关注名单",
               "拐点确认：动量 Z（F4b）由负转正 → 资金边际转向",
-              "快层佐证：ETF 资金净流入（F14）→ 日频增量确认",
-              "满足 ≥2/3（低拥挤+动量转正+资金流入）→ 升级「试探性机会」"]:
+              "拐点确认：超配动量（F4b）由负转正 → 资金边际转向",
+              "满足两条（低拥挤 + 动量转正）→ 升级「试探性机会」"]:
         _para(doc, "• " + s, 10, indent=0.5)
     _heading(doc, "第三层 · 组合约束（分散化 / 压力测试）", 3)
     for s in ["集中度红线：HHI>0.15 或 CR3>60% → 主动再平衡",
@@ -149,20 +149,19 @@ def build():
                "任何一层都不输出「满仓/清仓」，只输出风险预算的加减。", 10.5, bold=True)
 
     # 3 操作指南
-    _heading(doc, "3. 操作指南（9 页看板怎么看）", 1)
+    _heading(doc, "3. 操作指南（5 页看板怎么看）", 1)
     _heading(doc, "读结论（先看）", 3)
-    _para(doc, "① 总览：综合判断（市场状态/HHI分位/极度拥挤数/FCI + 5 条判断理由）+ 投资机会解读", 10, indent=0.5)
-    _para(doc, "⑥ 轮动裁决：压力测试结论（可直接用于风控）", 10, indent=0.5)
+    _para(doc, "① 总览：综合判断（市场状态/HHI分位/极度拥挤数/FCI + 5 条判断理由 + 特征 + 拐点）+ 投资机会解读", 10, indent=0.5)
     _heading(doc, "读数据（深挖）", 3)
-    _para(doc, "② 拥挤度总览：单行业钻取 + 31 行业等级明细 + 信号触发记录", 10, indent=0.5)
-    _para(doc, "③ 占比变迁：堆叠面积图 / 热力图（标注数值）/ 瀑布图，看资金搬家路径", 10, indent=0.5)
-    _para(doc, "④ ETF 资金流：宽基 + 行业 ETF 日度资金动向（快层）", 10, indent=0.5)
+    _para(doc, "② 行业拥挤度：31 行业排名与等级 + 变化榜（环比/同比可切换）+ 拥挤度热力图（36 期）+ 单行业钻取 + 信号触发记录", 10, indent=0.5)
+    _para(doc, "③ 集中度与结构：HHI/CR 时序 + 堆叠面积图 + 占比热力图（标注数值）+ 环比瀑布图", 10, indent=0.5)
     _heading(doc, "读方法（审计）", 3)
-    _para(doc, "⑤ 因子研究：因子手册 + 投资机会框架 + 全部检验表；⑦ 稳健性检验；⑧ 数据质量与溯源；⑨ 方法说明", 10, indent=0.5)
+    _para(doc, "④ 因子与检验：因子定义表 + IC 时序 + IC 汇总 + 分级裁决 + 分层回测 + 压力测试（进阶检验收在折叠区）", 10, indent=0.5)
+    _para(doc, "⑤ 数据与方法：数据来源 + 样本覆盖 + 数据质量校验 + 扩窗口径 + 缺陷登记 + 更新指南", 10, indent=0.5)
     _heading(doc, "读图三原则", 3)
     for s in ["先看「拐点」再看「水平」——拐点（环比转向）比绝对高低更有信息",
               "占比类指标（HHI/CR/超配）跨期可比，绝对规模只在同口径区间内比较",
-              "单期极值可能由口径或单期驱动，结论要回 ⑤⑦⑧ 页交叉确认"]:
+              "单期极值可能由口径或单期驱动，结论要回 ④ 检验表与 ⑤ 溯源表交叉确认"]:
         _para(doc, "• " + s, 10, indent=0.5)
 
     # 4 数据更新指南
@@ -176,11 +175,11 @@ def build():
     _heading(doc, "第 2 步 · 重建下游（命令）", 3)
     for s in ["python tools/wind_fetch.py build     # 重建超配比例、HHI/CR、因子面板",
               "python src/update_pipeline.py          # 重跑 IC/分层/稳健性，重建 ic_report.xlsx",
-              "python tools/seed_daily_raw.py         # 刷新 ETF 日度资金流",
+              "python tools/seed_daily_raw.py         # 刷新日度成交额与覆盖率（可选）",
               "python tools/data_quality_report.py    # 刷新数据质量报告"]:
         _para(doc, s, 9.5, indent=0.5, color="37485C")
     _heading(doc, "第 3 步 · 校验验收（必做）", 3)
-    for s in ["python tools/apptest_all_pages.py     # 9 页 0 异常",
+    for s in ["python tools/apptest_all_pages.py     # 5 页 0 异常",
               "preflight 硬约束 H1–H8 全通过、S1 告警 = 0",
               "检查口径断点：占比类指标跨期可比，绝对规模只在同口径区间比较"]:
         _para(doc, "• " + s, 10, indent=0.5)

@@ -17,6 +17,7 @@ app.py  ——  公募基金交易拥挤度与集中度仪表盘（Streamlit 三
 
 from __future__ import annotations
 
+import glob
 import json
 import os
 import re
@@ -452,44 +453,6 @@ if _P == "① 总览":
       <div class="kpi"><div class="k">FCI 因子拥挤指数</div><div class="v">{_fci_last:+.3f}</div>
         <div class="s">扩窗分位 {float(MKT['FCI_分位'].dropna().iloc[-1]):.0f}%</div></div>
     </div>""")
-    # ---- 以下需要完整的研究级检验（IC / 分层 / 稳健性 / 归因 / 成本容量…），
-    #      是首屏耗时的主要来源。因此先渲染上面两排「市场状态」卡片再触发计算，
-    #      让用户立刻看到当前季度结论，而不是先对着一个转圈等 40 秒。 ----
-    _BTR = load_backtest(FP)
-    _vd = rs.factor_verdict_table(IND, B, _BTR["ic"], doos=_BTR["doos"],
-                                  second_layer=_BTR["second"],
-                                  rotation_scan=_BTR["scan"],
-                                  rotation_scan_hs300=_BTR["scan_hs"])
-    _A = _vd[_vd["裁决"].str.startswith("A")]["因子"].tolist()
-    _wf = _BTR["r3"]["wf"]
-    _ws = _wf["stats"]
-    _imp = _BTR["r4"]["imp"]
-    _fm = _BTR["r4"]["fm"]
-    # 容量卡片：容量模型在短样本 / 缺成交额时可能不可用，须显式降级而不是崩。
-    _imp_ok = bool(isinstance(_imp, dict) and _imp.get("available", True)
-                   and isinstance(_imp.get("table"), pd.DataFrame)
-                   and not _imp["table"].empty)
-    if _imp_ok:
-        _cap_txt = f"≥{max(_imp['sizes']):,}亿"
-        _cap_sub = (f"成本 {float(_imp['table'].iloc[-1]['平均单期成本bp']):.2f}bp/期"
-                    "（不构成约束）")
-    else:
-        _cap_txt, _cap_sub = "样本不足", "待补行业成交额后重算"
-
-    _h(f"""<div class="kpis" style="margin-top:6px">
-      <div class="kpi"><div class="k">可用因子（A/A−）</div>
-        <div class="v" style="font-size:14px">{"、".join(_A) if _A else "无"}</div>
-        <div class="s">共 {len(_A)} 个（4 项独立检验合成）</div></div>
-      <div class="kpi"><div class="k">Walk-forward 样本外 p</div>
-        <div class="v">{_ws['留出期p']:.3f}</div>
-        <div class="s">{'不显著（流程不稳健）' if _ws['留出期p'] > 0.10 else '显著'}</div></div>
-      <div class="kpi"><div class="k">因子动量 momIC</div>
-        <div class="v">{float(_fm.iloc[1]['momIC均值']):+.3f}</div>
-        <div class="s">p={float(_fm.iloc[1]['p值']):.4f}（8 季回看）</div></div>
-      <div class="kpi"><div class="k">策略容量</div>
-        <div class="v" style="font-size:{'15px' if _imp_ok else '13px'}">{_cap_txt}</div>
-        <div class="s">{_cap_sub}</div></div>
-    </div>""")
 
     # ------------------------------------------------------------------
     # 综合判断（本轮新增）——结论 / 判断理由 / 最突出特征 / 关键拐点
@@ -619,325 +582,6 @@ if _P == "① 总览":
                     "（如银行、非银金融）是「相对自身历史最不低配」，"
                     "不构成拥挤——这正是本项目修正过的口径陷阱。"))
 
-    _cC, _cD = st.columns([0.5, 0.5])
-    with _cC:
-        _h('<div class="sec">④ 策略净值 vs 三类基准（F15 行业轮动）</div>')
-        _rt = _BTR["rot"]
-        _rt_hs = _BTR["rot_hs"]
-        _f3 = go.Figure()
-        # 策略表可能为空（样本不足时 industry_rotation_strategy 返回空表）。
-        # 机构级稳健性：此处显式降级为提示，而不是抛 KeyError 崩掉整页。
-        _rt_tbl = _rt.get("table") if isinstance(_rt, dict) else None
-        if not isinstance(_rt_tbl, pd.DataFrame) or _rt_tbl.empty \
-                or "组合收益_净" not in _rt_tbl.columns:
-            st.info("样本不足：F15 轮动策略在当前可建模区间内无法形成有效持仓序列，"
-                    "该图暂不可用（待补齐 2010–2024 历史持仓与成交额后自动恢复）。")
-        else:
-            _cp = (1 + _rt_tbl["组合收益_净"] / 100).cumprod()
-            _f3.add_trace(go.Scatter(x=list(_cp.index), y=_cp.values, name="F15 策略（净）",
-                                     mode="lines+markers",
-                                     line=dict(color=C.COLOR["price"], width=2.2)))
-            _cb2 = (1 + _rt_tbl["基准收益"] / 100).cumprod()
-            _f3.add_trace(go.Scatter(x=list(_cb2.index), y=_cb2.values, name="等权 31 行业",
-                                     mode="lines+markers",
-                                     line=dict(color=C.COLOR["line"], width=1.6, dash="dash")))
-            if _rt_hs and _rt_hs.get("table") is not None and not _rt_hs["table"].empty:
-                _ch = (1 + _rt_hs["table"]["基准收益"] / 100).cumprod()
-                _f3.add_trace(go.Scatter(x=list(_ch.index), y=_ch.values, name="沪深300（逐期）",
-                                         mode="lines+markers",
-                                         line=dict(color=C.COLOR["up"], width=1.5, dash="dot")))
-            _f3.update_layout(height=340, template=C.PLOTLY_TEMPLATE,
-                              margin=dict(l=48, r=20, t=14, b=30), hovermode="x unified",
-                              paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                              font=dict(family="Microsoft YaHei", size=10.5),
-                              legend=dict(orientation="h", y=1.12, font=dict(size=9.5)))
-            _f3.update_yaxes(title_text="累计净值（起点=1）", gridcolor=C.COLOR["grid"])
-            _f3.update_xaxes(showgrid=False)
-            st.plotly_chart(_f3, width="stretch", config={"displayModeBar": False})
-            _p3 = (_rt.get("perf") or {})
-            if _p3:
-                _ex3 = pd.Series(
-                    {k: v for k, v in zip(_rt_tbl.index, _rt_tbl["超额_净"])}
-                ) if "超额_净" in _rt_tbl.columns else None
-                _ins(_ex3, "策略超额（净）",
-                     title="④ 分析与结论 · 策略表现",
-                     pct=False, unit="pct",
-                     higher_means=("策略净超额累计 {change}，最新一期为 {last}。"
-                                   "**必须并列引用**：该超额是对**等权行业**基准；"
-                                   "对市值加权的沪深300 基准结论不同（见下方对照），"
-                                   "只报有利口径即为误导。"))
-    with _cD:
-        _h('<div class="sec">⑤ 超额收益行业归因（Top/Bottom 各 8）</div>')
-        _at_raw = (_BTR["r4"].get("attr") or {}).get("table")
-        if not isinstance(_at_raw, pd.DataFrame) or _at_raw.empty \
-                or "累计贡献pct" not in _at_raw.columns:
-            st.info("样本不足：归因表在当前可建模区间内无法生成（待补齐历史后自动恢复）。")
-        else:
-            _at = _at_raw
-            _sel3 = pd.concat([_at.head(8), _at.tail(8)]).iloc[::-1]
-            _f4 = go.Figure(go.Bar(
-                x=_sel3["累计贡献pct"], y=_sel3["行业"], orientation="h",
-                marker=dict(color=[C.COLOR["up"] if v >= 0 else C.COLOR["down"]
-                                   for v in _sel3["累计贡献pct"]]),
-                text=[f"{v:+.2f}" for v in _sel3["累计贡献pct"]], textposition="outside",
-                customdata=_sel3["平均权重偏离pct"],
-                hovertemplate="%{y}<br>累计贡献 %{x:+.2f}pct<br>"
-                              "平均权重偏离 %{customdata:+.2f}pct<extra></extra>"))
-            _f4.add_shape(type="line", xref="x", yref="paper", x0=0, x1=0, y0=0, y1=1,
-                          line=dict(color=C.COLOR["line"], width=1))
-            _f4.update_layout(height=340, template=C.PLOTLY_TEMPLATE,
-                              margin=dict(l=72, r=50, t=14, b=30), showlegend=False,
-                              paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                              font=dict(family="Microsoft YaHei", size=10))
-            _f4.update_xaxes(title_text="累计贡献 (pct)", gridcolor=C.COLOR["grid"])
-            _f4.update_yaxes(showgrid=False)
-            st.plotly_chart(_f4, width="stretch", config={"displayModeBar": False})
-            _s3 = _at.set_index("行业")["累计贡献pct"]
-            _ins(_s3, "行业累计贡献", pct=False, unit="pct",
-                 title="⑤ 分析与结论 · 超额来源归因",
-                 higher_means="超额累计 {change}。若剔除单一行业后超额归零，"
-                              "说明收益本质是「低配某个大牛行业」的 beta，而非行业选择能力；"
-                              "若仍显著为正，则更接近真 alpha。")
-
-    _cE, _cF = st.columns([0.5, 0.5])
-    with _cE:
-        _h('<div class="sec">⑥ 成本—规模曲线（冲击成本模型）</div>')
-        _it = _imp["table"] if _imp_ok else pd.DataFrame()
-        if not _imp_ok or "组合规模亿元" not in _it.columns:
-            st.info("样本不足：冲击成本—容量模型需要行业季度成交额与经济持仓序列，"
-                    "已覆盖 18 期（2022Q1~2026Q2）；若该图仍不可用，"
-                    "原因是扩窗标准化后的持仓序列不足（样本长度限制）。")
-        else:
-            _f5 = make_subplots(specs=[[{"secondary_y": True}]])
-            _f5.add_trace(go.Bar(x=_it["组合规模亿元"], y=_it["平均单期成本bp"],
-                                 name="平均单期成本(bp)",
-                                 marker=dict(color=C.COLOR["level_偏拥挤"]),
-                                 hovertemplate="%{x:,.0f}亿　成本 %{y:.2f}bp<extra></extra>"),
-                          secondary_y=False)
-            _f5.add_trace(go.Scatter(x=_it["组合规模亿元"], y=_it["超额净_几何"],
-                                     name="超额净年化(%)", mode="lines+markers",
-                                     line=dict(color=C.COLOR["price"], width=2.2),
-                                     hovertemplate="%{x:,.0f}亿　超额 %{y:+.2f}%<extra></extra>"),
-                          secondary_y=True)
-            _f5.update_layout(height=340, template=C.PLOTLY_TEMPLATE,
-                              margin=dict(l=48, r=54, t=14, b=30), hovermode="x unified",
-                              paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                              font=dict(family="Microsoft YaHei", size=10.5),
-                              legend=dict(orientation="h", y=1.12, font=dict(size=9.5)))
-            _f5.update_xaxes(title_text="组合规模 (亿元)", type="log", showgrid=False)
-            _f5.update_yaxes(title_text="成本 (bp/期)", gridcolor=C.COLOR["grid"],
-                             secondary_y=False)
-            _f5.update_yaxes(title_text="超额净年化 (%)", showgrid=False, secondary_y=True)
-            st.plotly_chart(_f5, width="stretch", config={"displayModeBar": False})
-            _note("sqrt 冲击模型：p=1% → 15bp 单边，成本下限 5bp。"
-                  "在 10 亿 ~ 3,000 亿区间成本几乎不动 → <b>容量不构成约束</b>。")
-            _ins(_it.set_index("组合规模亿元")["平均单期成本bp"], "平均单期成本",
-                 unit="bp", pct=False,
-                 title="⑥ 分析与结论 · 成本与容量",
-                 higher_means=("平均单期成本随规模{direction}至 {last}（{q}）。"
-                               "曲线接近水平意味着**成本对规模不敏感** → 容量瓶颈不在冲击成本，"
-                               "而在「行业成交额是否可持续」与「信号是否稳定」。"))
-    with _cF:
-        _h('<div class="sec">⑦ 因子动量 momIC 时序（回看 8 季）</div>')
-        _fms = _BTR["r4"]["fm_series"]
-        if _fms is not None and len(_fms):
-            _f6 = go.Figure(go.Bar(
-                x=list(_fms.index), y=_fms.values,
-                marker=dict(color=[C.COLOR["up"] if v >= 0 else C.COLOR["down"]
-                                   for v in _fms.values]),
-                hovertemplate="%{x}　momIC %{y:+.4f}<extra></extra>"))
-            _f6.add_shape(type="line", xref="x", yref="paper", x0=0, x1=1, y0=0, y1=0,
-                          line=dict(color=C.COLOR["line"], width=1))
-            _f6.update_layout(height=340, template=C.PLOTLY_TEMPLATE,
-                              margin=dict(l=48, r=20, t=14, b=30), showlegend=False,
-                              paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                              font=dict(family="Microsoft YaHei", size=10))
-            _f6.update_yaxes(title_text="因子间 Spearman(过去IC, 下期IC)",
-                             gridcolor=C.COLOR["grid"])
-            _f6.update_xaxes(showgrid=False)
-            st.plotly_chart(_f6, width="stretch", config={"displayModeBar": False})
-            _note("逐期在**因子之间**做秩相关：过去 8 季 IC 高的因子，下一季 IC 是否也高。"
-                  "方向 11/11 组全为正，但显著性集中在近段与震荡市。")
-            _ins(_fms, "momIC", title="⑦ 分析与结论 · 因子动量",
-                 higher_means=("momIC 的{direction}说明因子有效性存在**惯性**："
-                               "过去有效的因子在下一期倾向继续有效（最新 {last}，{q}）。"
-                               "这既是可利用的信号，也解释了为何「挑设定的流程」"
-                               "在样本外表现会随时间漂移。"))
-
-    # ------------------------------------------------------------------
-    # 结论与判断理由（每一条都给出：结论 → 依据 → 阈值由来 → 失效条件）
-    # ------------------------------------------------------------------
-    _h('<div class="sec">本轮结论与判断理由（结论 → 依据 → 阈值由来 → 失效条件）</div>')
-    _exs = M_SUM["extreme_industries"]
-    _ex_txt = "；".join(
-        f"{n}（配置 {B.alloc.loc[LATEST, n]:.2f}%、超配 "
-        f"{B.overweight.loc[LATEST, n]:+.2f}pct、分位 "
-        f"{IND['F3_超配历史分位'].loc[LATEST, n]:.0f}%、F12 "
-        f"{IND['F12_配置系数'].loc[LATEST, n]:.2f}）"
-        for n in _exs)
-    _dv = IND["口径背离"].loc[LATEST]
-    _dvl = "、".join(_dv.index[_dv]) or "无"
-    _topcf = IND["F12_配置系数"].loc[LATEST].dropna()
-    _topcf_n, _topcf_v = _topcf.idxmax(), float(_topcf.max())
-    # 设计期样本外：结果表在短样本下可能为空或缺目标因子，须显式降级。
-    _doos = _BTR.get("doos") or {}
-    _dt = _doos.get("table")
-    _dt_ok = (isinstance(_dt, pd.DataFrame) and not _dt.empty
-              and "因子" in _dt.columns)
-    _f15_row = (_dt[_dt["因子"] == "F15_拥挤背离"]
-                if _dt_ok and "留出期单侧p" in _dt.columns else pd.DataFrame())
-    _f15_ok = (not _f15_row.empty
-               and _f15_row["留出期单侧p"].notna().any())
-    if _f15_ok:
-        _f15_p = float(_f15_row["留出期单侧p"].iloc[0])
-        _f15_ic = float(_f15_row["留出期IC"].iloc[0])
-    else:
-        _f15_p, _f15_ic = np.nan, np.nan
-    _f15_feasible = bool(_doos.get("feasible", False))
-    _fmt_p = f"{_f15_p:.4f}" if _f15_p == _f15_p else "样本不足"
-    _fmt_ic = f"{_f15_ic:+.4f}" if _f15_ic == _f15_ic else "样本不足"
-    _fm_row = _fm[_fm["回看窗口"] == "8 季"].iloc[0]
-    _cap_bp = (float(_imp["table"].iloc[-1]["平均单期成本bp"])
-               if _imp_ok else np.nan)
-    _cap_sz = int(max(_imp["sizes"])) if _imp_ok else None
-
-    _h(concl([
-        dict(title="结论 1｜市场集中度：极高，处于历史极值区",
-             level="极度拥挤",
-             concl=(f"HHI = <b>{M_SUM['HHI']:.4f}</b>（历史分位 {M_SUM['HHI_pct']:.0f}%、"
-                    f"历史均值 {M_SUM['HHI_hist_mean']:.4f}）→ 等级「{M_SUM['HHI_level']}」；"
-                    f"CR3 / CR5 / CR10 = {M_SUM['CR3']:.2f}% / {M_SUM['CR5']:.2f}% / "
-                    f"{M_SUM['CR10']:.2f}%；第一大重仓行业 = {M_SUM['top1']} "
-                    f"{M_SUM['top1_pct']:.2f}%。"),
-             why={"判断依据": "HHI 由 31 行业配置比例独立复算，R2/R6 校验通过"
-                              "（HHI ∈ [0.0678, 0.1949]，复算最大绝对差 < 1e-13）；"
-                              "配置比例加总 = 100.00% ± 0.00pct（R1 最大偏离 0.0pct）。",
-                  "阈值 0.15 的由来": "集中度等级惯例（<0.05 低、0.05–0.10 中、"
-                                      "0.10–0.15 高、>0.15 极高）。本项目 HHI 实际区间 "
-                                      "0.068–0.195，0.15 落在样本区间上部，"
-                                      "既能识别极值又不会长期误报。",
-                  "经济含义": "机构仓位高度压在少数行业 → 行业分散度下降，"
-                              "组合对单一行业冲击的敏感度被放大（见「压力测试」）。"},
-             caveat="HHI 基于「季报前十大重仓」口径，系统性低估分散型行业；"
-                    "它只描述集中度，不含方向判断，不能用于择时。"),
-
-        dict(title=f"结论 2｜持仓拥挤：{M_SUM['n_extreme']} 个行业判定为「极度拥挤」",
-             level="极度拥挤",
-             concl=f"{'、'.join(_exs)}。<br>{_ex_txt}。",
-             why={"触发规则": "超配历史分位 ≥ 90 <b>或</b> 配置系数 F12 > 2.5 → 极度拥挤，"
-                              "两个口径任一触发即升级（保守规则）。",
-                  "为什么用「或」而非「且」": "分位衡量「相对自身历史」，F12 衡量"
-                                              "「相对沪深300 基准」，是两个互补维度。"
-                                              "要求同时满足会漏掉「相对基准已极重配、"
-                                              "但自身历史分位还没抬起来」的新增拥挤。",
-                  "经济含义": "机构定价权高度集中 → 边际买盘减少；一旦共识松动，"
-                              "减仓通道拥挤，再定价概率上升。"},
-             caveat="判的是「拥挤程度」而不是「一定下跌」。同时有 "
-                    f"{M_SUM['n_under']} 个行业显著低配，横截面呈 K 型分化，"
-                    "组合风险来自「集中」而非「方向」。"),
-
-        dict(title="结论 3｜口径背离：必须同时呈现两个口径，不能只给一个标签",
-             level="偏拥挤",
-             concl=(f"标记为「口径背离」的行业：<b>{_dvl}</b>。"
-                    f"最极端的是 F12 配置系数最高者 {_topcf_n} = <b>{_topcf_v:.2f}</b>，"
-                    "即相对沪深300 基准极重配；但它的超配历史分位近乎 0，"
-                    "即相对自身历史处在极低位。"),
-             why={"判断依据": "Z/分位（相对自身历史）与 F12（相对基准权重）指向相反时"
-                              "置「口径背离」= True。",
-                  "为什么要显式标记": "两者都对，但含义相反：分位说的是"
-                                      "「比过去任何时点都轻」，F12 说的是"
-                                      "「比沪深300 权重重一倍以上」。"
-                                      "合并成单一标签一定会误导其中一方。",
-                  "经济含义": "这类行业通常是「长期被减仓、但绝对权重仍高」的品种，"
-                              "既不是新增拥挤，也不是超卖反转，需要单独归类处理。"},
-             caveat="背离只是「两个口径不一致」的事实描述，它本身不构成买卖信号；"
-                    "在背离状态下不可用单一等级做决策。"),
-
-        dict(title="结论 4｜可用因子：只有 F15「拥挤背离」达到可用级，且必须带限制引用",
-             level="拥挤",
-             concl=(f"分级裁决中 A/A− 级 = <b>{'、'.join(_A) if _A else '无'}</b>"
-                    f"（共 {len(_A)} 个，由 4 项独立检验合成）。"
-                    + (f"F15 在设计期样本外检验中留出期 IC = {_fmt_ic}、"
-                       f"单侧 p = {_fmt_p}。"
-                       if _f15_ok else
-                       "⚠️ 设计期样本外检验在本样本下<b>不可行</b>"
-                       "（留出期观测不足），该判据本轮</b>不成立</b>。")),
-             why={"构造原理": "F15 = 横截面标准化的「超配水平」− 横截面标准化的"
-                              "「超配 Z」。含义是「绝对超配高、但相对自身历史还不极端」"
-                              "＝<b>新增的拥挤</b>。零自由参数。",
-                  "为什么它可以进模型": "在 34 期长历史下同时满足 4 项独立判据——"
-                                        "统计显著（|IC_IR|>0.3）、设计期样本外通过、"
-                                        "二层正交后仍保留独立增量信息、扣 20bp 成本后"
-                                        "按经济先验方向的超额为正。"
-                                        "⚠️ 当前 Wind 数据仅 10 期，样本外判据无法复现，"
-                                        "因此该结论<b>暂时不可沿用</b>，待补齐历史后重新确认。",
-                  "经济含义": "捕捉「新资金刚进来、历史分位还没抬起来」这一类"
-                              "最容易被忽视的拥挤，而不是「已经很拥挤」的老拥挤。"},
-             caveat=("样本切分：" + str(_doos.get("split_note", "—"))
-                     + "。"
-                     + ("" if _f15_feasible else
-                        "<b>留出期观测 &lt; 4，统计功效不足</b>，"
-                        "样本外结论仅作方向性参考，不得作为因子入选依据。")
-                     + "「单个事先说明的假设通过了检验」与「从数据里挑因子的流程通过了检验」"
-                       f"是两件事：walk-forward 检验显示「挑设定的流程」样本外 "
-                       f"p = {_ws['留出期p']:.3f}，<b>不显著</b>。"
-                       "两条必须同时引用，只报前者会高估置信度。")),
-
-        dict(title="结论 5｜因子有效性有惯性，但强度时变，不可外推",
-             level="中性",
-             concl=(f"因子动量 momIC（回看 8 季）= <b>{float(_fm_row['momIC均值']):+.4f}</b>，"
-                    f"NW t = {float(_fm_row['NW_t']):.3f}，p = {float(_fm_row['p值']):.4f}，"
-                    f"正比例 {float(_fm_row['正比例']):.1f}%。"),
-             why={"判断依据": "逐期在<b>因子之间</b>做秩相关：过去 N 季 IC 高的因子，"
-                              "下一季 IC 是否也高。4 / 8 / 12 季三档窗口 p 全部 < 0.011。",
-                  "经济学解释": "因子有效性来自机构行为的持续性（调仓有惯性），"
-                                "因此「近期有效的因子」在短期仍倾向有效。",
-                  "这与另一条结论的关系": "它同时也是对「单因子显著」的警告——"
-                                          "看起来的 alpha 可能只是因子动量，"
-                                          "是路径依赖而不是稳定溢价。"},
-             caveat="11 个稳健性分组方向 11/11 为正，但<b>只有 5 组显著</b>，"
-                    "且集中在近段与震荡市（牛熊均不显著）；去掉同族冗余因子后 "
-                    "p 从 0.0049 退化到 0.0648。→ 强度时变，不可外推。"),
-
-        dict(title="结论 6｜容量不构成约束，且既有成本假设偏保守",
-             level="中性",
-             concl=((f"以行业季度成交额建 sqrt 冲击成本模型：规模 "
-                     f"{_cap_sz:,} 亿元时平均单期成本仅 <b>{_cap_bp:.2f}bp/期</b>；"
-                     "从 10 亿到 3,000 亿成本几乎不变。")
-                    if _imp_ok else
-                    "⚠️ 容量模型在本样本下不可用：成交额已补齐至 18 期，"
-                    "但扩窗标准化后的可用持仓序列不足，无法支撑参与率推演。"
-                    "该结论<b>本轮不成立</b>，"
-                    "待补齐 2024Q3–2026Q2 成交额后重算。"),
-             why={"判断依据": "冲击成本 = k × √(参与率)，参与率 = 调仓金额 ÷ "
-                              "该行业季度成交额；k 取 p=1% → 15bp，并设 5bp 下限。"
-                              "已做流动性折损 h ∈ {1, 0.5, 0.2, 0.05} 与 "
-                              "k ∈ {10,15,20,30} 双向敏感性。",
-                  "为什么说既有假设偏保守": "R1–R3 全程使用固定双边 20bp，"
-                                            "等价于约 2.95bp/期，是建模成本的约 4 倍 → "
-                                            "此前所有扣费结论都是<b>保守下限</b>。",
-                  "经济含义": "行业轮动策略的资金容量瓶颈不在冲击成本，"
-                              "而在「行业成交额是否可持续」与「信号是否稳定」。"},
-             caveat="这是<b>行业整体</b>口径的容量。若落到个股执行，容量会显著更小；"
-                    "且模型未计涨跌停、停牌、流动性踩踏等极端情形。"),
-
-        dict(title="结论 7｜定位：拥挤度是风险描述指标，不是择时或做空信号",
-             level="显著低配",
-             concl=("本仪表盘的全部输出用于三件事："
-                    "① 风险描述与压力测试输入；② 新增仓位的行业集中度约束；"
-                    "③ 季度跟踪的预警清单。它不给出买卖时点。"),
-             why={"为什么这样定位": "全部因子的 Bootstrap 95% 置信区间与多重检验"
-                                    "（BH-FDR）均显示：在 18–23 个因子的检验族内，"
-                                    "多数因子无法与噪声区分。把未通过检验的因子"
-                                    "当作交易信号是不负责任的。",
-                  "可落地的部分": "压力测试不依赖因子有效性——"
-                                  f"电子单一行业占 {M_SUM['top1_pct']:.2f}%，"
-                                  "其回撤 30% 即拖累组合约 11pct。这个结论可以直接用。",
-                  "经济含义": "机构拥挤反映的是「定价权集中」，"
-                              "它影响的是<b>尾部风险的形状</b>，而不是收益的均值。"},
-             caveat="高拥挤 ≠ 必然下跌；历史事件研究显示「超配首次突破 P90」后 12 个月"
-                    "超额收益中位数为正。低拥挤同样不等于超卖反转。"),
-    ]))
     # 投资机会解读（在综合判断结论之上，给出可操作的回避/关注/约束三层判断）
     _h(guide.opportunity_card(M_SUM, IND, C, LATEST))
     st.stop()
@@ -1124,9 +768,25 @@ if _P == "④ 因子与检验":
                               _why.get("IC_IR", _why.get("显著性", "")))),
         })
     _h('<div class="sec">因子定义一览（公式与阈值取自代码真实实现）</div>')
-    st.dataframe(pd.DataFrame(_rows), width="stretch", height=560,
-                 hide_index=True)
-    with st.expander("展开：每个因子的完整说明（为什么选 / 经济内容 / 标准依据）",
+    # 用 HTML 表格而非 st.dataframe：dataframe 在窄屏会把长文本截断，
+    # 而这里每列都需要可读（衡量对象 / 判定标准），故显式换行并限制表体高度。
+    _th = "padding:5px 8px;text-align:left;font-weight:700;font-size:12px;"
+    _td = "padding:5px 8px;vertical-align:top;font-size:12px;line-height:1.5;"
+    _tr = "".join(
+        f'<tr style="border-top:1px solid {C.COLOR["line"]}">'
+        f'<td style="{_td}width:20%;font-weight:600">{r["因子"]}</td>'
+        f'<td style="{_td}width:40%">{r["衡量什么"]}</td>'
+        f'<td style="{_td}width:40%">{r["判定标准"]}</td></tr>'
+        for r in _rows)
+    _h(f"""<div style="max-height:430px;overflow:auto;border:1px solid {C.COLOR['line']};
+border-radius:6px;background:#FFFFFF">
+      <table style="width:100%;border-collapse:collapse">
+        <thead style="position:sticky;top:0;background:{C.COLOR['panel']};z-index:2">
+          <tr><th style="{_th}">因子</th><th style="{_th}">衡量什么</th>
+              <th style="{_th}">判定标准</th></tr></thead>
+        <tbody>{_tr}</tbody></table></div>""")
+    _note("完整版（含计算公式、为什么选这个因子、经济内容与标准依据）见下方展开区。")
+    with st.expander("展开：每个因子的完整说明（计算公式 / 为什么选 / 经济内容 / 标准依据）",
                      expanded=False):
         _h(concl(_cards))
     _BTR = load_backtest(FP)
@@ -1136,7 +796,7 @@ if _P == "④ 因子与检验":
                                    if f in list(_BTR["ic"]["因子"])],
                           max_selections=6, key="ic_fac")
     # ① IC 时序 + 滚动 IC_IR
-    _h('<div class="sec">① 因子 IC 时序 + 滚动 IC_IR（4 季度）</div>')
+    _h('<div class="sec">① 因子 IC 时序与滚动 IC_IR（4 季度）</div>')
     _f7 = make_subplots(rows=2, cols=1, shared_xaxes=True,
                         vertical_spacing=0.06, row_heights=[0.5, 0.5])
     for _i, _f in enumerate(_icf):
@@ -1187,106 +847,64 @@ if _P == "④ 因子与检验":
     _note("虚线为 |IC_IR|=0.3 参考线。数据来源：行业季度涨跌幅（Wind）"
           f"＋主动权益三类基金季报持仓（Wind），样本 {QUARTERS[0]}~{LATEST}，共 {len(QUARTERS)} 季度。")
 
-    _h('<div class="sec">③ 因子相关性热力图（逐期截面 Spearman 平均）</div>')
-    _cr = _BTR["r4"]["corr"]
-    _cmat = _cr["matrix"]
-    _f15 = go.Figure(go.Heatmap(
-        z=_cmat.to_numpy(), x=list(_cmat.columns), y=list(_cmat.index),
-        colorscale=[[0, "#2166AC"], [0.5, "#F7F7F7"], [1, "#B2182B"]],
-        zmid=0, zmin=-1, zmax=1,
-        hovertemplate="%{y} × %{x}<br>秩相关 %{z:+.3f}<extra></extra>",
-        colorbar=dict(title="Spearman", thickness=12)))
-    _f15.update_layout(height=560, template=C.PLOTLY_TEMPLATE,
-                       margin=dict(l=150, r=20, t=14, b=110),
-                       paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                       font=dict(family="Microsoft YaHei", size=9))
-    _f15.update_xaxes(showgrid=False, tickangle=-40)
-    _f15.update_yaxes(showgrid=False, autorange="reversed")
-    st.plotly_chart(_f15, width="stretch", config={"displayModeBar": False})
-    _ins(None, title="③ 分析与结论 · 因子相关性",
-         feature=("热力图给出因子两两的逐期截面 Spearman 平均相关。"
-                  "**同族因子相关性越高，合成时的分散化收益越小**；"
-                  "相关性抬升还意味着「大家都在用同一类信号」——"
-                  "这正是 FCI 因子拥挤指数中「因子相关性」分量的来源。"))
-    _note('红＝正相关、蓝＝负相关。相关性越高，多因子组合的分散化收益越小（本项目实测 F15 与 F3d 平均 |相关| = 0.61，故组合增益仅 +0.02~0.03 IR）。</div>')
+    with st.expander("因子相关性与衰减（进阶）", expanded=False):
 
-    _h('<div class="sec">④ 因子衰减曲线（滚动窗口 IC 均值）</div>')
-    _dw = _BTR["decay"]
-    _f16 = go.Figure()
-    for _i, _f in enumerate(_icf):
-        for (_f2, _w), _sdf in _dw["series"].items():
-            if _f2 != _f:
-                continue
-            _sd = _sdf["IC均值"].dropna()
-            _dash = "solid" if _w == 4 else ("dash" if _w == 8 else "dot")
-            _f16.add_trace(go.Scatter(
-                x=list(_sd.index), y=_sd.values,
-                name=f"{_f}·{_w}季", mode="lines",
-                line=dict(color=_palette[_i % len(_palette)], width=1.9,
-                          dash=_dash),
-                hovertemplate="%{x}　滚动IC %{y:+.4f}<extra></extra>"))
-    _f16.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1))
-    _f16.update_layout(height=C.CHART_H_MAIN, template=C.PLOTLY_TEMPLATE,
-                       margin=dict(l=52, r=20, t=14, b=30), hovermode="x unified",
-                       paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                       font=dict(family="Microsoft YaHei", size=10.5),
-                       legend=dict(orientation="h", y=1.10, font=dict(size=9)))
-    _f16.update_yaxes(title_text="滚动窗口 IC 均值", gridcolor=C.COLOR["grid"])
-    _f16.update_xaxes(showgrid=False)
-    st.plotly_chart(_f16, width="stretch", config={"displayModeBar": False})
-    _ins(None, title="④ 分析与结论 · IC 衰减",
-         feature=("对比滚动 4 / 8 / 12 季窗口的 IC 均值：短窗（4 季）灵敏但噪声大，"
-                  "长窗（12 季）稳定但滞后。**若长窗均值明显低于短窗，"
-                  "说明因子近期在增强；反之则在衰减。**"
-                  "本样本仅 10 期，三个窗口的差异会明显小于长历史下的差异。"))
-    _note('实线＝滚动 4 季、虚线＝8 季、点线＝12 季。曲线的起伏即「因子有效性时变」的直接证据；若某段长期为负，说明该因子在该时期反向。</div>')
+        _h('<div class="sec">因子相关性热力图（逐期截面 Spearman 平均）</div>')
+        _cr = _BTR["r4"]["corr"]
+        _cmat = _cr["matrix"]
+        _f15 = go.Figure(go.Heatmap(
+            z=_cmat.to_numpy(), x=list(_cmat.columns), y=list(_cmat.index),
+            colorscale=[[0, "#2166AC"], [0.5, "#F7F7F7"], [1, "#B2182B"]],
+            zmid=0, zmin=-1, zmax=1,
+            hovertemplate="%{y} × %{x}<br>秩相关 %{z:+.3f}<extra></extra>",
+            colorbar=dict(title="Spearman", thickness=12)))
+        _f15.update_layout(height=560, template=C.PLOTLY_TEMPLATE,
+                           margin=dict(l=150, r=20, t=14, b=110),
+                           paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+                           font=dict(family="Microsoft YaHei", size=9))
+        _f15.update_xaxes(showgrid=False, tickangle=-40)
+        _f15.update_yaxes(showgrid=False, autorange="reversed")
+        st.plotly_chart(_f15, width="stretch", config={"displayModeBar": False})
+        _ins(None, title="③ 分析与结论 · 因子相关性",
+             feature=("热力图给出因子两两的逐期截面 Spearman 平均相关。"
+                      "**同族因子相关性越高，合成时的分散化收益越小**；"
+                      "相关性抬升还意味着「大家都在用同一类信号」——"
+                      "这正是 FCI 因子拥挤指数中「因子相关性」分量的来源。"))
+        _note('红＝正相关、蓝＝负相关。相关性越高，多因子组合的分散化收益越小（本项目实测 F15 与 F3d 平均 |相关| = 0.61，故组合增益仅 +0.02~0.03 IR）。</div>')
 
-    # ② 行业拥挤度气泡图
-    _h('<div class="sec">② 行业拥挤度气泡图（X=配置比例，Y=超配Z，大小=沪深300权重／市值代理）</div>')
-    _L = B.latest
-    _bb = pd.DataFrame({"行业": B.industries,
-                        "配置%": B.alloc.loc[_L].reindex(B.industries).to_numpy(),
-                        "Z": IND["F2_超配Zscore"].loc[_L].reindex(B.industries).to_numpy(),
-                        "基准%": IND["F12b_基准权重%"].loc[_L].reindex(B.industries).to_numpy(),
-                        "F12": IND["F12_配置系数"].loc[_L].reindex(B.industries).to_numpy(),
-                        "等级": IND["拥挤等级"].loc[_L].reindex(B.industries).to_numpy()})
-    _bb["基准%"] = _bb["基准%"].fillna(0.3)
-    _f8 = go.Figure()
-    for _lv in C.LEVELS:
-        _sub2 = _bb[_bb["等级"] == _lv]
-        if _sub2.empty:
-            continue
-        _f8.add_trace(go.Scatter(
-            x=_sub2["配置%"], y=_sub2["Z"], mode="markers+text",
-            text=_sub2["行业"], textposition="top center",
-            textfont=dict(size=9),
-            marker=dict(size=np.sqrt(_sub2["基准%"]) * 7 + 7,
-                        color=C.COLOR.get(f"level_{_lv}", "#8A97A5"),
-                        opacity=.62, line=dict(color="#FFFFFF", width=1)),
-            name=_lv,
-            customdata=np.column_stack([_sub2["F12"], _sub2["基准%"]]),
-            hovertemplate="%{text}<br>配置 %{x:.2f}%　超配Z %{y:+.2f}"
-                          "<br>配置系数 %{customdata[0]:.2f}　基准权重 %{customdata[1]:.2f}%"
-                          "<extra></extra>"))
-    _f8.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1))
-    _f8.add_vline(x=100 / len(C.INDUSTRIES), line=dict(color=C.COLOR["line"],
-                                                       width=1, dash="dot"))
-    _f8.update_layout(height=520, template=C.PLOTLY_TEMPLATE,
-                      margin=dict(l=52, r=20, t=16, b=34),
-                      paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                      font=dict(family="Microsoft YaHei", size=10.5),
-                      legend=dict(orientation="h", y=1.08, font=dict(size=10)))
-    _f8.update_xaxes(title_text="配置比例 (%)", gridcolor=C.COLOR["grid"])
-    _f8.update_yaxes(title_text="超配 Z（扩窗）", gridcolor=C.COLOR["grid"])
-    st.plotly_chart(_f8, width="stretch", config={"displayModeBar": False})
-    _ins(None, title="② 分析与结论 · 拥挤度气泡图",
-         feature=("气泡大小＝沪深300 基准权重。右上象限（高配置 + 高 Z）＝真拥挤；"
-                  "**左侧大泡＝「基准权重大但机构低配」**，是潜在的低配风险敞口；"
-                  "右下＝相对自身历史极重但绝对配置仍低，属口径背离区。"))
-    _note(f"气泡大小 = 沪深300行业权重（市值代理）；颜色 = 拥挤等级。时点 {_L}。数据来源：" + _prov_line(["行业配置比例", "沪深300行业权重"]))
+        _h('<div class="sec">因子衰减曲线（滚动窗口 IC 均值）</div>')
+        _dw = _BTR["decay"]
+        _f16 = go.Figure()
+        for _i, _f in enumerate(_icf):
+            for (_f2, _w), _sdf in _dw["series"].items():
+                if _f2 != _f:
+                    continue
+                _sd = _sdf["IC均值"].dropna()
+                _dash = "solid" if _w == 4 else ("dash" if _w == 8 else "dot")
+                _f16.add_trace(go.Scatter(
+                    x=list(_sd.index), y=_sd.values,
+                    name=f"{_f}·{_w}季", mode="lines",
+                    line=dict(color=_palette[_i % len(_palette)], width=1.9,
+                              dash=_dash),
+                    hovertemplate="%{x}　滚动IC %{y:+.4f}<extra></extra>"))
+        _f16.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1))
+        _f16.update_layout(height=C.CHART_H_MAIN, template=C.PLOTLY_TEMPLATE,
+                           margin=dict(l=52, r=20, t=14, b=30), hovermode="x unified",
+                           paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+                           font=dict(family="Microsoft YaHei", size=10.5),
+                           legend=dict(orientation="h", y=1.10, font=dict(size=9)))
+        _f16.update_yaxes(title_text="滚动窗口 IC 均值", gridcolor=C.COLOR["grid"])
+        _f16.update_xaxes(showgrid=False)
+        st.plotly_chart(_f16, width="stretch", config={"displayModeBar": False})
+        _ins(None, title="④ 分析与结论 · IC 衰减",
+             feature=("对比滚动 4 / 8 / 12 季窗口的 IC 均值：短窗（4 季）灵敏但噪声大，"
+                      "长窗（12 季）稳定但滞后。**若长窗均值明显低于短窗，"
+                      "说明因子近期在增强；反之则在衰减。**"
+                      "本样本仅 10 期，三个窗口的差异会明显小于长历史下的差异。"))
+        _note('实线＝滚动 4 季、虚线＝8 季、点线＝12 季。曲线的起伏即「因子有效性时变」的直接证据；若某段长期为负，说明该因子在该时期反向。</div>')
 
-    # ③ 压力测试
-    _h('<div class="sec">③ 压力测试（以 2026Q2 行业配置比例为组合权重）</div>')
+        # ② 行业拥挤度气泡图
+    _h('<div class="sec">② 压力测试（以 2026Q2 行业配置比例为组合权重）</div>')
     _st = _BTR.get("stress")
     if _st is not None and not _st.empty:
         _sv = [float(str(v).replace("%", "")) for v in _st["组合冲击"]]
@@ -1316,7 +934,7 @@ if _P == "④ 因子与检验":
     # ============================================================================
     # 底部：因子有效性（IC / 分层 / 稳健性）
     # ============================================================================
-    _h('<div class="sec">因子有效性检验（IC / RankIC，Newey-West 滞后 2 期）</div>')
+    _h('<div class="sec">③ 因子有效性检验（IC / RankIC，Newey-West 滞后 2 期）</div>')
     with st.expander("展开：IC 汇总表 / 分层回测 / 样本内外与稳健性", expanded=False):
         BTR = load_backtest(FP)
         ic = BTR["ic"].copy()
@@ -1408,7 +1026,7 @@ if _P == "④ 因子与检验":
 # ============================================================================
 if _P == "④ 因子与检验":
     _BTR = load_backtest(FP)
-    _h('<div class="sec">因子分级裁决（4 项独立检验合成可用性结论）</div>')
+    _h('<div class="sec">④ 因子分级裁决（4 项独立检验合成可用性结论）</div>')
     _vd = rs.factor_verdict_table(IND, B, _BTR["ic"], doos=_BTR["doos"],
                                   second_layer=_BTR["second"],
                                   rotation_scan=_BTR["scan"],
@@ -1481,81 +1099,83 @@ if _P == "④ 因子与检验":
 
     # ---------- 设计期样本外 ----------
     _doos2 = _BTR["doos"]
-    _h(f'<div class="sec">设计期样本外检验（设计期 ≤{_doos2["dev_end"]} / '
-                f'留出期 ≥{_doos2["holdout_start"]}）</div>')
-    _h('<div class="tiny">协议：留出期在检验前<b>完全不可见</b>；'
-                '判定三条件（① 两段 IC 同号 ② 留出期 |IC| ≥ 0.03 '
-                '③ 留出期单侧 p &lt; 0.10）<b>事前写死</b>，不得事后调整。<br>'
-                f'样本切分：{_doos2.get("split_note", "—")}</div>')
-    _dt = _doos2.get("table")
-    if isinstance(_dt, pd.DataFrame) and not _dt.empty and "因子" in _dt.columns:
+    with st.expander("样本外与正交化检验（进阶）", expanded=False):
+
+        _h(f'<div class="sec">设计期样本外检验（设计期 ≤{_doos2["dev_end"]} / '
+                    f'留出期 ≥{_doos2["holdout_start"]}）</div>')
+        _h('<div class="tiny">协议：留出期在检验前<b>完全不可见</b>；'
+                    '判定三条件（① 两段 IC 同号 ② 留出期 |IC| ≥ 0.03 '
+                    '③ 留出期单侧 p &lt; 0.10）<b>事前写死</b>，不得事后调整。<br>'
+                    f'样本切分：{_doos2.get("split_note", "—")}</div>')
+        _dt = _doos2.get("table")
+        if isinstance(_dt, pd.DataFrame) and not _dt.empty and "因子" in _dt.columns:
+            st.dataframe(
+                _dt[["因子", "设计期IC", "设计期_n", "留出期IC", "留出期_n",
+                     "留出期NW_t", "留出期单侧p", "条件1_符号一致", "条件2_绝对IC达标",
+                     "条件3_p达标", "通过"]]
+                .style.format({"设计期IC": "{:+.4f}", "留出期IC": "{:+.4f}",
+                               "留出期NW_t": "{:+.3f}", "留出期单侧p": "{:.4f}"}, na_rep="—")
+                .map(lambda v: "background-color:#E6F6EC" if v is True
+                     else ("background-color:#FDE8E8" if v is False else ""),
+                     subset=["通过"]),
+                width="stretch", height=520, hide_index=True)
+        else:
+            st.info("设计期样本外检验在当前样本下不可行：设计期内无可评估因子。")
+        if not _doos2.get("feasible", False):
+            _h('<div class="alert" style="border-color:#E8710A">'
+                '<b>⚠️ 统计功效不足（必须与上表同时引用）</b><br>'
+                '当前可建模区间仅 10 期，经 lag=1 前瞻收益截断后，'
+                '留出期实际观测 <b>&lt; 4</b>，低于因子研究的最低功效要求。'
+                '因此「通过 / 未通过」<b>都不足以支撑因子入选结论</b>——'
+                '本页数据仅作方向性参考。待补齐 2010–2024 历史持仓后自动恢复有效判定。'
+                '</div>')
+
+        _sp = _BTR["spec"]
+        _he = _sp.get("holdout_eval") if isinstance(_sp, dict) else None
+        if isinstance(_he, dict) and _he:
+            _h(f'<div class="tiny">设定搜索（更严格的检验——检验「<b>挑设定的流程</b>」'
+                        f'是否可复制）：设计期选中 <b>{_sp["selected"]}</b>；'
+                        f'留出期 IC = <b>{_he["留出期IC"]:+.4f}</b>（n={_he["留出期_n"]}），'
+                        f'NW t = {_he["留出期NW_t"]:+.3f}，单侧 p = {_he["留出期单侧p"]:.4f} → '
+                        f'<b>{"通过" if _he["通过"] else "未通过"}</b>。<br>'
+                        f'⚠️ 留出期（{_sp.get("holdout_start", "-")}~{LATEST}）是'
+                        '<b>单一行情区间</b>，通过是必要条件、不构成充分条件。</div>')
+        else:
+            st.info("设定搜索在当前样本下不可行（设计期内无可评估候选），"
+                    "故「挑设定的流程是否可复制」这一判据本轮<b>不成立</b>——"
+                    "如实报告，不做替代填补。")
+
+        # ---------- 二层正交化 ----------
+        _h('<div class="sec">二层正交化（一层剔价格风格 + 二层剔同族持仓因子）</div>')
         st.dataframe(
-            _dt[["因子", "设计期IC", "设计期_n", "留出期IC", "留出期_n",
-                 "留出期NW_t", "留出期单侧p", "条件1_符号一致", "条件2_绝对IC达标",
-                 "条件3_p达标", "通过"]]
-            .style.format({"设计期IC": "{:+.4f}", "留出期IC": "{:+.4f}",
-                           "留出期NW_t": "{:+.3f}", "留出期单侧p": "{:.4f}"}, na_rep="—")
-            .map(lambda v: "background-color:#E6F6EC" if v is True
-                 else ("background-color:#FDE8E8" if v is False else ""),
-                 subset=["通过"]),
-            width="stretch", height=520, hide_index=True)
-    else:
-        st.info("设计期样本外检验在当前样本下不可行：设计期内无可评估因子。")
-    if not _doos2.get("feasible", False):
-        _h('<div class="alert" style="border-color:#E8710A">'
-            '<b>⚠️ 统计功效不足（必须与上表同时引用）</b><br>'
-            '当前可建模区间仅 10 期，经 lag=1 前瞻收益截断后，'
-            '留出期实际观测 <b>&lt; 4</b>，低于因子研究的最低功效要求。'
-            '因此「通过 / 未通过」<b>都不足以支撑因子入选结论</b>——'
-            '本页数据仅作方向性参考。待补齐 2010–2024 历史持仓后自动恢复有效判定。'
-            '</div>')
+            _BTR["second"]["table"].style.format(
+                {"原始IC": "{:+.4f}", "原始IC_IR": "{:+.3f}", "一层残差IC": "{:+.4f}",
+                 "一层残差IC_IR": "{:+.3f}", "二层残差IC": "{:+.4f}",
+                 "二层残差IC_IR": "{:+.3f}", "二层保留比例": "{:.1f}"}, na_rep="—"),
+            width="stretch", height=200, hide_index=True)
+        _h(f'<div class="tiny">二层剔除的同族因子：'
+                    f'{"、".join(_BTR["second"]["peers_used"])}。<br>'
+                    '保留比例 = |二层残差IC| / |一层残差IC|。'
+                    '<b>保留 &lt; 30% 说明该因子的「增量信息」其实来自同族，'
+                    '不是独立信息</b>——这是第 2 轮对第 1 轮「残差因子仍有效」结论的修正。</div>')
 
-    _sp = _BTR["spec"]
-    _he = _sp.get("holdout_eval") if isinstance(_sp, dict) else None
-    if isinstance(_he, dict) and _he:
-        _h(f'<div class="tiny">设定搜索（更严格的检验——检验「<b>挑设定的流程</b>」'
-                    f'是否可复制）：设计期选中 <b>{_sp["selected"]}</b>；'
-                    f'留出期 IC = <b>{_he["留出期IC"]:+.4f}</b>（n={_he["留出期_n"]}），'
-                    f'NW t = {_he["留出期NW_t"]:+.3f}，单侧 p = {_he["留出期单侧p"]:.4f} → '
-                    f'<b>{"通过" if _he["通过"] else "未通过"}</b>。<br>'
-                    f'⚠️ 留出期（{_sp.get("holdout_start", "-")}~{LATEST}）是'
-                    '<b>单一行情区间</b>，通过是必要条件、不构成充分条件。</div>')
-    else:
-        st.info("设定搜索在当前样本下不可行（设计期内无可评估候选），"
-                "故「挑设定的流程是否可复制」这一判据本轮<b>不成立</b>——"
-                "如实报告，不做替代填补。")
+        # ---------- 基准口径对比 ----------
+        _h('<div class="sec">静态 vs 动态基准口径（决定超配用哪套基准）</div>')
+        st.dataframe(
+            _BTR["bench"].style.format(
+                {"静态基准IC": "{:+.4f}", "静态基准IC_IR": "{:+.3f}",
+                 "动态基准IC": "{:+.4f}", "动态基准IC_IR": "{:+.3f}",
+                 "IC改善": "{:+.4f}", "IC_IR改善": "{:+.3f}"}, na_rep="—"),
+            width="stretch", height=220, hide_index=True)
+        _h('<div class="tiny">静态基准 = 由「配置−超配」反解的历史恒定口径；'
+                    '动态基准 = <b>Wind 实测沪深300 成份股行业总市值占比</b>'
+                    '（逐季不同，见 <code>hs300_weights_quarterly.xlsx</code>）。'
+                    '实证结论：<b>标准化类因子（Z / 分位）用动态基准明显更强，'
+                    '水平类因子（超配水平 / 配置系数）用静态基准更强</b>——'
+                    '故两套口径<b>按因子类型分别选用，绝不混用</b>。</div>')
 
-    # ---------- 二层正交化 ----------
-    _h('<div class="sec">二层正交化（一层剔价格风格 + 二层剔同族持仓因子）</div>')
-    st.dataframe(
-        _BTR["second"]["table"].style.format(
-            {"原始IC": "{:+.4f}", "原始IC_IR": "{:+.3f}", "一层残差IC": "{:+.4f}",
-             "一层残差IC_IR": "{:+.3f}", "二层残差IC": "{:+.4f}",
-             "二层残差IC_IR": "{:+.3f}", "二层保留比例": "{:.1f}"}, na_rep="—"),
-        width="stretch", height=200, hide_index=True)
-    _h(f'<div class="tiny">二层剔除的同族因子：'
-                f'{"、".join(_BTR["second"]["peers_used"])}。<br>'
-                '保留比例 = |二层残差IC| / |一层残差IC|。'
-                '<b>保留 &lt; 30% 说明该因子的「增量信息」其实来自同族，'
-                '不是独立信息</b>——这是第 2 轮对第 1 轮「残差因子仍有效」结论的修正。</div>')
-
-    # ---------- 基准口径对比 ----------
-    _h('<div class="sec">静态 vs 动态基准口径（决定超配用哪套基准）</div>')
-    st.dataframe(
-        _BTR["bench"].style.format(
-            {"静态基准IC": "{:+.4f}", "静态基准IC_IR": "{:+.3f}",
-             "动态基准IC": "{:+.4f}", "动态基准IC_IR": "{:+.3f}",
-             "IC改善": "{:+.4f}", "IC_IR改善": "{:+.3f}"}, na_rep="—"),
-        width="stretch", height=220, hide_index=True)
-    _h('<div class="tiny">静态基准 = 由「配置−超配」反解的历史恒定口径；'
-                '动态基准 = <b>Wind 实测沪深300 成份股行业总市值占比</b>'
-                '（逐季不同，见 <code>hs300_weights_quarterly.xlsx</code>）。'
-                '实证结论：<b>标准化类因子（Z / 分位）用动态基准明显更强，'
-                '水平类因子（超配水平 / 配置系数）用静态基准更强</b>——'
-                '故两套口径<b>按因子类型分别选用，绝不混用</b>。</div>')
-
-    # ---------- 行业轮动策略 ----------
-    _h('<div class="sec">F15 行业轮动策略（long-only, 季度调仓, 扣 20bp）</div>')
+        # ---------- 行业轮动策略 ----------
+    _h('<div class="sec">⑤ F15 行业轮动策略（long-only，季度调仓，扣 20bp）</div>')
     _rt = _BTR["rot"]
     _rt_tbl2 = _rt.get("table") if isinstance(_rt, dict) else None
     _rt_ok2 = (isinstance(_rt_tbl2, pd.DataFrame) and not _rt_tbl2.empty
@@ -1601,7 +1221,7 @@ if _P == "④ 因子与检验":
                            "必须并列引用：对**等权行业**基准的正超额，"
                            "与对**市值加权沪深300**基准的结论可能相反，只报有利口径即为误导。"))
 
-    _h('<div class="sec">分层回测：F15 五层累积净值（层1＝因子值最低）</div>')
+    _h('<div class="sec">⑥ 分层回测：F15 五层累积净值（层1＝因子值最低）</div>')
     _lyr = _BTR["layer_raw"].get("F15_拥挤背离")
     if _lyr is not None and _lyr.get("cum") is not None:
         _cum5 = _lyr["cum"]
@@ -1652,278 +1272,283 @@ if _P == "④ 因子与检验":
                     '（可建模区间 10 期，扩窗标准化后可用持仓序列不足）。'
                     '<b>该判据本轮不成立</b>，不做替代填补。</div>')
 
-    _h('<div class="sec">参数敏感性（单行业上限 × λ）</div>')
-    _cs = _BTR["caps"]
-    _cs_ok = (isinstance(_cs, pd.DataFrame) and not _cs.empty
-              and "信息比IR" in _cs.columns)
-    if _cs_ok:
-        st.dataframe(_cs.style.format(
-            {"净年化": "{:+.2f}", "超额净年化": "{:+.2f}", "信息比IR": "{:+.2f}",
-             "最大回撤": "{:+.2f}"}, na_rep="—"),
-            width="stretch", height=400, hide_index=True)
-        _cs_ir = _cs["信息比IR"].dropna()
-        if len(_cs_ir):
-            _h(f'<div class="tiny">IR 在全部 cap×λ 组合下落在 '
-                        f'[{_cs_ir.min():+.2f}, {_cs_ir.max():+.2f}]，'
-                        '未出现符号翻转 → 参数稳健。</div>')
-    else:
-        st.info("样本不足：参数敏感性扫描需要可计算净值的轮动序列，"
-                "当前样本下不可用（该判据本轮不成立）。")
+    with st.expander("参数敏感性与方向检验（进阶）", expanded=False):
 
-    # ---------- 双方向扫描 ----------
-    _h('<div class="sec">双方向扫描：方向本身是可证伪的检验</div>')
-    _sc = _BTR["scan"][["因子", "净年化_negative", "超额净_negative", "IR_negative",
-                        "净年化_positive", "超额净_positive", "IR_positive",
-                        "更优方向", "与经济先验一致"]]
-    st.dataframe(_sc.style.format(
-        {c: "{:+.2f}" for c in ["净年化_negative", "超额净_negative", "IR_negative",
-                                "净年化_positive", "超额净_positive", "IR_positive"]},
-        na_rep="—").map(lambda v: "background-color:#E6F6EC" if v is True
-                        else ("background-color:#FDE8E8" if v is False else ""),
-                        subset=["与经济先验一致"]),
-        width="stretch", height=440, hide_index=True)
-    _h('<div class="tiny">经济先验：拥挤度 = 风险因子 → 期望方向为 '
-                '<b>negative</b>（因子值越高越少配）。'
-                '「与经济先验一致 = True」的因子，其 IC 方向与「拥挤=风险」的假设相符；'
-                '<b>False 表示该因子只有在反先验（顺势）方向才有效</b>——'
-                '此时「拥挤=风险」并未被数据支持，不得把它当作拥挤度风险信号使用。</div>')
+        _h('<div class="sec">参数敏感性（单行业上限 × λ）</div>')
+        _cs = _BTR["caps"]
+        _cs_ok = (isinstance(_cs, pd.DataFrame) and not _cs.empty
+                  and "信息比IR" in _cs.columns)
+        if _cs_ok:
+            st.dataframe(_cs.style.format(
+                {"净年化": "{:+.2f}", "超额净年化": "{:+.2f}", "信息比IR": "{:+.2f}",
+                 "最大回撤": "{:+.2f}"}, na_rep="—"),
+                width="stretch", height=400, hide_index=True)
+            _cs_ir = _cs["信息比IR"].dropna()
+            if len(_cs_ir):
+                _h(f'<div class="tiny">IR 在全部 cap×λ 组合下落在 '
+                            f'[{_cs_ir.min():+.2f}, {_cs_ir.max():+.2f}]，'
+                            '未出现符号翻转 → 参数稳健。</div>')
+        else:
+            st.info("样本不足：参数敏感性扫描需要可计算净值的轮动序列，"
+                    "当前样本下不可用（该判据本轮不成立）。")
 
-    _h('<div class="sec">数据来源与区间</div>')
-    _note("行业配置比例：Wind（主动权益三类基金季报前十大重仓口径，"
-          f"{QUARTERS[0]}~{LATEST}，31 个申万一级行业，分母为重仓股总市值）；"
-          "行业季度涨跌幅与沪深300 行业权重：Wind；"
-          "沪深300 动态季度权重：Wind 实测成份股行业总市值占比（逐季不同，覆盖 26–28 行业，缺失按 0 处理）。"
-          f"样本 {len(QUARTERS)} 个季度，季度调仓，成本假设双边 20bp。")
-    # 投资机会解读（因子裁决结论 → 可操作方向）
-    _h(guide.opportunity_hint(M_SUM, C, "轮动策略与因子裁决"))
+        # ---------- 双方向扫描 ----------
+        _h('<div class="sec">双方向扫描：方向本身是可证伪的检验</div>')
+        _sc = _BTR["scan"][["因子", "净年化_negative", "超额净_negative", "IR_negative",
+                            "净年化_positive", "超额净_positive", "IR_positive",
+                            "更优方向", "与经济先验一致"]]
+        st.dataframe(_sc.style.format(
+            {c: "{:+.2f}" for c in ["净年化_negative", "超额净_negative", "IR_negative",
+                                    "净年化_positive", "超额净_positive", "IR_positive"]},
+            na_rep="—").map(lambda v: "background-color:#E6F6EC" if v is True
+                            else ("background-color:#FDE8E8" if v is False else ""),
+                            subset=["与经济先验一致"]),
+            width="stretch", height=440, hide_index=True)
+        _h('<div class="tiny">经济先验：拥挤度 = 风险因子 → 期望方向为 '
+                    '<b>negative</b>（因子值越高越少配）。'
+                    '「与经济先验一致 = True」的因子，其 IC 方向与「拥挤=风险」的假设相符；'
+                    '<b>False 表示该因子只有在反先验（顺势）方向才有效</b>——'
+                    '此时「拥挤=风险」并未被数据支持，不得把它当作拥挤度风险信号使用。</div>')
+
+        _h('<div class="sec">数据来源与区间</div>')
+        _note("行业配置比例：Wind（主动权益三类基金季报前十大重仓口径，"
+              f"{QUARTERS[0]}~{LATEST}，31 个申万一级行业，分母为重仓股总市值）；"
+              "行业季度涨跌幅与沪深300 行业权重：Wind；"
+              "沪深300 动态季度权重：Wind 实测成份股行业总市值占比（逐季不同，覆盖 26–28 行业，缺失按 0 处理）。"
+              f"样本 {len(QUARTERS)} 个季度，季度调仓，成本假设双边 20bp。")
+        # 投资机会解读（因子裁决结论 → 可操作方向）
+        _h(guide.opportunity_hint(M_SUM, C, "轮动策略与因子裁决"))
 
 
-# ============================================================================
-# 页面 ⑥ 稳健性检验（第 3 轮自主迭代）
-# ============================================================================
+    # ============================================================================
+    # 页面 ⑥ 稳健性检验（第 3 轮自主迭代）
+    # ============================================================================
 if _P == "④ 因子与检验":
-    _BTR = load_backtest(FP)
-    R3 = _BTR["r3"]
 
-    _h('<div class="sec">① Walk-forward 滚动样本外（每期只用截至 t−1 的数据挑设定）</div>')
-    _wf = R3["wf"]
-    _ws = _wf["stats"]
-    _c1, _c2, _c3, _c4 = st.columns(4)
-    _c1.metric("留出期数", f"{_ws['留出期数']}")
-    _c2.metric("方向对齐 IC 均值", f"{_ws['留出期均值']:+.4f}")
-    _c3.metric("NW t 值", f"{_ws['留出期NW_t']:+.3f}")
-    _c4.metric("p 值", f"{_ws['留出期p']:.4f}")
-    _sr = _wf["series"] / 100.0
-    _cum = (1 + _sr).cumprod()
-    _f11 = go.Figure()
-    _f11.add_trace(go.Bar(x=list(_sr.index), y=_sr.values, name="当季方向对齐 IC",
-                          marker=dict(color=[C.COLOR["up"] if v >= 0 else C.COLOR["down"]
-                                             for v in _sr.values]),
-                          hovertemplate="%{x}<br>方向对齐 IC %{y:+.4f}<extra></extra>"))
-    _f11.add_trace(go.Scatter(x=list(_cum.index), y=_cum.values, name="累计净值（按 IC 下注）",
-                              mode="lines+markers", yaxis="y2",
-                              line=dict(color=C.COLOR["price"], width=2),
-                              hovertemplate="%{x}<br>累计 %{y:.4f}<extra></extra>"))
-    _f11.update_layout(height=C.CHART_H_MAIN, template=C.PLOTLY_TEMPLATE,
-                       margin=dict(l=52, r=62, t=16, b=34), hovermode="x unified",
-                       paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                       font=dict(family="Microsoft YaHei", size=11),
-                       legend=dict(orientation="h", y=1.10, font=dict(size=10)),
-                       yaxis2=dict(title="累计净值", overlaying="y", side="right",
-                                   showgrid=False))
-    _f11.update_yaxes(title_text="RankIC（方向对齐）", gridcolor=C.COLOR["grid"])
-    _f11.update_xaxes(showgrid=False)
-    st.plotly_chart(_f11, width="stretch", config={"displayModeBar": False})
-    _ins(None, title="① 分析与结论 · Walk-forward",
-         feature=(f"滚动样本外 IC 均值 {_ws['留出期均值']:+.4f}，"
-                  f"NW t = {_ws['留出期NW_t']:+.3f}，p = {_ws['留出期p']:.4f}"
-                  f"（{int(_ws['留出期数'])} 期）。"
-                  f"**它检验的是「挑设定的流程」而非单个因子**："
-                  f"若 p 不显著，则「流程可复制」这一点并未被证明——"
-                  f"这与「某个事先说明的假设通过检验」是两件不同的事。"))
-    _h(f'<div class="tiny">选出因子共 <b>{_ws["选出因子种类"]}</b> 种：'
-        + "、".join(f"{k}({v}期)" for k, v in _ws["选出因子分布"].items())
-        + f'。<br>⚠️ <b>结论：检验「挑设定的流程」而非单个因子时，样本外表现不显著</b>'
-        f'（NW t = {_ws["留出期NW_t"]:+.3f}，p = {_ws["留出期p"]:.3f}）。'
-        '这是对第 2 轮「12/15 通过」的重要修正——高通过率主要由单一行情贡献，'
-        f'而不是流程本身稳健。数据来源：行业季度涨跌幅＋季报持仓（均为 Wind），'
-        f'{len(QUARTERS)} 季度。</div>')
+    with st.expander("进阶稳健性检验（Walk-forward / 设计窗 / 构造依据 / 归因 / 基准变体 共 7 项）", expanded=False):
 
-    _h('<div class="sec">② 设计窗长度敏感性 ＋ 状态/区块分解</div>')
-    _ca, _cb = st.columns([0.45, 0.55])
-    with _ca:
-        st.dataframe(_BTR["r3"]["wf_win"].style.format(
-            {"IC均值": "{:+.4f}", "NW_t": "{:+.3f}", "p值": "{:.4f}",
-             "胜率": "{:.1f}"}, na_rep="—"), width="stretch", height=200,
-            hide_index=True)
-    with _cb:
-        _rb = R3["wf_reg"]
-        _f12 = go.Figure(go.Bar(
-            x=_rb["IC均值"], y=_rb["分组"], orientation="h",
-            marker=dict(color=[C.COLOR["up"] if v >= 0 else C.COLOR["down"]
-                               for v in _rb["IC均值"]]),
-            text=[f"{v:+.3f}" for v in _rb["IC均值"]], textposition="outside",
-            customdata=np.column_stack([_rb["期数"], _rb["胜率"]]),
-            hovertemplate="%{y}<br>IC 均值 %{x:+.4f}<br>期数 %{customdata[0]}"
-                          "　胜率 %{customdata[1]:.1f}%<extra></extra>"))
-        _f12.update_layout(height=290, template=C.PLOTLY_TEMPLATE,
-                           margin=dict(l=190, r=60, t=16, b=30), showlegend=False,
-                           paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                           font=dict(family="Microsoft YaHei", size=10.5))
-        _f12.update_xaxes(title_text="方向对齐 IC 均值", gridcolor=C.COLOR["grid"])
-        _f12.update_yaxes(showgrid=False)
-        st.plotly_chart(_f12, width="stretch", config={"displayModeBar": False})
-        _ins(None, title="② 分析与结论 · 设计窗与状态分解",
-             feature=("若样本外表现集中在某个**时间区块**或某种**市场状态**，"
-                      "则结论的普适性必须打折。分红＝A 股习惯（红涨绿跌）。"
-                      "**关键读法：看显著性是否只出现在单一区块。**"))
-    _h('<div class="tiny">若样本外表现集中在某个时间区块或某种市场状态，'
-                '则结论的普适性必须打折。分红＝A 股习惯（红涨绿跌）。</div>')
+        _BTR = load_backtest(FP)
+        R3 = _BTR["r3"]
 
-    _h('<div class="sec">③ 构造依据「最早可得时点」检验（F15 时间戳前移）</div>')
-    _pa = R3["premise"]
-    if not _pa.get("found"):
-        st.warning(f"未找到构造依据的可得时点：{_pa.get('reason')}")
-    else:
-        _h = _pa["hist"].dropna(subset=["F1累计IC"])
-        _h(f'<div class="tiny">F15 的构造依据是「F1（超配水平）与 F2（超配Z）'
-                    f'的 IC 符号相反」。逐期向前推进后，该依据<b>最早在 '
-                    f'{_pa["t_star"]}</b> 可得（此前 F2 连足够观测都没有）。'
-                    f'以 {_pa["t_star"]} 为观察截止、{_pa["test_start"]} 起为检验期'
-                    f'（{_pa["n_test"]} 个季度）做一次性检验。</div>')
-        _f13 = go.Figure()
-        _f13.add_trace(go.Scatter(x=list(_h.index), y=_h["F1累计IC"], name="F1 超配水平（累计 IC）",
-                                  mode="lines+markers",
-                                  line=dict(color=C.COLOR["price"], width=2)))
-        if "F2累计IC" in _h.columns:
-            _f13.add_trace(go.Scatter(x=list(_h.index), y=_h["F2累计IC"],
-                                      name="F2 超配Z（累计 IC）", mode="lines+markers",
-                                      line=dict(color=C.COLOR["up"], width=2)))
-        # 注意：`add_vline(..., annotation_text=...)` 在**分类轴**上会触发
-        # plotly 的内部错误（对字符串类别求均值）。故改用 add_shape + add_annotation，
-        # 并显式用 yref="paper" 避开"跨轴形状"的处理路径。
-        _f13.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1))
-        _f13.add_shape(type="line", xref="x", yref="paper", x0=_pa["t_star"],
-                       x1=_pa["t_star"], y0=0, y1=1,
-                       line=dict(color=C.COLOR["threshold"], width=1.4, dash="dash"))
-        _f13.add_annotation(x=_pa["t_star"], y=1.0, yref="paper", showarrow=False,
-                            text=f"t* = {_pa['t_star']}", yshift=6,
-                            font=dict(size=10, color=C.COLOR["threshold"]))
-        _f13.update_layout(height=C.CHART_H_SMALL + 80, template=C.PLOTLY_TEMPLATE,
-                           margin=dict(l=52, r=20, t=30, b=34), hovermode="x unified",
+        _h('<div class="sec">Walk-forward 滚动样本外（每期只用截至 t−1 的数据挑设定）</div>')
+        _wf = R3["wf"]
+        _ws = _wf["stats"]
+        _c1, _c2, _c3, _c4 = st.columns(4)
+        _c1.metric("留出期数", f"{_ws['留出期数']}")
+        _c2.metric("方向对齐 IC 均值", f"{_ws['留出期均值']:+.4f}")
+        _c3.metric("NW t 值", f"{_ws['留出期NW_t']:+.3f}")
+        _c4.metric("p 值", f"{_ws['留出期p']:.4f}")
+        _sr = _wf["series"] / 100.0
+        _cum = (1 + _sr).cumprod()
+        _f11 = go.Figure()
+        _f11.add_trace(go.Bar(x=list(_sr.index), y=_sr.values, name="当季方向对齐 IC",
+                              marker=dict(color=[C.COLOR["up"] if v >= 0 else C.COLOR["down"]
+                                                 for v in _sr.values]),
+                              hovertemplate="%{x}<br>方向对齐 IC %{y:+.4f}<extra></extra>"))
+        _f11.add_trace(go.Scatter(x=list(_cum.index), y=_cum.values, name="累计净值（按 IC 下注）",
+                                  mode="lines+markers", yaxis="y2",
+                                  line=dict(color=C.COLOR["price"], width=2),
+                                  hovertemplate="%{x}<br>累计 %{y:.4f}<extra></extra>"))
+        _f11.update_layout(height=C.CHART_H_MAIN, template=C.PLOTLY_TEMPLATE,
+                           margin=dict(l=52, r=62, t=16, b=34), hovermode="x unified",
                            paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
                            font=dict(family="Microsoft YaHei", size=11),
-                           legend=dict(orientation="h", y=1.12, font=dict(size=10)))
-        _f13.update_yaxes(title_text="累计 RankIC", gridcolor=C.COLOR["grid"])
-        _f13.update_xaxes(showgrid=False)
-        st.plotly_chart(_f13, width="stretch", config={"displayModeBar": False})
-        _ins(None, title="④ 分析与结论 · 双因子组合",
-             feature=("正交双因子的价值取决于两因子的**截面相关性**：相关越低，"
-                      "分散化收益越大、合成 IC_IR 提升越明显；"
-                      "**若合成后 IC_IR 反而低于单因子，说明正交化付出的代价"
-                      "（增量信息被剔除）超过了分散化收益，此时不应合成。**"))
-        st.dataframe(_pa["table"].style.format(
-            {"检验期IC均值": "{:+.4f}", "检验期IC_IR": "{:+.3f}", "NW_t": "{:+.3f}",
-             "p值": "{:.4f}", "胜率": "{:.1f}"}, na_rep="—"),
-            width="stretch", height=440, hide_index=True)
-        _h('  <div class="tiny">这是<b>真正当时可做</b>的检验：t* 之前构造依据'
-                    '根本不可得，因此不存在"看了全样本才想到"的问题。</div>')
+                           legend=dict(orientation="h", y=1.10, font=dict(size=10)),
+                           yaxis2=dict(title="累计净值", overlaying="y", side="right",
+                                       showgrid=False))
+        _f11.update_yaxes(title_text="RankIC（方向对齐）", gridcolor=C.COLOR["grid"])
+        _f11.update_xaxes(showgrid=False)
+        st.plotly_chart(_f11, width="stretch", config={"displayModeBar": False})
+        _ins(None, title="① 分析与结论 · Walk-forward",
+             feature=(f"滚动样本外 IC 均值 {_ws['留出期均值']:+.4f}，"
+                      f"NW t = {_ws['留出期NW_t']:+.3f}，p = {_ws['留出期p']:.4f}"
+                      f"（{int(_ws['留出期数'])} 期）。"
+                      f"**它检验的是「挑设定的流程」而非单个因子**："
+                      f"若 p 不显著，则「流程可复制」这一点并未被证明——"
+                      f"这与「某个事先说明的假设通过检验」是两件不同的事。"))
+        _h(f'<div class="tiny">选出因子共 <b>{_ws["选出因子种类"]}</b> 种：'
+            + "、".join(f"{k}({v}期)" for k, v in _ws["选出因子分布"].items())
+            + f'。<br>⚠️ <b>结论：检验「挑设定的流程」而非单个因子时，样本外表现不显著</b>'
+            f'（NW t = {_ws["留出期NW_t"]:+.3f}，p = {_ws["留出期p"]:.3f}）。'
+            '这是对第 2 轮「12/15 通过」的重要修正——高通过率主要由单一行情贡献，'
+            f'而不是流程本身稳健。数据来源：行业季度涨跌幅＋季报持仓（均为 Wind），'
+            f'{len(QUARTERS)} 季度。</div>')
 
-    _h('<div class="sec">④ 正交双因子组合（F15 × F3d）</div>')
-    _dc = R3["dual"]
-    if not _dc["table"].empty:
-        _h(f'<div class="tiny">方向确定时点 = <b>{_dc["sign_from"]}</b>｜'
-                    f'sign(F15) = {_dc["sign_a"]:+.0f}｜sign(F3d) = {_dc["sign_b"]:+.0f}｜'
-                    f'两因子平均 |截面相关| = {_dc["corr"]:.4f}'
-                    '（相关越高，分散化收益越小）</div>')
-        st.dataframe(_dc["table"].style.format(
-            {"IC均值": "{:+.4f}", "IC_IR": "{:+.3f}", "NW_t": "{:+.3f}",
-             "p值": "{:.4f}", "胜率": "{:.1f}"}, na_rep="—"),
-            width="stretch", height=250, hide_index=True)
+        _h('<div class="sec">设计窗长度敏感性 ＋ 状态/区块分解</div>')
+        _ca, _cb = st.columns([0.45, 0.55])
+        with _ca:
+            st.dataframe(_BTR["r3"]["wf_win"].style.format(
+                {"IC均值": "{:+.4f}", "NW_t": "{:+.3f}", "p值": "{:.4f}",
+                 "胜率": "{:.1f}"}, na_rep="—"), width="stretch", height=200,
+                hide_index=True)
+        with _cb:
+            _rb = R3["wf_reg"]
+            _f12 = go.Figure(go.Bar(
+                x=_rb["IC均值"], y=_rb["分组"], orientation="h",
+                marker=dict(color=[C.COLOR["up"] if v >= 0 else C.COLOR["down"]
+                                   for v in _rb["IC均值"]]),
+                text=[f"{v:+.3f}" for v in _rb["IC均值"]], textposition="outside",
+                customdata=np.column_stack([_rb["期数"], _rb["胜率"]]),
+                hovertemplate="%{y}<br>IC 均值 %{x:+.4f}<br>期数 %{customdata[0]}"
+                              "　胜率 %{customdata[1]:.1f}%<extra></extra>"))
+            _f12.update_layout(height=290, template=C.PLOTLY_TEMPLATE,
+                               margin=dict(l=190, r=60, t=16, b=30), showlegend=False,
+                               paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+                               font=dict(family="Microsoft YaHei", size=10.5))
+            _f12.update_xaxes(title_text="方向对齐 IC 均值", gridcolor=C.COLOR["grid"])
+            _f12.update_yaxes(showgrid=False)
+            st.plotly_chart(_f12, width="stretch", config={"displayModeBar": False})
+            _ins(None, title="② 分析与结论 · 设计窗与状态分解",
+                 feature=("若样本外表现集中在某个**时间区块**或某种**市场状态**，"
+                          "则结论的普适性必须打折。分红＝A 股习惯（红涨绿跌）。"
+                          "**关键读法：看显著性是否只出现在单一区块。**"))
+        _h('<div class="tiny">若样本外表现集中在某个时间区块或某种市场状态，'
+                    '则结论的普适性必须打折。分红＝A 股习惯（红涨绿跌）。</div>')
 
-    _h('<div class="sec">⑤ cap 约束 vs 因子倾斜 的分离 ＋ 四宫格口径对照</div>')
-    _cg, _cd = st.columns(2)
-    with _cg:
-        _h('<div class="tiny"><b>cap 约束 vs 因子倾斜</b></div>')
-        st.dataframe(R3["tilt_cap"].style.format(
-            {c: "{:+.2f}" for c in ["仅cap约束_超额", "cap加因子倾斜_超额",
-                                    "因子倾斜净增量", "仅cap_IR", "含因子_IR",
-                                    "仅cap_换手率", "含因子_换手率",
-                                    "平均最大行业权重"]}, na_rep="—"),
-            width="stretch", height=190, hide_index=True)
-    with _cd:
-        _h('<div class="tiny"><b>策略起点 × 超额基准（四宫格）</b></div>')
-        st.dataframe(R3["grid"].style.format(
-            {c: "{:+.2f}" for c in ["超额净_算术", "超额净_几何", "IR", "超额胜率"]},
-            na_rep="—"), width="stretch", height=190, hide_index=True)
-    _h('<div class="tiny">⚠️ 若不设 λ=0 对照，会把「单行业上限约束」的效果'
-                '误算成因子的 alpha。<b>四种口径组合下超额是否同为正，是判断'
-                '「结论对口径有多敏感」的关键。</b></div>')
+        _h('<div class="sec">构造依据「最早可得时点」检验（F15 时间戳前移）</div>')
+        _pa = R3["premise"]
+        if not _pa.get("found"):
+            st.warning(f"未找到构造依据的可得时点：{_pa.get('reason')}")
+        else:
+            _h = _pa["hist"].dropna(subset=["F1累计IC"])
+            _h(f'<div class="tiny">F15 的构造依据是「F1（超配水平）与 F2（超配Z）'
+                        f'的 IC 符号相反」。逐期向前推进后，该依据<b>最早在 '
+                        f'{_pa["t_star"]}</b> 可得（此前 F2 连足够观测都没有）。'
+                        f'以 {_pa["t_star"]} 为观察截止、{_pa["test_start"]} 起为检验期'
+                        f'（{_pa["n_test"]} 个季度）做一次性检验。</div>')
+            _f13 = go.Figure()
+            _f13.add_trace(go.Scatter(x=list(_h.index), y=_h["F1累计IC"], name="F1 超配水平（累计 IC）",
+                                      mode="lines+markers",
+                                      line=dict(color=C.COLOR["price"], width=2)))
+            if "F2累计IC" in _h.columns:
+                _f13.add_trace(go.Scatter(x=list(_h.index), y=_h["F2累计IC"],
+                                          name="F2 超配Z（累计 IC）", mode="lines+markers",
+                                          line=dict(color=C.COLOR["up"], width=2)))
+            # 注意：`add_vline(..., annotation_text=...)` 在**分类轴**上会触发
+            # plotly 的内部错误（对字符串类别求均值）。故改用 add_shape + add_annotation，
+            # 并显式用 yref="paper" 避开"跨轴形状"的处理路径。
+            _f13.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1))
+            _f13.add_shape(type="line", xref="x", yref="paper", x0=_pa["t_star"],
+                           x1=_pa["t_star"], y0=0, y1=1,
+                           line=dict(color=C.COLOR["threshold"], width=1.4, dash="dash"))
+            _f13.add_annotation(x=_pa["t_star"], y=1.0, yref="paper", showarrow=False,
+                                text=f"t* = {_pa['t_star']}", yshift=6,
+                                font=dict(size=10, color=C.COLOR["threshold"]))
+            _f13.update_layout(height=C.CHART_H_SMALL + 80, template=C.PLOTLY_TEMPLATE,
+                               margin=dict(l=52, r=20, t=30, b=34), hovermode="x unified",
+                               paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+                               font=dict(family="Microsoft YaHei", size=11),
+                               legend=dict(orientation="h", y=1.12, font=dict(size=10)))
+            _f13.update_yaxes(title_text="累计 RankIC", gridcolor=C.COLOR["grid"])
+            _f13.update_xaxes(showgrid=False)
+            st.plotly_chart(_f13, width="stretch", config={"displayModeBar": False})
+            _ins(None, title="④ 分析与结论 · 双因子组合",
+                 feature=("正交双因子的价值取决于两因子的**截面相关性**：相关越低，"
+                          "分散化收益越大、合成 IC_IR 提升越明显；"
+                          "**若合成后 IC_IR 反而低于单因子，说明正交化付出的代价"
+                          "（增量信息被剔除）超过了分散化收益，此时不应合成。**"))
+            st.dataframe(_pa["table"].style.format(
+                {"检验期IC均值": "{:+.4f}", "检验期IC_IR": "{:+.3f}", "NW_t": "{:+.3f}",
+                 "p值": "{:.4f}", "胜率": "{:.1f}"}, na_rep="—"),
+                width="stretch", height=440, hide_index=True)
+            _h('  <div class="tiny">这是<b>真正当时可做</b>的检验：t* 之前构造依据'
+                        '根本不可得，因此不存在"看了全样本才想到"的问题。</div>')
 
-    _h('<div class="sec">⑥ 超额收益行业归因（真 alpha 还是低配大牛股的 beta）</div>')
-    _at = R3["attr"]
-    _ast = _at.get("summary") if isinstance(_at, dict) else None
-    _tab = _at.get("table") if isinstance(_at, dict) else None
-    _attr_ok = (isinstance(_tab, pd.DataFrame) and not _tab.empty
-                and "累计贡献pct" in _tab.columns
-                and isinstance(_ast, dict) and _ast)
-    if not _attr_ok:
-        st.info("样本不足：超额收益的行业归因需要完整的「持仓权重 − 基准权重」"
-                "× 下一期行业收益序列，当前可建模区间内不足以稳定分解。"
-                "该判据本轮<b>不成立</b>，待补齐历史后自动恢复。")
-    else:
-        _pal = [C.COLOR["up"] if v >= 0 else C.COLOR["down"]
-                for v in _tab["累计贡献pct"]]
-        _f14 = go.Figure(go.Bar(
-            x=_tab["累计贡献pct"], y=_tab["行业"], orientation="h",
-            marker=dict(color=_pal), text=[f"{v:+.2f}" for v in _tab["累计贡献pct"]],
-            textposition="outside",
-            customdata=_tab["平均权重偏离pct"],
-            hovertemplate="%{y}<br>累计贡献 %{x:+.2f}pct<br>"
-                          "平均权重偏离 %{customdata:+.2f}pct<extra></extra>"))
-        # 同理：横向条形图的 y 轴是行业名（分类轴），用 add_shape 而非 add_vline
-        _f14.add_shape(type="line", xref="x", yref="paper", x0=0, x1=0, y0=0, y1=1,
-                       line=dict(color=C.COLOR["line"], width=1))
-        _f14.update_layout(height=720, template=C.PLOTLY_TEMPLATE,
-                           margin=dict(l=78, r=70, t=16, b=34), showlegend=False,
-                           title=dict(text="超额收益的行业来源（累计 pct，策略=等权起点，基准=沪深300 逐期）",
-                                      font=dict(size=11.5), x=0.01),
-                           paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                           font=dict(family="Microsoft YaHei", size=10))
-        _f14.update_xaxes(title_text="累计贡献 (pct)", gridcolor=C.COLOR["grid"])
-        _f14.update_yaxes(showgrid=False, autorange="reversed")
-        st.plotly_chart(_f14, width="stretch", config={"displayModeBar": False})
-        _ins(None, title="⑥ 分析与结论 · 超额归因",
-             feature=("逐期精确分解 Σ(w−bm)·r。**关键检验：剔除最大负贡献行业后"
-                      "超额是否归零**——若归零，则超额本质是「低配某大牛行业」的 beta；"
-                      "若仍显著为正，则更接近真正的行业选择能力。"))
-        _h(f'<div class="tiny">累计总超额 <b>{_ast["总额外收益pct"]:+.2f}pct</b>｜'
-            f'正贡献行业 <b>{_ast["正贡献行业数"]}</b> 个／负贡献行业 '
-            f'<b>{_ast["负贡献行业数"]}</b> 个｜最大负贡献 = '
-            f'<b>{_ast["最大负贡献行业"]}（{_ast["最大负贡献pct"]:+.2f}pct）</b>｜'
-            f'剔除该行业后超额 = <b>{_ast["剔除最大负贡献后超额pct"]:+.2f}pct</b>。<br>'
-            '若剔除单一行业后超额归零，说明超额本质是「低配某大牛行业的 beta」；'
-            '若仍显著为正，则更接近真 alpha。数据来源：行业季度涨跌幅＋沪深300 动态权重。</div>')
+        _h('<div class="sec">正交双因子组合（F15 × F3d）</div>')
+        _dc = R3["dual"]
+        if not _dc["table"].empty:
+            _h(f'<div class="tiny">方向确定时点 = <b>{_dc["sign_from"]}</b>｜'
+                        f'sign(F15) = {_dc["sign_a"]:+.0f}｜sign(F3d) = {_dc["sign_b"]:+.0f}｜'
+                        f'两因子平均 |截面相关| = {_dc["corr"]:.4f}'
+                        '（相关越高，分散化收益越小）</div>')
+            st.dataframe(_dc["table"].style.format(
+                {"IC均值": "{:+.4f}", "IC_IR": "{:+.3f}", "NW_t": "{:+.3f}",
+                 "p值": "{:.4f}", "胜率": "{:.1f}"}, na_rep="—"),
+                width="stretch", height=250, hide_index=True)
 
-    _h('<div class="sec">⑦ 基准变体对照（含逐期剔除最大权重行业）</div>')
-    st.dataframe(R3["bm_var"].style.format(
-        {c: "{:+.2f}" for c in ["基准年化", "组合净年化", "超额净年化_算术",
-                                "超额净年化_几何", "超额波动", "IR",
-                                "超额胜率", "最大回撤"]}, na_rep="—"),
-        width="stretch", height=230, hide_index=True)
-    _h('<div class="tiny">⚠️ 同时给<b>算术年化</b>与<b>几何年化</b>：'
-                '波动越大二者差距越大，只报算术均值会系统性高估可实现的超额。'
-                '「逐期剔除当期前 N 大权重行业」的剔除对象是随季度变化的'
-                '（早期是银行、近年是电子），不是固定剔除某一个行业。</div>')
+        _h('<div class="sec">cap 约束 vs 因子倾斜 的分离 ＋ 四宫格口径对照</div>')
+        _cg, _cd = st.columns(2)
+        with _cg:
+            _h('<div class="tiny"><b>cap 约束 vs 因子倾斜</b></div>')
+            st.dataframe(R3["tilt_cap"].style.format(
+                {c: "{:+.2f}" for c in ["仅cap约束_超额", "cap加因子倾斜_超额",
+                                        "因子倾斜净增量", "仅cap_IR", "含因子_IR",
+                                        "仅cap_换手率", "含因子_换手率",
+                                        "平均最大行业权重"]}, na_rep="—"),
+                width="stretch", height=190, hide_index=True)
+        with _cd:
+            _h('<div class="tiny"><b>策略起点 × 超额基准（四宫格）</b></div>')
+            st.dataframe(R3["grid"].style.format(
+                {c: "{:+.2f}" for c in ["超额净_算术", "超额净_几何", "IR", "超额胜率"]},
+                na_rep="—"), width="stretch", height=190, hide_index=True)
+        _h('<div class="tiny">⚠️ 若不设 λ=0 对照，会把「单行业上限约束」的效果'
+                    '误算成因子的 alpha。<b>四种口径组合下超额是否同为正，是判断'
+                    '「结论对口径有多敏感」的关键。</b></div>')
 
-    _h('<div class="sec">数据来源与区间</div>')
-    _note("行业配置比例：Wind（主动权益三类基金季报前十大重仓口径，"
-          f"{QUARTERS[0]}~{LATEST}，31 个申万一级行业，分母为重仓股总市值）；"
-          "行业季度涨跌幅：Wind 申万一级行业指数；"
-          "沪深300 动态季度权重：Wind 实测成份股行业总市值占比（逐季不同，"
-          f"覆盖 26–28 个行业，缺失按 0）；样本内/外划分由 config.IS_LAST/OOS_FIRST 控制，"
-          "当前随可建模区间自适应。"
-          "组合层检验为季度调仓、双边成本 20bp、单行业上限 10%、λ=0.5（参数事前固定）。")
+        _h('<div class="sec">超额收益行业归因（真 alpha 还是低配大牛股的 beta）</div>')
+        _at = R3["attr"]
+        _ast = _at.get("summary") if isinstance(_at, dict) else None
+        _tab = _at.get("table") if isinstance(_at, dict) else None
+        _attr_ok = (isinstance(_tab, pd.DataFrame) and not _tab.empty
+                    and "累计贡献pct" in _tab.columns
+                    and isinstance(_ast, dict) and _ast)
+        if not _attr_ok:
+            st.info("样本不足：超额收益的行业归因需要完整的「持仓权重 − 基准权重」"
+                    "× 下一期行业收益序列，当前可建模区间内不足以稳定分解。"
+                    "该判据本轮<b>不成立</b>，待补齐历史后自动恢复。")
+        else:
+            _pal = [C.COLOR["up"] if v >= 0 else C.COLOR["down"]
+                    for v in _tab["累计贡献pct"]]
+            _f14 = go.Figure(go.Bar(
+                x=_tab["累计贡献pct"], y=_tab["行业"], orientation="h",
+                marker=dict(color=_pal), text=[f"{v:+.2f}" for v in _tab["累计贡献pct"]],
+                textposition="outside",
+                customdata=_tab["平均权重偏离pct"],
+                hovertemplate="%{y}<br>累计贡献 %{x:+.2f}pct<br>"
+                              "平均权重偏离 %{customdata:+.2f}pct<extra></extra>"))
+            # 同理：横向条形图的 y 轴是行业名（分类轴），用 add_shape 而非 add_vline
+            _f14.add_shape(type="line", xref="x", yref="paper", x0=0, x1=0, y0=0, y1=1,
+                           line=dict(color=C.COLOR["line"], width=1))
+            _f14.update_layout(height=720, template=C.PLOTLY_TEMPLATE,
+                               margin=dict(l=78, r=70, t=16, b=34), showlegend=False,
+                               title=dict(text="超额收益的行业来源（累计 pct，策略=等权起点，基准=沪深300 逐期）",
+                                          font=dict(size=11.5), x=0.01),
+                               paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+                               font=dict(family="Microsoft YaHei", size=10))
+            _f14.update_xaxes(title_text="累计贡献 (pct)", gridcolor=C.COLOR["grid"])
+            _f14.update_yaxes(showgrid=False, autorange="reversed")
+            st.plotly_chart(_f14, width="stretch", config={"displayModeBar": False})
+            _ins(None, title="⑥ 分析与结论 · 超额归因",
+                 feature=("逐期精确分解 Σ(w−bm)·r。**关键检验：剔除最大负贡献行业后"
+                          "超额是否归零**——若归零，则超额本质是「低配某大牛行业」的 beta；"
+                          "若仍显著为正，则更接近真正的行业选择能力。"))
+            _h(f'<div class="tiny">累计总超额 <b>{_ast["总额外收益pct"]:+.2f}pct</b>｜'
+                f'正贡献行业 <b>{_ast["正贡献行业数"]}</b> 个／负贡献行业 '
+                f'<b>{_ast["负贡献行业数"]}</b> 个｜最大负贡献 = '
+                f'<b>{_ast["最大负贡献行业"]}（{_ast["最大负贡献pct"]:+.2f}pct）</b>｜'
+                f'剔除该行业后超额 = <b>{_ast["剔除最大负贡献后超额pct"]:+.2f}pct</b>。<br>'
+                '若剔除单一行业后超额归零，说明超额本质是「低配某大牛行业的 beta」；'
+                '若仍显著为正，则更接近真 alpha。数据来源：行业季度涨跌幅＋沪深300 动态权重。</div>')
+
+        _h('<div class="sec">基准变体对照（含逐期剔除最大权重行业）</div>')
+        st.dataframe(R3["bm_var"].style.format(
+            {c: "{:+.2f}" for c in ["基准年化", "组合净年化", "超额净年化_算术",
+                                    "超额净年化_几何", "超额波动", "IR",
+                                    "超额胜率", "最大回撤"]}, na_rep="—"),
+            width="stretch", height=230, hide_index=True)
+        _h('<div class="tiny">⚠️ 同时给<b>算术年化</b>与<b>几何年化</b>：'
+                    '波动越大二者差距越大，只报算术均值会系统性高估可实现的超额。'
+                    '「逐期剔除当期前 N 大权重行业」的剔除对象是随季度变化的'
+                    '（早期是银行、近年是电子），不是固定剔除某一个行业。</div>')
+
+        _h('<div class="sec">数据来源与区间</div>')
+        _note("行业配置比例：Wind（主动权益三类基金季报前十大重仓口径，"
+              f"{QUARTERS[0]}~{LATEST}，31 个申万一级行业，分母为重仓股总市值）；"
+              "行业季度涨跌幅：Wind 申万一级行业指数；"
+              "沪深300 动态季度权重：Wind 实测成份股行业总市值占比（逐季不同，"
+              f"覆盖 26–28 个行业，缺失按 0）；样本内/外划分由 config.IS_LAST/OOS_FIRST 控制，"
+              "当前随可建模区间自适应。"
+              "组合层检验为季度调仓、双边成本 20bp、单行业上限 10%、λ=0.5（参数事前固定）。")
     st.stop()
 
 
@@ -2015,21 +1640,40 @@ if _P == "⑤ 数据与方法":
     _h('<div class="sec">② 样本覆盖与缺口清单（机构级必须披露）</div>')
     _n_hq = len(getattr(B, "alloc_quarters", []) or [])
     _n_oq = len(getattr(B, "over_quarters", []) or [])
+
+    def _cov(prefix):
+        """从 data/cache 实时统计各数据集的实际覆盖，避免手写数字过期。"""
+        _p = os.path.join(C.DATA, "cache", f"{prefix}__*.json")
+        _qq = sorted(os.path.basename(f).replace(f"{prefix}__", "").replace(".json", "")
+                     for f in glob.glob(_p))
+        return (_qq[0], _qq[-1], len(_qq)) if _qq else ("—", "—", 0)
+
+    _c_h = _cov("holdings")
+    _c_s = _cov("hs300")
+    _c_r = _cov("returns")
+    _c_t = _cov("turnover")
     _cov_tbl = pd.DataFrame([
-        dict(数据项="基金重仓行业市值（holdings）", 覆盖区间="2024Q1 ~ 2026Q2", 期数="10",
-             状态="✅ 完整 31 行业，全实测（无插补）"),
-        dict(数据项="沪深300行业权重（hs300）", 覆盖区间="2022Q1 ~ 2026Q2", 期数="18",
-             状态="✅ 逐期加总 100.00% ± 0.02（自由流通市值加权）"),
-        dict(数据项="行业季度涨跌幅（returns）", 覆盖区间="2019Q1 ~ 2026Q2", 期数="30",
-             状态="✅ 31 行业全齐（930 行，已补齐 2019-2021）"),
-        dict(数据项="行业季度成交额（turnover）", 覆盖区间="2022Q1 ~ 2026Q2", 期数="18",
-             状态="✅ 已覆盖全部可建模季度（10/10）"),
+        dict(数据项="基金重仓行业市值（holdings）", 覆盖区间=f"{_c_h[0]} ~ {_c_h[1]}",
+             期数=str(_c_h[2]), 状态="✅ 完整 31 行业，全实测（无插补）"),
+        dict(数据项="沪深300行业权重（hs300）", 覆盖区间=f"{_c_s[0]} ~ {_c_s[1]}",
+             期数=str(_c_s[2]), 状态="✅ 逐期加总 100.00% ± 0.02（自由流通市值加权）"),
+        dict(数据项="行业季度涨跌幅（returns）", 覆盖区间=f"{_c_r[0]} ~ {_c_r[1]}",
+             期数=str(_c_r[2]), 状态="✅ 31 行业全齐（每期 31 行，实测无插补）"),
+        dict(数据项="行业季度成交额（turnover）", 覆盖区间=f"{_c_t[0]} ~ {_c_t[1]}",
+             期数=str(_c_t[2]), 状态=f"⚠️ 仅覆盖可建模区间的后 {_c_t[2]} 期，"
+                                     "更早季度交易拥挤度不可算（不插补）"),
+        dict(数据项="偏股混合长历史配置（eq_series）",
+             覆盖区间=f"{B.over_ext_quarters[0]} ~ {B.over_ext_quarters[-1]}" if getattr(B, "over_ext_available", False) else "—",
+             期数=str(len(getattr(B, "over_ext_quarters", []) or [])),
+             状态="✅ 单一口径无断点，用于长历史拥挤度与配置变迁（2016Q2 起）"),
     ])
     st.dataframe(_cov_tbl, width="stretch", hide_index=True)
-    _note(f"<b>可建模区间（holdings ∩ hs300）</b>= 2024Q1 ~ 2026Q2，共 <b>{_n_oq} 期</b>。"
-          f"具备基金持仓数据的季度 <b>{_n_hq} 期</b>。<br>"
-          "<b>本轮 hs300 由 9 期补齐至 18 期</b>（2022Q1~2024Q1 逐期 Wind 重抓、加总=100%），"
-          "解锁 2024Q1 的超配比例，可建模区间由 9 期扩至 10 期。")
+    _note(f"<b>可建模区间（holdings ∩ hs300）</b>= "
+          f"{B.quarters[0]} ~ {B.quarters[-1]}，共 <b>{len(B.quarters)} 期</b>。"
+          f"其中具备基金持仓数据的季度 <b>{_n_hq} 期</b>，"
+          f"主口径超配可算 <b>{_n_oq} 期</b>；"
+          f"长历史口径 <b>{len(getattr(B, 'over_ext_quarters', []) or [])} 期</b>"
+          "（偏股混合单类型，覆盖 2016Q2 起，用于趋势与分位）。")
 
     # ---------------------------------------------------------------- 持仓序列体检
     _h('<div class="sec">③ 持仓序列体检（环比与结构）</div>')
@@ -2336,9 +1980,15 @@ if _P == "⑤ 数据与方法":
         "系统性低估分散型行业、高估集中型行业。所有行业同口径，故横向可比，绝对水平有偏。",
         "<b>F13 筹码盈利比例为指数层面代理。</b>精确口径需行业成分股逐股持仓成本，"
         "本项目用「行业指数相对点位 + 滚动成交额权重」近似，不等于成分股加权口径。",
-        "<b>F14 ETF 资金流快层覆盖 2026Q3、14 只 ETF：10 个申万一级行业（电子/通信/医药/非银/食品饮料/电力设备/银行/有色/军工/计算机）+ 4 只主要宽基（沪深300/中证500/创业板/科创50）。</b>行业 ETF 中 6 只来自 Wind、4 只来自 iFinD 归档；4 只宽基全部来自 Wind（2026-10-03 抓取）。ETF 日度数据与季报持仓"
-        "相差一个季度，故 F14 不进入历史 F11 合成（仅在权重可用时参与），"
-        "作为独立的当前状态信号呈现。",
+        "<b>持仓绝对规模不可作跨期比较基准（本轮实测结论）。</b>"
+        "把 2026Q2 三类基金分别查询后相加 = 偏股混合 26,959 + 普通股票 5,929 + "
+        "灵活配置 5,998 = <b>38,886 亿元</b>，而缓存序列该期为 23,343 亿元"
+        "（覆盖基金不全，偏低约 40%）。关键点：两者的<b>行业占比结构高度一致</b>"
+        "（电子 43.24% vs 43.46%），因此 <b>HHI / CR / 超配比例等占比类指标不受影响</b>，"
+        "绝对规模（亿元）只在同一口径区间内作环比参考，不用于跨期或跨口径比较。",
+        "<b>F14 ETF 资金流已从看板移除。</b>按最新需求「不需要 ETF 资金流」，"
+        "原 ETF 页与宽基资金动向整页删除；F14 不再作为展示指标，仅在权重可用时"
+        "参与 F11 合成（当前因季度错位实际不参与，权重在可用分量间自动归一）。",
         "<b>基准权重已切换为 Wind 动态季度口径。</b>沪深300 行业权重直接取自 "
         "Wind 实测的成份股行业总市值占比（逐季不同）。"
         "沪深300 天然只覆盖 26–28 个申万一级行业，未覆盖行业的基准权重按 0 处理——"
@@ -2765,7 +2415,12 @@ with _ch2:
     _chg_n = st.slider("显示条数", 3, 10, 5, key="chg_n",
                        label_visibility="collapsed")
 
-_f11_all = IND["F11_综合拥挤度_推荐权重"]          # index=季度, columns=行业
+# 长历史口径优先：F11e（偏股混合单类型，2016Q2~2026Q2 共 36 期），
+# 仅在有值时使用；缺失时回退主口径（主动权益三类，10 期）。
+_f11_long = IND.get("F11e_综合拥挤度_长历史")
+_use_long = (_f11_long is not None and _f11_long.notna().any().any())
+_f11_all = _f11_long if _use_long else IND["F11_综合拥挤度_推荐权重"]
+_f11_name = "F11e 长历史综合拥挤度（偏股混合口径）" if _use_long else "F11 综合拥挤度（三类口径）"
 _q_now = LATEST
 if _chg_mode == "季度环比":
     _q_base = QUARTERS[-2] if len(QUARTERS) >= 2 else LATEST
@@ -2803,41 +2458,47 @@ else:
     _note(f"口径：{_chg_label}。红＝拥挤度上升（变挤），绿＝下降（变松）；"
           f"仅显示变化最大的各 {_chg_n} 个行业。"
           f"变挤前三：<b>{_inc_names}</b>；变松前三：<b>{_dec_names}</b>。"
-          "变化值基于 F11 综合拥挤度（截面 Z），跨期可比。")
+          f"变化值基于{_f11_name}（截面 Z），跨期可比。")
 
 # ============================================================================
 # 拥挤度热力图（31 行业 × 季度，红色系，标注数值）
 # ============================================================================
 _h('<div class="sec">拥挤度热力图 · 31 行业 × 季度</div>')
-# 只保留 F11 有值的季度（主口径持仓 10 期），避免大片空白
+# 只保留有值的季度（长历史口径 36 期；缺失期不画空白）
 _valid_q = [q for q in QUARTERS
             if q in _f11_all.index and _f11_all.loc[q].notna().any()]
 _hm = (_f11_all.loc[_valid_q].T if _valid_q else _f11_all.T)
+# 行按最新一期拥挤度降序排列：最拥挤的行业置顶，纵向一眼看出梯队
+if _hm.shape[1]:
+    _last_v = _hm.iloc[:, -1]
+    _hm = _hm.reindex(_last_v.sort_values(ascending=False).index)
 _hm_arr = _hm.to_numpy(dtype=float)
-_hm_txt = [["" if (v != v or abs(v) < 0.8) else f"{v:.1f}" for v in row]
+_hm_txt = [["" if (v != v or abs(v) < 1.0) else f"{v:.1f}" for v in row]
            for row in _hm_arr]
+_hm_fs = 8 if len(_valid_q) <= 14 else (7 if len(_valid_q) <= 24 else 6.5)
 _f_hm = go.Figure(go.Heatmap(
     z=_hm_arr, x=list(_hm.columns), y=list(_hm.index),
     text=_hm_txt, texttemplate="%{text}",
-    textfont=dict(size=8, color="white"),
-    colorscale=[[0, "#FFFFFF"], [0.15, "#FFF7F5"], [0.35, "#FDE4DD"],
-                [0.55, "#F7BDB4"], [0.75, "#EC8A7D"], [0.90, "#D84A40"],
-                [1, "#A6150A"]],
-    zmid=0,
+    textfont=dict(size=_hm_fs, color="#40201A"),
+    colorscale=[[0, "#FFFFFF"], [0.15, "#FCE3DE"], [0.35, "#F7BEB3"],
+                [0.55, "#EE8B78"], [0.78, "#D8513C"], [1, "#A61B0B"]],
+    zmid=0, zmin=-2.0, zmax=2.5, xgap=0.6, ygap=0.6,
     colorbar=dict(title=dict(text="拥挤度Z", side="right"),
                   thickness=13, len=0.92, tickfont=dict(size=9),
                   ticks="outside", tickformat=".1f"),
     hovertemplate="%{y}　%{x}　拥挤度 <b>%{z:.2f}</b><extra></extra>"))
 _f_hm.update_layout(height=880, template=C.PLOTLY_TEMPLATE,
-                    margin=dict(l=70, r=34, t=16, b=30),
+                    margin=dict(l=70, r=34, t=26, b=30),
                     paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
                     font=dict(family="Microsoft YaHei", size=10))
 _f_hm.update_xaxes(showgrid=False, side="top", tickangle=45)
 _f_hm.update_yaxes(showgrid=False, autorange="reversed")
 st.plotly_chart(_f_hm, width="stretch", config={"displayModeBar": False})
-_note("颜色越深＝拥挤度越高（红色系）；<b>|Z| ≥ 0.8 的格子已标注数值</b>，"
-      "其余悬停可查精确值。行＝31 个申万一级行业，列＝季度。"
-      "数据来源：Wind（前十大重仓口径，F11 综合拥挤度截面 Z）。")
+_note(f"颜色越深＝拥挤度越高（红色系）；<b>|Z| ≥ 1.0 的格子已标注数值</b>，"
+      f"其余悬停可查精确值。行＝31 个申万一级行业，列＝季度（{len(_valid_q)} 期："
+      f"{_valid_q[0]} ~ {_valid_q[-1]}）。口径：{_f11_name}，"
+      "数据来源 Wind 前十大重仓股。<b>深红＝该行业相对自身历史处于极端拥挤</b>，"
+      "白色＝接近自身历史中位。")
 
 # 投资机会解读（行业钻取页）
 _h(guide.opportunity_hint(M_SUM, C, "行业钻取"))

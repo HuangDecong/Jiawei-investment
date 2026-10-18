@@ -105,7 +105,7 @@ python tools/data_quality_report.py
 ## 4. 校验与验收
 
 ```bash
-# 9 页逐页异常检测（必须 0 异常）
+# 5 页逐页异常检测（必须 0 异常）
 python tools/apptest_all_pages.py
 ```
 
