@@ -44,3 +44,11 @@ assets/
 
 # ===== 工作区记忆（仅本地，不入库）=====
 .workbuddy/
+
+# ===== 调试产物 =====
+output/cdp_profile/
+output/*.html
+
+# ===== 调试产物 =====
+output/cdp_profile/
+output/*.html
