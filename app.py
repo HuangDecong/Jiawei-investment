@@ -675,6 +675,8 @@ if _P == "① 总览":
                 if pd.notna(M_SUM["HHI"]) else ""),
         "CR3": (_fv1(M_SUM["CR3"], "{:.2f}%"),
                 f"CR5 {M_SUM['CR5']:.1f}%　CR10 {M_SUM['CR10']:.1f}%"),
+        "BREADTH": (f"{M_SUM['n_extreme']:.0f} / {M_SUM['n_under']:.0f}",
+                    "极度拥挤 / 显著低配（家）"),
         "TOP1": (str(M_SUM["top1"]), _fv1(M_SUM["top1_pct"], "{:.2f}%")),
         "POS": (_fv1(_pos_last["前十占净值比均值"] if _pos_last is not None else None, "{:.1f}%"),
                 (f"均值；重仓股 {_fv1(_pos_last['重仓股数均值'], '{:.1f}')} 只"
@@ -850,7 +852,7 @@ if _P == "③ 集中度与结构":
     _dmax = ("—", "")
     if _chg is not None and _chg.notna().any():
         _dmax = (f"{_chg.max():+.2f} pct", f"加仓最多：{_chg.idxmax()}")
-    _h(md.render_grid([md.MARKET[3], md.MARKET[4]], {
+    _h(md.render_grid([m for m in md.MARKET if m["key"] in ("POS", "DELTA")], {
         "POS": (f"{_pos3['前十占净值比均值']:.1f}%" if _pos3 is not None else "—",
                 f"样本均值；重仓股 {_pos3['重仓股数均值']:.1f} 只" if _pos3 is not None else ""),
         "DELTA": _dmax,
@@ -2305,6 +2307,14 @@ with M:
         "F12": (_fv(_f12_0, "{:.2f}×"), f"{_fv(_alloc_0)} ÷ {_fv(_bench_0)}"),
         "F13": (_fv(_f13_0, "{:.1f}%"), "浮盈盘占比"),
         "turn": (_fv(_turn_0), f"历史分位 {_fv(_turnp_0, '{:.0f}%')}"),
+        "F4": (_fv(IND["F4_超配动量"].loc[LATEST, sel], "{:+.2f} pct"),
+               f"上季超配 {_fv(B.overweight.loc[QUARTERS[-2], sel] if len(QUARTERS) > 1 else None, '{:+.2f}')}"),
+        "F10": (_fv(IND["F10_共振得分"].loc[LATEST, sel], "{:.0f}/3"),
+                "S1 {} / S2 {} / S3 {}".format(
+                    *[int(v) if pd.notna(v) else 0 for v in (
+                        IND["F10_S1_持仓拥挤"].loc[LATEST, sel],
+                        IND["F10_S2_交易拥挤"].loc[LATEST, sel],
+                        IND["F10_S3_筹码拥挤"].loc[LATEST, sel])])),
         "F11": (_fv(comp, "{:+.2f}"), f"全行业排名 {_rk_0}/{len(INDUSTRIES)}"),
         "level": (lvl_tag(lv_sel), "分位 / 配置系数双阈值取最高级"),
     }, C.COLOR, cols=2))
