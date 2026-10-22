@@ -244,7 +244,7 @@ def render_update_guide() -> str:
     <div class="opp-t">第 3 步 · 校验与验收（必做）</div>
     <ul>
       <li><code>python tools/apptest_all_pages.py</code> —— 5 页 0 异常。</li>
-      <li>preflight 硬约束 H1–H8 全通过、S1 告警为 0。</li>
+      <li>preflight 硬约束 H1–H9 全通过、S1 告警为 0。</li>
       <li>④ 检查「口径断点」：占比类指标（HHI/CR）跨期可比，绝对规模只在同口径区间内比较。</li>
       <li>重启 streamlit 服务，浏览器 Ctrl+F5 强刷确认。</li>
     </ul>

@@ -110,7 +110,7 @@ python tools/apptest_all_pages.py
 ```
 
 再核对：
-- **preflight 硬约束 H1–H8 全通过**、S1 告警为 0（update_pipeline 输出里可见）；
+- **preflight 硬约束 H1–H9 全通过**、S1 告警为 0（update_pipeline 输出里可见）；
 - **口径断点**：占比类指标（HHI/CR/超配）跨期可比；绝对规模（重仓市值合计）只在同口径区间内比较；
 - 重启看板：`streamlit run app.py`，浏览器 Ctrl+F5 强刷，抽查 ① 综合判断 / ③ 热力图 / ⑤ 溯源表数字是否更新。
 

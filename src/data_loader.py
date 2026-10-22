@@ -832,6 +832,29 @@ def load_over_ext(b: "Bundle") -> dict:
     return dict(matrix=mat, quarters=qs, source=pd.Series(srcs), available=True)
 
 
+def load_holdings_value(quarters: list) -> pd.Series:
+    """逐期「重仓股总市值（亿元）」——由 cache/holdings__*.json 的行业市值求和。
+
+    用途：把「超配比例」换算成可感知的金额（如压力测算的需卖出规模）。
+    口径提醒（D14）：2026Q2 缓存合计 23,343 亿，Wind 三类实测 38,886 亿，
+    缓存偏低约 40%；因此金额类结果只作量级参考，比例类结果不受影响。
+    """
+    out = {}
+    for q in quarters:
+        p = os.path.join(C.DATA, "cache", f"holdings__{q}.json")
+        if not os.path.exists(p):
+            continue
+        try:
+            with open(p, encoding="utf-8") as fh:
+                d = json.load(fh)
+            vals = [float(v) for v in d.values() if v is not None]
+            if vals:
+                out[q] = float(np.sum(vals))
+        except Exception:
+            continue
+    return pd.Series(out, dtype=float).reindex(quarters)
+
+
 def attach_extras(b: "Bundle") -> "Bundle":
     """把本次升级的新数据挂到 Bundle 上（缺失时给出明确状态，不静默失败）。"""
     dt = load_daily_turnover()
@@ -881,6 +904,9 @@ def attach_extras(b: "Bundle") -> "Bundle":
                        "校准前十大重仓口径偏差（口径偏差方向与幅度见 README 风险提示）")
 
     b.provenance = load_provenance()
+
+    # 逐期重仓总市值（亿元）：压力测算用；口径偏差见 D14
+    b.holdings_value = load_holdings_value(list(b.quarters))
 
     # 全历史行业配置矩阵（③ 页长区间图专用；不影响因子计算所用的主口径）
     _ae = load_alloc_ext(b)

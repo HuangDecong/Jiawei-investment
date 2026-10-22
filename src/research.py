@@ -195,6 +195,28 @@ def preflight_gate(b, F: dict, raise_on_fail: bool = True) -> pd.DataFrame:
             if c in ind]
     rec("硬", "H8", "正交化控制变量齐备(3个)", len(ctrl) == 3, f"实际 {len(ctrl)} 个")
 
+    # H9 行业收益不得被前值填充（D8 回归防线）
+    # 背景：2022Q1 起 24 个行业的季度涨跌幅曾被复制成同一值，行数齐全、无空值，
+    #       缺失率类校验完全发现不了，却让 IC/事件研究全部失真。
+    # 判据：同一行业连续相同的季度收益不得超过 3 期（真实收益连续相同 >3 期的概率极低）。
+    _ret = b.market.get("ret") if isinstance(b.market, dict) else None
+    _run_len, _run_ind, _same_pairs = 1, "—", 0
+    if isinstance(_ret, pd.DataFrame) and not _ret.empty:
+        for _c in _ret.columns:
+            _v = _ret[_c].astype(float).to_numpy()
+            _run = 1
+            for _i in range(1, len(_v)):
+                if (pd.notna(_v[_i]) and pd.notna(_v[_i - 1])
+                        and abs(_v[_i] - _v[_i - 1]) < 1e-9):
+                    _run += 1
+                    _same_pairs += 1
+                else:
+                    _run = 1
+                if _run > _run_len:
+                    _run_len, _run_ind = _run, str(_c)
+    rec("硬", "H9", "行业收益无前值填充（连续相同 ≤3 期）", _run_len <= 3,
+        f"最长连续相同 {_run_len} 期（{_run_ind}）；相邻相同值共 {_same_pairs} 对")
+
     # ---- 软约束 ----
     # S1 因子缺失率：**只在可建模区间**上统计。
     # 若用全 30 期（含 20 个设计上无持仓的季度），所有依赖持仓的因子的

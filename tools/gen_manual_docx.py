@@ -99,7 +99,7 @@ def build():
     t2 = doc.add_paragraph(); t2.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _set_font(t2.add_run("因子手册与操作指南"), "微软雅黑", 16, True, "1F6FEB")
     t3 = doc.add_paragraph(); t3.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    _set_font(t3.add_run("版本 R15（2026-10-22）· 数据源 Wind（主力）+ 东方财富妙想/同花顺 iFinD（交叉验证）"),
+    _set_font(t3.add_run("版本 R16（2026-10-22）· 数据源 Wind（主力）+ 东方财富妙想/同花顺 iFinD（交叉验证）"),
               "宋体", 9, False, "6B7A8C")
 
     # 0 定位
@@ -207,7 +207,7 @@ def build():
         _para(doc, s, 9.5, indent=0.5, color="37485C")
     _heading(doc, "第 3 步 · 校验验收（必做）", 3)
     for s in ["python tools/apptest_all_pages.py     # 5 页 0 异常",
-              "preflight 硬约束 H1–H8 全通过、S1 告警 = 0",
+              "preflight 硬约束 H1–H9 全通过、S1 告警 = 0",
               "检查口径断点：占比类指标跨期可比，绝对规模只在同口径区间比较"]:
         _para(doc, "• " + s, 10, indent=0.5)
     _heading(doc, "数据治理红线", 3)
@@ -222,6 +222,8 @@ def build():
               "F13 筹码盈利比例为指数层面代理，非成分股加权精确口径",
               "可建模区间主口径仅 10 期（2024Q1~2026Q2）：主口径版 F2/F3/F4b/F15 无法取值，已用偏股混合 37 期超配长历史构建长历史版完成检验（结论：不显著）",
               "早年持仓（2010~2015、2016~2018 Q1/Q4）缺口：需批量基金季报重仓数据库（东方财富妙想为「查实体」接口、套餐对聚合数据已超限；同花顺 iFinD 需另行提供密钥）",
+              "行业季度涨跌幅曾存在前值填充缺陷（486 格，2022Q1 起），已于 R16 用 Wind 季 K 重抓替换；"
+              "修正后 F9/F13 的 IC 归零、F11 边际显著（p=0.06），拥挤度仍无稳定可交易的截面预测力",
               "结论是「方向性证据」而非「稳健统计结论」，不构成可交易信号"]:
         _para(doc, "• " + s, 10, indent=0.5)
 

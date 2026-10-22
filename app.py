@@ -43,7 +43,7 @@ if _SRC_DIR not in sys.path:
 # ---------------------------------------------------------------------------
 _LOCAL_MODULES = ("config", "data_loader", "factor_engine", "backtest", "research",
                   "research3", "research4", "rigor", "signal_generator",
-                  "insights", "guide", "factor_docs", "metric_doc")
+                  "insights", "guide", "factor_docs", "metric_doc", "attribution")
 
 
 def _reload_local_modules_if_changed() -> None:
@@ -88,6 +88,7 @@ import factor_engine as fe     # noqa: E402
 import guide                   # noqa: E402  投资机会解读/操作指南/更新指南
 import insights as ins         # noqa: E402
 import metric_doc as md        # noqa: E402  指标释义：定义/经济内容/投资含义/读法
+import attribution as atr      # noqa: E402  配置变化归因（主动/被动）与压力测算
 import signal_generator as sg  # noqa: E402
 
 
@@ -401,7 +402,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.22-r15.0"
+APP_VERSION = "2026.10.22-r16.0"
 
 
 def _fp_short() -> str:
@@ -1730,7 +1731,7 @@ if _P == "⑤ 数据与方法":
     _h('<div class="sec">① 口径定义（决定一切结论）</div>')
     _fx = getattr(B, "_fixed_issues", None)
     _h(f"""<div class="alert" style="border-color:{C.COLOR['level_极度拥挤']}">
-        <b>⚠️ 本轮自主发现并修复的 3 项数据/方法缺陷（机构级留痕）</b>
+        <b>⚠️ 本轮累计自主发现并修复的 8 项数据/方法缺陷（机构级留痕）</b>
         <table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:12.5px">
         <tr style="background:#F2F5F8"><th align="left">编号</th><th align="left">缺陷</th>
         <th align="left">影响面</th><th align="left">处理</th></tr>
@@ -1770,6 +1771,16 @@ if _P == "⑤ 数据与方法":
              <td>⑧ 页持仓序列体检 + 绝对规模展示</td>
              <td>重仓合计改为从 cache 原始市值（holdings__*.json）逐期求和，
                  环比 / 电子占比 / Top1 同步修正</td></tr>
+        <tr style="background:#FAFBFC"><td><b>D8</b></td><td><b>行业季度涨跌幅被前值填充（本轮发现）</b><br>
+            24 个行业自 <b>2022Q1</b>、另有 3 个（汽车/轻工/银行）自 <b>2025Q1</b> 起，
+            季度收益被复制成同一个值，共 <b>486 个单元格</b>；电子 2022Q1 真实
+            <b>−25.46%</b> 被写成 <b>+20.86%</b>（符号相反）</td>
+            <td><b>IC / 分层 / 事件研究 / 收益归因全部失真</b>：旧表「F13 RankIC +0.69、
+                F11 +0.36、事件研究 3 个月 −8.8%」均为冻结收益造成的伪显著</td>
+            <td>Wind 逐指数重抓季 K 收盘（27 个指数 × 19 季），计算季收益并替换 486 格；
+                三重校验：3 个未受影响行业 18 期逐期比对最大偏差 <b>0.00pp</b>、
+                与 <code>tools/market_reference.py</code> 内置参考序列一致、
+                季度跨行业均值落位合理。备份 <code>sw_industry_returns_BEFORE_r16.xlsx</code></td></tr>
         </table></div>""")
     _h(f"""<div class="alert" style="border-color:{C.COLOR['level_偏拥挤']}">
         <b>更早完成的口径修正 —— 全口径公募基金 → 主动权益三类</b><br>
@@ -1814,7 +1825,8 @@ if _P == "⑤ 数据与方法":
         dict(数据项="沪深300行业权重（hs300）", 覆盖区间=f"{_c_s[0]} ~ {_c_s[1]}",
              期数=str(_c_s[2]), 状态="✅ 逐期加总 100.00% ± 0.02（自由流通市值加权）"),
         dict(数据项="行业季度涨跌幅（returns）", 覆盖区间=f"{_c_r[0]} ~ {_c_r[1]}",
-             期数=str(_c_r[2]), 状态="✅ 31 行业全齐（每期 31 行，实测无插补）"),
+             期数=str(_c_r[2]),
+             状态="✅ 42 期 × 31 行业全齐（2026-10-22 修复前值填充，486 格重抓，见 D8）"),
         dict(数据项="行业季度成交额（turnover）", 覆盖区间=f"{_c_t[0]} ~ {_c_t[1]}",
              期数=str(_c_t[2]), 状态=f"⚠️ 仅覆盖可建模区间的后 {_c_t[2]} 期，"
                                      "更早季度交易拥挤度不可算（不插补）"),
@@ -1824,6 +1836,52 @@ if _P == "⑤ 数据与方法":
              状态="✅ 单一口径无断点，用于长历史拥挤度与配置变迁（2016Q2 起）"),
     ])
     st.dataframe(_cov_tbl, width="stretch", hide_index=True)
+
+    # ①b 数据完整性矩阵：42 个季度 × 7 个数据项，缺口一眼可见
+    _Q = list(B.quarters)
+    def _cov_bool(df):
+        """按季度判断「该数据项是否有值」，返回 {季度: bool}。"""
+        return {q: bool(v) for q, v in df.notna().any(axis=1).items()}
+
+    _cvr = [
+        ("行业配置（主口径）", _cov_bool(B.alloc)),
+        ("长历史配置", _cov_bool(B.alloc_ext)),
+        ("长历史超配", _cov_bool(B.over_ext)),
+        ("沪深300 行业权重", _cov_bool(B.weight_matrix)),
+        ("行业季度涨跌幅", _cov_bool(B.market["ret"])),
+        ("行业季度成交额", _cov_bool(B.market["turn"])),
+        ("重仓总市值", {q: bool(v) for q, v in
+                    getattr(B, "holdings_value", pd.Series(dtype=float)).items()
+                    if pd.notna(v)}),
+    ]
+    _c_ok, _c_no = "#4C78A8", "#E9A7A2"
+    _hdr = '<tr><td style="width:104px"></td>'
+    for _i, _q in enumerate(_Q):
+        _hdr += ('<td style="font-size:8px;color:#6B7A8F;text-align:center">'
+                 + (_q[:4] if _q.endswith("Q1") else "") + "</td>")
+    _hdr += '<td style="width:38px"></td></tr>'
+    _rows = ""
+    for _name, _ser in _cvr:
+        _ss = pd.Series(_ser, dtype=bool).reindex(_Q, fill_value=False)
+        _cells = "".join(
+            f'<td><div title="{_q}｜{_name}：{"有" if _ss[_q] else "缺"}" '
+            f'style="width:11px;height:11px;border-radius:2px;'
+            f'background:{_c_ok if _ss[_q] else _c_no};opacity:.92"></div></td>'
+            for _q in _Q)
+        _rows += (f'<tr><td style="font-size:9.5px;color:#37485C;padding-right:6px">'
+                  f'{_name}</td>{_cells}'
+                  f'<td style="font-size:9px;color:#6B7A8F;text-align:right">'
+                  f'{int(_ss.sum())}/{len(_Q)}</td></tr>')
+    _h('<div class="sec">数据完整性矩阵 · 42 季度 × 7 数据项</div>')
+    _h(f'<div style="overflow-x:auto;border:1px solid {C.COLOR["line"]};'
+       f'border-radius:6px;padding:6px 8px;background:#FFFFFF">'
+       f'<table style="border-collapse:separate;border-spacing:2px">{_hdr}{_rows}</table>'
+       f'</div>')
+    _note(f'蓝＝有数据，红＝缺失（不插补、不回填）。<b>主口径持仓 10/{len(_Q)}</b>：'
+          f'2024Q1 起才有主动权益三类的逐期持仓；<b>长历史 37/{len(_Q)}</b>：'
+          f'缺 2016Q1、2017Q1/Q4、2018Q1/Q4 五期（Wind 对这几期返回全市场行业市值，'
+          f'口径污染，判为不采信，见 WIND_RAW.md）；<b>行业成交额 18/{len(_Q)}</b>：'
+          f'2022Q1 起才有 31 行业逐季成交额。缺失项一律留空，任何图表都不会用插值填补。')
     _note(f"<b>可建模区间（holdings ∩ hs300）</b>= "
           f"{B.quarters[0]} ~ {B.quarters[-1]}，共 <b>{len(B.quarters)} 期</b>。"
           f"其中具备基金持仓数据的季度 <b>{_n_hq} 期</b>，"
@@ -2270,6 +2328,13 @@ with M:
     _top3_b = "、".join(f"{k} {v:.2f}%" for k, v in
                         IND["F12b_基准权重%"].loc[LATEST].dropna()
                         .sort_values(ascending=False).head(3).items())
+    def _fv(x, tpl="{:.2f}%", na="—"):
+        """数值安全格式化：缺值不显示为 nan。"""
+        try:
+            return na if x is None or pd.isna(x) else tpl.format(x)
+        except Exception:
+            return na
+
     _ctx0 = dict(
         sel=sel, q=LATEST, alloc=_alloc_0, bench=_bench_0, over=_over_0, f12=_f12_0,
         alloc_rank=int(B.alloc.loc[LATEST].rank(ascending=False)[sel]),
@@ -2288,6 +2353,77 @@ with M:
           "同样是高拥挤，「产业趋势型」与「主题交易型」的持续性完全不同——"
           "前者由盈利上修驱动、可以维持数个季度，后者以成交萎缩结束。")
 
+
+    # ①a2 配置变化归因：主动加减仓 vs 价格漂移（本轮新增）
+    #     回答「占比上升是买出来的还是涨出来的」——两者的投资含义完全相反。
+    _dec = atr.decompose(B.alloc, B.market["ret"])
+    _sp = atr.split_one(_dec, LATEST, sel)
+    _i_latest = QUARTERS.index(LATEST)
+    _q0a = QUARTERS[_i_latest - 1] if _i_latest > 0 else None
+    if _sp and _sp.get("ok"):
+        _vd2 = atr.verdict(_sp)
+        _ov_src = (B.over_ext[sel] if getattr(B, "over_ext_available", False)
+                   and sel in B.over_ext.columns else B.overweight[sel])
+        _ov_hist = _ov_src.dropna().iloc[-12:]
+        _ov_tgt = float(_ov_hist.median()) if len(_ov_hist) else np.nan
+        _turn_q = (float(B.market["turn"].loc[LATEST, sel])
+                   if sel in B.market["turn"].columns else np.nan)
+        _tot = (float(B.holdings_value.loc[LATEST])
+                if LATEST in getattr(B, "holdings_value", pd.Series()).index else np.nan)
+        _pr = atr.pressure(_over_0, _ov_tgt, _alloc_0, _tot, _turn_q)
+        _r_q = (float(B.market["ret"].loc[LATEST, sel])
+                if sel in B.market["ret"].columns else np.nan)
+        _h('<div class="sec">配置变化从哪来 · 主动加减仓 vs 价格漂移</div>')
+        _press = ""
+        if np.isfinite(_pr["d_over"]) and _pr["d_over"] > 0:
+            _press = (
+                f'<div class="mcard"><div class="h">近 12 季超配中位数</div>'
+                f'<div class="mrow"><span>目标水平</span><span>{_ov_tgt:.2f}%</span></div>'
+                f'<div class="mrow"><span>当前</span><span>{_over_0:+.2f}%</span></div></div>'
+                f'<div class="mcard"><div class="h">需回落的超配</div>'
+                f'<div class="mrow"><span>幅度</span><span>{_pr["d_over"]:.2f} pct</span></div>'
+                f'<div class="mrow"><span>占该行业持仓</span>'
+                f'<span>{_pr["need_pct_industry"]:.0f}%</span></div></div>'
+                f'<div class="mcard"><div class="h">折算规模（缓存口径）</div>'
+                f'<div class="mrow"><span>金额</span><span>{_fv(_pr["need_yi"], "{:,.0f} 亿")}</span></div>'
+                f'<div class="mrow"><span>≈ 成交额</span>'
+                f'<span>{_fv(_pr["days_of_turnover"], "{:.1f} 个交易日")}</span></div></div>')
+        else:
+            _press = ('<div class="mcard"><div class="h">无需回归</div>'
+                      '<div class="mrow"><span>当前超配</span>'
+                      f'<span>{_over_0:+.2f}%</span></div>'
+                      '<div class="mrow"><span>已低于近 12 季中位数</span>'
+                      f'<span>{_over_0 - _ov_tgt:+.2f} pct</span></div></div>')
+        _h(f"""<div class="dz">
+          <div class="dz-h">{sel}：{_q0a} → {LATEST}，配置 {_sp['上季配置']:.2f}% → {_sp['本季配置']:.2f}%，
+            <b style="color:{C.COLOR['up'] if _sp['变化'] >= 0 else C.COLOR['down']}">
+            {_sp['变化']:+.2f} pct</b></div>
+          <div class="ch-wrap">
+            <div class="ch-cell"><div class="ch-t"><span class="ch-i">1</span>上季实际配置</div>
+              <div class="ch-v">{_sp['上季配置']:.2f}%</div>
+              <div class="ch-x">季报前十大重仓口径</div></div>
+            <div class="ch-op">→</div>
+            <div class="ch-cell"><div class="ch-t"><span class="ch-i">2</span>只涨不买（被动漂移）</div>
+              <div class="ch-v">{_sp['被动漂移后']:.2f}%</div>
+              <div class="ch-x">按行业指数当季 {_fv(_r_q, '{:+.2f}%')} 折算，
+                贡献 <b>{_sp['被动贡献']:+.2f} pct</b></div></div>
+            <div class="ch-op">→</div>
+            <div class="ch-cell"><div class="ch-t"><span class="ch-i">3</span>本季实际配置</div>
+              <div class="ch-v">{_sp['本季配置']:.2f}%</div>
+              <div class="ch-x">与「只涨不买」的差额＝主动加减仓
+                <b>{_sp['主动贡献']:+.2f} pct</b></div></div>
+          </div>
+          <div class="rg" style="background:#F8FAFC">
+            <div class="rg-t">判定：<b>{_vd2['tag']}</b></div>
+            <div class="rg-r">{_vd2['text']}</div>
+          </div>
+          <div class="dz-sub">压力测算 · 若超配回落到近 12 季中位数</div>
+          <div class="mini">{_press}</div>
+          <div class="dz-note">口径：被动漂移＝上季配置 ×（1＋行业指数涨跌幅）后按 31 行业归一，
+            差额为主动加减仓（Σ主动 ≈ 0）。行业指数收益是个股组合的近似，
+            偏差主要落在「主动」项；金额按缓存重仓市值折算，D14 已注明该口径偏低约 40%，
+            故金额与天数只作量级参考，比例结论不受影响。</div>
+        </div>""")
 
     # ①b 该行业等级判断理由：把「哪条规则被触发、触发值是多少」摆出来
     _z_s = IND["F2_超配Zscore"].loc[LATEST, sel]
@@ -2469,13 +2605,6 @@ with M:
                        "当超配与成交分位同时处于高位时，才是「持仓 + 交易」双重拥挤。"))
 
     _h('<div class="sec">指标释义 · 每个数字对应什么经济行为（12 项）</div>')
-
-    def _fv(x, tpl="{:.2f}%", na="—"):
-        """数值安全格式化：缺值不显示为 nan。"""
-        try:
-            return na if x is None or pd.isna(x) else tpl.format(x)
-        except Exception:
-            return na
 
     _h(md.render_grid(md.INDUSTRY, {
         "alloc": (_fv(_alloc_0), f"占全部重仓市值　排名 {_ctx0['alloc_rank']}/{len(INDUSTRIES)}"),
