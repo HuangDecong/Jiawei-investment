@@ -2288,36 +2288,6 @@ with M:
           "同样是高拥挤，「产业趋势型」与「主题交易型」的持续性完全不同——"
           "前者由盈利上修驱动、可以维持数个季度，后者以成交萎缩结束。")
 
-    _h('<div class="sec">指标释义 · 每个数字对应什么经济行为</div>')
-
-    def _fv(x, tpl="{:.2f}%", na="—"):
-        """数值安全格式化：缺值不显示为 nan。"""
-        try:
-            return na if x is None or pd.isna(x) else tpl.format(x)
-        except Exception:
-            return na
-
-    _h(md.render_grid(md.INDUSTRY, {
-        "alloc": (_fv(_alloc_0), f"占全部重仓市值　排名 {_ctx0['alloc_rank']}/{len(INDUSTRIES)}"),
-        "bench": (_fv(_bench_0), f"指数权重　排名 {_ctx0['bench_rank']}/{len(INDUSTRIES)}"),
-        "over": (_fv(_over_0, "{:+.2f} pct"), f"{_fv(_alloc_0)} − {_fv(_bench_0)}",
-                 "up" if pd.notna(_over_0) and _over_0 >= 0 else "dn"),
-        "Z": (_fv(z, "{:+.2f}"), "扩窗 8 期起，无前视"),
-        "pct": (_fv(pct, "{:.1f}%"), "0~100，越高越极端"),
-        "F12": (_fv(_f12_0, "{:.2f}×"), f"{_fv(_alloc_0)} ÷ {_fv(_bench_0)}"),
-        "F13": (_fv(_f13_0, "{:.1f}%"), "浮盈盘占比"),
-        "turn": (_fv(_turn_0), f"历史分位 {_fv(_turnp_0, '{:.0f}%')}"),
-        "F4": (_fv(IND["F4_超配动量"].loc[LATEST, sel], "{:+.2f} pct"),
-               f"上季超配 {_fv(B.overweight.loc[QUARTERS[-2], sel] if len(QUARTERS) > 1 else None, '{:+.2f}')}"),
-        "F10": (_fv(IND["F10_共振得分"].loc[LATEST, sel], "{:.0f}/3"),
-                "S1 {} / S2 {} / S3 {}".format(
-                    *[int(v) if pd.notna(v) else 0 for v in (
-                        IND["F10_S1_持仓拥挤"].loc[LATEST, sel],
-                        IND["F10_S2_交易拥挤"].loc[LATEST, sel],
-                        IND["F10_S3_筹码拥挤"].loc[LATEST, sel])])),
-        "F11": (_fv(comp, "{:+.2f}"), f"全行业排名 {_rk_0}/{len(INDUSTRIES)}"),
-        "level": (lvl_tag(lv_sel), "分位 / 配置系数双阈值取最高级"),
-    }, C.COLOR, cols=2))
 
     # ①b 该行业等级判断理由：把「哪条规则被触发、触发值是多少」摆出来
     _z_s = IND["F2_超配Zscore"].loc[LATEST, sel]
@@ -2497,6 +2467,38 @@ with M:
                        "**三线合读的意义**：上面板（超配）是相对基准的主动偏离，"
                        "中面板（配置）是绝对仓位，下面板（成交占比及其分位）是交易热度。"
                        "当超配与成交分位同时处于高位时，才是「持仓 + 交易」双重拥挤。"))
+
+    _h('<div class="sec">指标释义 · 每个数字对应什么经济行为（12 项）</div>')
+
+    def _fv(x, tpl="{:.2f}%", na="—"):
+        """数值安全格式化：缺值不显示为 nan。"""
+        try:
+            return na if x is None or pd.isna(x) else tpl.format(x)
+        except Exception:
+            return na
+
+    _h(md.render_grid(md.INDUSTRY, {
+        "alloc": (_fv(_alloc_0), f"占全部重仓市值　排名 {_ctx0['alloc_rank']}/{len(INDUSTRIES)}"),
+        "bench": (_fv(_bench_0), f"指数权重　排名 {_ctx0['bench_rank']}/{len(INDUSTRIES)}"),
+        "over": (_fv(_over_0, "{:+.2f} pct"), f"{_fv(_alloc_0)} − {_fv(_bench_0)}",
+                 "up" if pd.notna(_over_0) and _over_0 >= 0 else "dn"),
+        "Z": (_fv(z, "{:+.2f}"), "扩窗 8 期起，无前视"),
+        "pct": (_fv(pct, "{:.1f}%"), "0~100，越高越极端"),
+        "F12": (_fv(_f12_0, "{:.2f}×"), f"{_fv(_alloc_0)} ÷ {_fv(_bench_0)}"),
+        "F13": (_fv(_f13_0, "{:.1f}%"), "浮盈盘占比"),
+        "turn": (_fv(_turn_0), f"历史分位 {_fv(_turnp_0, '{:.0f}%')}"),
+        "F4": (_fv(IND["F4_超配动量"].loc[LATEST, sel], "{:+.2f} pct"),
+               f"上季超配 {_fv(B.overweight.loc[QUARTERS[-2], sel] if len(QUARTERS) > 1 else None, '{:+.2f}')}"),
+        "F10": (_fv(IND["F10_共振得分"].loc[LATEST, sel], "{:.0f}/3"),
+                "S1 {} / S2 {} / S3 {}".format(
+                    *[int(v) if pd.notna(v) else 0 for v in (
+                        IND["F10_S1_持仓拥挤"].loc[LATEST, sel],
+                        IND["F10_S2_交易拥挤"].loc[LATEST, sel],
+                        IND["F10_S3_筹码拥挤"].loc[LATEST, sel])])),
+        "F11": (_fv(comp, "{:+.2f}"), f"全行业排名 {_rk_0}/{len(INDUSTRIES)}"),
+        "level": (lvl_tag(lv_sel), "分位 / 配置系数双阈值取最高级"),
+    }, C.COLOR, cols=2))
+
 
     if LATEST not in w.index:
         _h(f'<div class="tiny">⚠️ 当前区间未包含最新季度 {LATEST}；'
