@@ -768,7 +768,9 @@ def load_alloc_ext(b: "Bundle") -> dict:
         srcs[q] = ("主口径·主动权益三类（2025Q2 起三类/此前偏股混合口径为主）"
                    if q >= "2025Q2" else "主口径（cache，偏股混合口径为主）")
     qs = sorted(rows, key=_qkey)
-    mat = pd.DataFrame(rows).T.reindex(columns=C.INDUSTRIES).fillna(0.0)
+    # 行序显式按 qs 重排：rows 是先写 eq 命中季、再追加缺失季，
+    # 直接 pd.DataFrame(rows) 会得到断序索引（r15.0 修复，两处同源问题）。
+    mat = pd.DataFrame(rows).T.reindex(index=qs, columns=C.INDUSTRIES).fillna(0.0)
     return dict(matrix=mat, quarters=qs,
                 source=pd.Series(srcs), available=True)
 
@@ -823,7 +825,10 @@ def load_over_ext(b: "Bundle") -> dict:
             rows[_q] = b.overweight.loc[_q].reindex(C.INDUSTRIES)
             srcs[_q] = "主口径超配（偏股混合该期缺失，口径衔接）"
     qs = sorted(rows, key=_qkey)
-    mat = pd.DataFrame(rows).T.reindex(columns=C.INDUSTRIES)
+    # 行序显式按 qs 重排：rows 是先写 eq 命中季、再追加主口径缺失期（2025Q4/2026Q2），
+    # 直接用 pd.DataFrame(rows) 会得到「2026Q1 → 2025Q4 → 2026Q2」的断序索引，
+    # 任何按行序画图或取 tail 的地方都会出现锯齿（r15.0 修复）。
+    mat = pd.DataFrame(rows).T.reindex(index=qs, columns=C.INDUSTRIES)
     return dict(matrix=mat, quarters=qs, source=pd.Series(srcs), available=True)
 
 

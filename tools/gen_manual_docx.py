@@ -23,6 +23,7 @@ import config as C
 import data_loader as dl
 import factor_engine as fe
 import factor_docs
+import metric_doc
 
 
 # ---------------------------------------------------------------------------
@@ -98,13 +99,13 @@ def build():
     t2 = doc.add_paragraph(); t2.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _set_font(t2.add_run("因子手册与操作指南"), "微软雅黑", 16, True, "1F6FEB")
     t3 = doc.add_paragraph(); t3.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    _set_font(t3.add_run("版本 R9（2026-10-03）· 数据源 Wind（主力）+ 东方财富妙想/同花顺 iFinD（交叉验证）"),
+    _set_font(t3.add_run("版本 R15（2026-10-22）· 数据源 Wind（主力）+ 东方财富妙想/同花顺 iFinD（交叉验证）"),
               "宋体", 9, False, "6B7A8C")
 
     # 0 定位
     _heading(doc, "0. 一句话定位", 1)
     _para(doc, "本模型度量「机构资金在行业间拥挤到了什么程度」，是一个风险描述与组合约束工具，"
-               "不是择时或收益预测工具。核心结论：拥挤度因子在 36 期长历史下无稳定的截面收益预测力，"
+               "不是择时或收益预测工具。核心结论：拥挤度因子在 37 期长历史下无稳定的截面收益预测力，"
                "正确用法是「风险排序 + 压力测试 + 集中度约束」。", 10.5)
 
     # 1 因子手册
@@ -125,8 +126,34 @@ def build():
                 row.cells[0].width = Cm(3.2)
                 row.cells[1].width = Cm(12.0)
 
-    # 2 投资机会判断框架
-    _heading(doc, "2. 投资机会判断框架（三层法）", 1)
+    # 2 指标释义（r15.0 新增：从「因子是什么」下沉到「页面上每个数字是什么」）
+    _heading(doc, "2. 指标释义（每个数字对应什么经济行为）", 1)
+    _para(doc, "本章回答三个问题：这个数怎么算出来、它对应现实世界的什么行为、看到它应该怎么用。"
+               "手册只固定口径与含义，具体数值随数据更新，以看板为准。", 10, False, "37485C")
+    for _sec, _rows in [("2.1 行业层指标（② 行业拥挤度）", metric_doc.INDUSTRY),
+                        ("2.2 市场层指标（① 总览 / ③ 集中度与结构）", metric_doc.MARKET),
+                        ("2.3 统计检验指标（④ 因子与检验）", metric_doc.STAT)]:
+        _heading(doc, _sec, 2)
+        _tb = doc.add_table(rows=len(_rows) + 1, cols=4)
+        _tb.style = "Table Grid"
+        _tb.alignment = WD_TABLE_ALIGNMENT.CENTER
+        for _j, _hname in enumerate(["指标", "计算公式", "经济内容", "投资含义 / 读法与误读"]):
+            _cell_text(_tb.rows[0].cells[_j], _hname, bold=True, size=8.5, bg="EEF3FB")
+        for _i, _r in enumerate(_rows, 1):
+            _cell_text(_tb.rows[_i].cells[0],
+                       f'{_r["name"]}' + (f'（{_r["unit"]}）' if _r.get("unit") else ""),
+                       bold=True, size=8.5)
+            _cell_text(_tb.rows[_i].cells[1], _clean(_r["formula"]), size=8)
+            _cell_text(_tb.rows[_i].cells[2], _clean(_r["econ"]), size=8)
+            _cell_text(_tb.rows[_i].cells[3],
+                       _clean(f'{_r["invest"]}　<b>怎么看</b>：{_r["read"]}　'
+                              f'<b>误读</b>：{_r["pitfall"]}'), size=8)
+        for _row in _tb.rows:
+            for _w, _c in zip([2.6, 4.4, 4.4, 4.8], _row.cells):
+                _c.width = Cm(_w)
+
+    # 3 投资机会判断框架
+    _heading(doc, "3. 投资机会判断框架（三层法）", 1)
     _para(doc, "前提声明：36 期 IC 检验显示拥挤度无稳定截面收益预测力，因此本框架不回答「会涨会跌」，"
                "只回答「哪里脆弱、哪里相对安全、哪里需要约束」。", 10.5, bold=True)
     _heading(doc, "第一层 · 风险回避（减配 / 回避）", 3)
@@ -148,12 +175,12 @@ def build():
     _para(doc, "落地决策：先「风险回避」→ 再「机会识别」小仓位试探 → 最后「组合约束」控制敞口。"
                "任何一层都不输出「满仓/清仓」，只输出风险预算的加减。", 10.5, bold=True)
 
-    # 3 操作指南
-    _heading(doc, "3. 操作指南（5 页看板怎么看）", 1)
+    # 4 操作指南
+    _heading(doc, "4. 操作指南（5 页看板怎么看）", 1)
     _heading(doc, "读结论（先看）", 3)
     _para(doc, "① 总览：综合判断（市场状态/HHI分位/极度拥挤数/FCI + 5 条判断理由 + 特征 + 拐点）+ 投资机会解读", 10, indent=0.5)
     _heading(doc, "读数据（深挖）", 3)
-    _para(doc, "② 行业拥挤度：31 行业排名与等级 + 变化榜（环比/同比可切换）+ 拥挤度热力图（36 期）+ 单行业钻取 + 信号触发记录", 10, indent=0.5)
+    _para(doc, "② 行业拥挤度：31 行业排名与等级 + 变化榜（环比/同比可切换）+ 拥挤度热力图（37 期）+ 单行业钻取 + 信号触发记录", 10, indent=0.5)
     _para(doc, "③ 集中度与结构：HHI/CR 时序 + 堆叠面积图 + 占比热力图（标注数值）+ 环比瀑布图", 10, indent=0.5)
     _heading(doc, "读方法（审计）", 3)
     _para(doc, "④ 因子与检验：因子定义表 + IC 时序 + IC 汇总 + 分级裁决 + 分层回测 + 压力测试（进阶检验收在折叠区）", 10, indent=0.5)
@@ -164,8 +191,8 @@ def build():
               "单期极值可能由口径或单期驱动，结论要回 ④ 检验表与 ⑤ 溯源表交叉确认"]:
         _para(doc, "• " + s, 10, indent=0.5)
 
-    # 4 数据更新指南
-    _heading(doc, "4. 数据持续更新指南（每季报期怎么做）", 1)
+    # 5 数据更新指南
+    _heading(doc, "5. 数据持续更新指南（每季报期怎么做）", 1)
     _para(doc, "更新频率：基金季报每季末后约 15 个工作日披露完毕（4/7/10/次年1 月中下旬），每季更新一次。", 10.5, bold=True)
     _heading(doc, "第 1 步 · 抓取新季报（Wind）", 3)
     for s in ["持仓：主动权益三类（普通股票型/偏股混合型/灵活配置型）前十大重仓股，逐类型查询后相加，必须与「类型总额」交叉验证（gap 约 5~11%）",
@@ -189,11 +216,11 @@ def build():
               "数据源优先顺序：Wind（主力）→ 东方财富妙想 / 同花顺 iFinD（交叉验证与补缺）"]:
         _para(doc, "• " + s, 10, indent=0.5)
 
-    # 5 边界声明
-    _heading(doc, "5. 已知边界（如实声明）", 1)
+    # 6 边界声明
+    _heading(doc, "6. 已知边界（如实声明）", 1)
     for s in ["前十大重仓口径 ≠ 全部持仓：系统性低估分散型行业，绝对水平有偏（横向可比）",
               "F13 筹码盈利比例为指数层面代理，非成分股加权精确口径",
-              "可建模区间主口径仅 10 期（2024Q1~2026Q2）：主口径版 F2/F3/F4b/F15 无法取值，已用偏股混合 36 期超配长历史构建长历史版完成检验（结论：不显著）",
+              "可建模区间主口径仅 10 期（2024Q1~2026Q2）：主口径版 F2/F3/F4b/F15 无法取值，已用偏股混合 37 期超配长历史构建长历史版完成检验（结论：不显著）",
               "早年持仓（2010~2015、2016~2018 Q1/Q4）缺口：需批量基金季报重仓数据库（东方财富妙想为「查实体」接口、套餐对聚合数据已超限；同花顺 iFinD 需另行提供密钥）",
               "结论是「方向性证据」而非「稳健统计结论」，不构成可交易信号"]:
         _para(doc, "• " + s, 10, indent=0.5)

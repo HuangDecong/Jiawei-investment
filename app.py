@@ -43,7 +43,7 @@ if _SRC_DIR not in sys.path:
 # ---------------------------------------------------------------------------
 _LOCAL_MODULES = ("config", "data_loader", "factor_engine", "backtest", "research",
                   "research3", "research4", "rigor", "signal_generator",
-                  "insights", "guide", "factor_docs")
+                  "insights", "guide", "factor_docs", "metric_doc")
 
 
 def _reload_local_modules_if_changed() -> None:
@@ -87,6 +87,7 @@ import data_loader as dl       # noqa: E402
 import factor_engine as fe     # noqa: E402
 import guide                   # noqa: E402  投资机会解读/操作指南/更新指南
 import insights as ins         # noqa: E402
+import metric_doc as md        # noqa: E402  指标释义：定义/经济内容/投资含义/读法
 import signal_generator as sg  # noqa: E402
 
 
@@ -261,6 +262,8 @@ st.markdown(f"""
   .opp-caveat {{ font-size:10.5px; color:#37485C; margin-top:7px; padding-top:5px;
                  border-top:1px dashed {C.COLOR['line']}; line-height:1.55; }}
   .opp-mini {{ font-size:10.5px; line-height:1.6; color:#37485C; }}
+  /* 指标释义卡 / 拆解链 / 四象限（src/metric_doc.py） */
+  {md.css(C.COLOR)}
 </style>
 """, unsafe_allow_html=True)
 
@@ -398,7 +401,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.18-r14.4"
+APP_VERSION = "2026.10.22-r15.0"
 
 
 def _fp_short() -> str:
@@ -465,6 +468,13 @@ with h3:
 # ============================================================================
 PAGES = ["① 总览", "② 行业拥挤度", "③ 集中度与结构",
          "④ 因子与检验", "⑤ 数据与方法"]
+# 深链：?p=2 直达第 2 页（便于分享与截图走查）；非法值静默忽略，不影响默认行为。
+try:
+    _qp = str(st.query_params.get("p", "")).strip()
+except Exception:
+    _qp = ""
+if _qp.isdigit() and 1 <= int(_qp) <= len(PAGES):
+    st.session_state.setdefault("page", PAGES[int(_qp) - 1])
 _P = st.radio("页面", PAGES, horizontal=True, label_visibility="collapsed", key="page")
 
 _PROV = B.provenance if getattr(B, "provenance", None) is not None else None
@@ -647,6 +657,35 @@ if _P == "① 总览":
                     "（如银行、非银金融）是「相对自身历史最不低配」，"
                     "不构成拥挤——这正是本项目修正过的口径陷阱。"))
 
+    # 总量指标怎么读（本轮新增）：把首屏四个数字的含义、经济内容与投资含义就地展开
+    _h('<div class="sec">这些总量数字怎么读 · 定义 / 经济内容 / 投资含义</div>')
+    _pos_last = MKT["F8_仓位代理"].loc[LATEST] if LATEST in MKT["F8_仓位代理"].index else None
+
+    def _fv1(x, tpl="{:.2f}", na="—"):
+        try:
+            return na if x is None or pd.isna(x) else tpl.format(x)
+        except Exception:
+            return na
+
+    # 取 MARKET 中除「环比变化」（属 ③ 页结构口径）外的 5 项
+    _mkt_rows = [m for m in md.MARKET if m["key"] != "DELTA"]
+    _h(md.render_grid(_mkt_rows, {
+        "HHI": (_fv1(M_SUM["HHI"], "{:.4f}"),
+                f"等权 0.0323 的 {M_SUM['HHI'] / (1 / 31):.1f} 倍"
+                if pd.notna(M_SUM["HHI"]) else ""),
+        "CR3": (_fv1(M_SUM["CR3"], "{:.2f}%"),
+                f"CR5 {M_SUM['CR5']:.1f}%　CR10 {M_SUM['CR10']:.1f}%"),
+        "TOP1": (str(M_SUM["top1"]), _fv1(M_SUM["top1_pct"], "{:.2f}%")),
+        "POS": (_fv1(_pos_last["前十占净值比均值"] if _pos_last is not None else None, "{:.1f}%"),
+                (f"均值；重仓股 {_fv1(_pos_last['重仓股数均值'], '{:.1f}')} 只"
+                 if _pos_last is not None else "")),
+        "FCI": (_fv1(_fci_last, "{:+.3f}"),
+                f"扩窗分位 {float(MKT['FCI_分位'].dropna().iloc[-1]):.0f}%"
+                if MKT["FCI_分位"].notna().any() else ""),
+    }, C.COLOR, cols=2))
+    _note("口径提示：HHI / CR 由 31 个申万一级行业的配置占比算出（前十大重仓股口径），"
+          "与「个股集中度」是两个层级——前者衡量行业分散度，后者衡量选股集中度。")
+
     # 投资机会解读（在综合判断结论之上，给出可操作的回避/关注/约束三层判断）
     _h(guide.opportunity_card(M_SUM, IND, C, LATEST))
     st.stop()
@@ -805,6 +844,17 @@ if _P == "③ 集中度与结构":
                  higher_means=("代表行业中 {direction} 为代表者之一（最新 {last}，{q}）。"
                                "把走势互不相同的行业并列，可直接分辨"
                                "**趋势型加仓**（单边）与**轮动型切换**（此消彼长）。"))
+    # 结构指标释义（本轮新增）：单个行业的占比变化与整体集中度是两件事
+    _h('<div class="sec">这两个结构指标怎么读 · 集中度与环比搬家</div>')
+    _pos3 = MKT["F8_仓位代理"].loc[LATEST] if LATEST in MKT["F8_仓位代理"].index else None
+    _dmax = ("—", "")
+    if _chg is not None and _chg.notna().any():
+        _dmax = (f"{_chg.max():+.2f} pct", f"加仓最多：{_chg.idxmax()}")
+    _h(md.render_grid([md.MARKET[3], md.MARKET[4]], {
+        "POS": (f"{_pos3['前十占净值比均值']:.1f}%" if _pos3 is not None else "—",
+                f"样本均值；重仓股 {_pos3['重仓股数均值']:.1f} 只" if _pos3 is not None else ""),
+        "DELTA": _dmax,
+    }, C.COLOR, cols=2))
     # 投资机会解读（基于当前拥挤结构的回避/关注提示）
     _h(guide.opportunity_hint(M_SUM, C, "行业占比变迁"))
     st.stop()
@@ -855,6 +905,45 @@ border-radius:6px;background:#FFFFFF">
                      expanded=False):
         _h(concl(_cards))
     _BTR = load_backtest(FP)
+
+    # 统计量释义（本轮新增）：IC / IR / t / 胜率 / 分层 / 事件研究
+    # 数值取参考因子的实测结果，随数据自动更新；切换因子只影响图上曲线，不影响口径说明。
+    def _nx(v, fmt="{:.2f}", na="—"):
+        return na if v is None or (isinstance(v, float) and pd.isna(v)) else fmt.format(v)
+
+    # 注：_BTR["ic"] 是 t+1 / t+2 合并表（列名带 _t1/_t2 后缀），
+    # 单一滞后口径的原始表在 _BTR["ic_t1"]["table"]。
+    _ict = _BTR["ic_t1"]["table"].set_index("因子")
+    _fref = next((f for f in ["F11_综合拥挤度_推荐权重", "F3_超配历史分位",
+                              "F2_超配Zscore", "F1_超配比例"] if f in _ict.index),
+                 _ict.index[0])
+    _ir = _ict.loc[_fref]
+    _lref = None
+    if isinstance(_BTR["layer"], pd.DataFrame) and "因子" in _BTR["layer"].columns:
+        _lm = _BTR["layer"].set_index("因子")
+        if _fref in _lm.index:
+            _lref = _lm.loc[_fref]
+    _ev0 = None
+    _evs = _BTR["ev_over"].get("stats")
+    if isinstance(_evs, pd.DataFrame) and len(_evs):
+        _ev0 = _evs.iloc[0]
+
+    _h('<div class="sec">统计量怎么读 · 判断「这个因子是否真的有用」的六个证据</div>')
+    _h(md.render_grid(md.STAT, {
+        "rankic": (f"{_ir['ic_mean']:+.3f}", f"{int(_ir['n'])} 期均值"),
+        "icir": (_nx(_ir["ic_ir"]), "均值 ÷ 标准差"),
+        "t": (_nx(_ir["t_nw"]), f"p = {_nx(_ir['p_nw'], '{:.3f}')}"),
+        "win": (f"{_ir['win_rate']:.0f}%", "同向期数占比"),
+        "layer": (_nx(_lref["单调性Spearman"] if _lref is not None else None, "{:+.2f}"),
+                  "5 层年化收益的秩相关"),
+        "event": (f"{_ev0['均值']:+.2f}%" if _ev0 is not None else "—",
+                  f"{int(_ev0['触发次数'])} 次触发 · 3 个月" if _ev0 is not None else ""),
+    }, C.COLOR, cols=2))
+    _note(f"本期值取自参考因子 <b>{_fref}</b>：RankIC {_ir['ic_mean']:+.3f}、"
+          f"N={int(_ir['n'])}、IC_IR {_nx(_ir['ic_ir'])}、NW t {_nx(_ir['t_nw'])}。"
+          "「事件研究」用的是超配突破 P90 的首次触发样本（全行业合并），不是单因子 IC，"
+          "两者回答的是不同问题：IC 问排序能力，事件研究问触发后的实际盈亏。")
+
     _icf = st.multiselect("因子", list(_BTR["ic"]["因子"]),
                           default=[f for f in ["F15_拥挤背离", "R_F2_超配Z_残差",
                                                "R_F3_超配分位_残差", "F2_超配Zscore"]
@@ -2163,6 +2252,62 @@ with M:
         <div class="v">{sgn(comp, dec=2)}</div>
         <div class="s">F11 推荐权重</div></div>
     </div>""")
+
+    # ①a 为什么是这个数：把「超配 X pct」拆回分子、分母与差额（本轮新增）
+    #    全部数字现算，避免「文字写死、数据已变」；四象限判定同一处给出。
+    _alloc_0 = B.alloc.loc[LATEST, sel]
+    _bench_0 = IND["F12b_基准权重%"].loc[LATEST, sel]
+    _over_0 = B.overweight.loc[LATEST, sel]
+    _f12_0 = IND["F12_配置系数"].loc[LATEST, sel]
+    _f13_0 = IND["F13_筹码盈利比例"].loc[LATEST, sel]
+    _turn_0 = IND["F9a_成交额占比%"].loc[LATEST, sel]
+    _turnp_0 = IND["F9b_成交额占比分位"].loc[LATEST, sel]
+    _rk_0 = int(latest_rank.rank(ascending=False)[sel])
+    _top3_a = "、".join(f"{k} {v:.2f}%" for k, v in
+                        B.alloc.loc[LATEST].dropna().sort_values(ascending=False).head(3).items())
+    _top3_b = "、".join(f"{k} {v:.2f}%" for k, v in
+                        IND["F12b_基准权重%"].loc[LATEST].dropna()
+                        .sort_values(ascending=False).head(3).items())
+    _ctx0 = dict(
+        sel=sel, q=LATEST, alloc=_alloc_0, bench=_bench_0, over=_over_0, f12=_f12_0,
+        alloc_rank=int(B.alloc.loc[LATEST].rank(ascending=False)[sel]),
+        bench_rank=int(IND["F12b_基准权重%"].loc[LATEST].rank(ascending=False)[sel]),
+        n_ind=len(INDUSTRIES),
+        n_funds=float(MKT["F8_样本基金数"].loc[LATEST]),
+        n_stocks=float(MKT["F7_个股集中度"].loc[LATEST].get("个股总数", np.nan)),
+        cr3=float(MKT["F6_CR3"].loc[LATEST]),
+        top3_bench=_top3_b, top3_alloc=_top3_a, f13=_f13_0,
+        turn=_turn_0, turn_pct=_turnp_0, pct=pct, z=z, bench_name="沪深300")
+
+    _h('<div class="sec">为什么是这个数 · 超配拆解</div>')
+    _h(md.decompose_overweight(_ctx0, C.COLOR))
+    _h(md.render_regime(md.crowding_regime(pct, _turnp_0), C.COLOR))
+    _note("四象限口径：横轴＝超配历史分位（机构仓位高度），纵轴＝成交额占比历史分位（交易热度）。"
+          "同样是高拥挤，「产业趋势型」与「主题交易型」的持续性完全不同——"
+          "前者由盈利上修驱动、可以维持数个季度，后者以成交萎缩结束。")
+
+    _h('<div class="sec">指标释义 · 每个数字对应什么经济行为</div>')
+
+    def _fv(x, tpl="{:.2f}%", na="—"):
+        """数值安全格式化：缺值不显示为 nan。"""
+        try:
+            return na if x is None or pd.isna(x) else tpl.format(x)
+        except Exception:
+            return na
+
+    _h(md.render_grid(md.INDUSTRY, {
+        "alloc": (_fv(_alloc_0), f"占全部重仓市值　排名 {_ctx0['alloc_rank']}/{len(INDUSTRIES)}"),
+        "bench": (_fv(_bench_0), f"指数权重　排名 {_ctx0['bench_rank']}/{len(INDUSTRIES)}"),
+        "over": (_fv(_over_0, "{:+.2f} pct"), f"{_fv(_alloc_0)} − {_fv(_bench_0)}",
+                 "up" if pd.notna(_over_0) and _over_0 >= 0 else "dn"),
+        "Z": (_fv(z, "{:+.2f}"), "扩窗 8 期起，无前视"),
+        "pct": (_fv(pct, "{:.1f}%"), "0~100，越高越极端"),
+        "F12": (_fv(_f12_0, "{:.2f}×"), f"{_fv(_alloc_0)} ÷ {_fv(_bench_0)}"),
+        "F13": (_fv(_f13_0, "{:.1f}%"), "浮盈盘占比"),
+        "turn": (_fv(_turn_0), f"历史分位 {_fv(_turnp_0, '{:.0f}%')}"),
+        "F11": (_fv(comp, "{:+.2f}"), f"全行业排名 {_rk_0}/{len(INDUSTRIES)}"),
+        "level": (lvl_tag(lv_sel), "分位 / 配置系数双阈值取最高级"),
+    }, C.COLOR, cols=2))
 
     # ①b 该行业等级判断理由：把「哪条规则被触发、触发值是多少」摆出来
     _z_s = IND["F2_超配Zscore"].loc[LATEST, sel]
