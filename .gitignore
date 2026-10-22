@@ -41,3 +41,6 @@ assets/
 .vscode/
 .idea/
 *.swp
+
+# ===== 工作区记忆（仅本地，不入库）=====
+.workbuddy/
