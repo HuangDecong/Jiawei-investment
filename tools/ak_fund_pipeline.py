@@ -165,7 +165,7 @@ def _dedup_funds(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def fetch(limit: int | None = None, year: str = "2026", codes: str | None = None,
-          shard: int = 0, nshards: int = 1):
+          shard: int = 0, nshards: int = 1, force: bool = False):
     import akshare as ak
     if not os.path.exists(MAP_PATH):
         print("缺少申万映射，先运行 --build-map")
@@ -174,7 +174,7 @@ def fetch(limit: int | None = None, year: str = "2026", codes: str | None = None
     con = connect()
     # 断点续传必须按「年份」判断：一只基金 2026 年抓过，不代表 2024 年也抓过。
     # 早期版本按全库 code 去重，导致换年份后 todo 为空、静默跳过。
-    done = {r[0] for r in con.execute(
+    done = set() if force else {r[0] for r in con.execute(
         "SELECT DISTINCT code FROM fund_holdings WHERE quarter LIKE ?", (f"{year}%",))}
     names = _dedup_funds(ak.fund_name_em())
     todo = [r for r in names.itertuples(index=False) if r[0] not in done]
@@ -298,12 +298,14 @@ if __name__ == "__main__":
     ap.add_argument("--codes", default=None, help="逗号分隔的基金代码，只抓这些")
     ap.add_argument("--shard", type=int, default=0)
     ap.add_argument("--nshards", type=int, default=1)
+    ap.add_argument("--force", action="store_true",
+                    help="忽略断点、强制重抓（补中间缺期用）")
     ap.add_argument("--report", action="store_true")
     a = ap.parse_args()
     if a.build_map:
         build_map()
     elif a.fetch:
-        fetch(a.limit, a.year, a.codes, a.shard, a.nshards)
+        fetch(a.limit, a.year, a.codes, a.shard, a.nshards, a.force)
     elif a.report:
         report()
     else:

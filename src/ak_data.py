@@ -166,7 +166,36 @@ def coverage_series(q: str) -> pd.Series:
 
 def dispersion_ak(q: str, q0: str, min_delta: float = 0.10,
                   theme_cut: float = 80.0, normalize: bool = True) -> pd.DataFrame:
-    """全市场分歧度：与 institution.dispersion_real 同结构、同判读规则。"""
+    """全市场分歧度。
+
+    现在**委托给 `canon.breadth`**，不再自己算一遍：
+    同一个「加仓占比」以前有两套实现（这里按覆盖率归一化、canon 按前十大口径），
+    两处的数字必然对不上，页面上就会出现「同一行业两个加仓占比」。
+    对外列名保持不变，调用方无需改动。
+
+    同时修正一个逻辑错误：旧判读要求「加仓占比 ≥70% 且 分歧度 <0.4」，
+    但分歧度 = |2×占比−1|，两个条件数学上互斥，所以「共识形成」从来没出现过。
+    """
+    try:
+        import canon as _cn
+        _b = _cn.breadth(q0, q, min_move=min_delta)
+        if not _b.empty:
+            _p = _cn.panel_top10(q, normalize=False)
+            _base = (_p.mean() if not _p.empty else pd.Series(dtype=float))
+            out = _b.copy()
+            out["加减仓比"] = np.nan          # 需要时用 Δ 分布单独算，不在这里凑数
+            out["横截面标准差"] = out["离散度pp"]
+            out["平均配置"] = out["行业"].map(_base).round(2)
+            out["剔除主题基金"] = len(_cn.theme_codes(q))
+            out = out[["行业", "样本基金数", "加仓基金数", "减仓基金数", "不变基金数",
+                       "加仓占比", "分歧度", "加减仓比", "横截面标准差", "判读",
+                       "平均配置", "剔除主题基金"]]
+            out.attrs.update(q=q, q0=q0, n_funds=int(_b.attrs.get("n_funds", 0)),
+                             normalized=True, basis="前十大（每基金取前 10 只后归一化）",
+                             source="东方财富 AKShare（全市场主动权益）")
+            return out
+    except Exception:
+        pass
     a = industry_panel(q, normalize=normalize)
     b = industry_panel(q0, normalize=normalize)
     if a.empty or b.empty:
