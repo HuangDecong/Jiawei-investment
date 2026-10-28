@@ -17,6 +17,7 @@ import config as C
 import institution as inst
 import ak_data as akd
 import ak_stock as aks
+import insight_charts as ic
 
 # ---------------------------------------------------------------------------
 # 样式（占位符替换）
@@ -539,6 +540,33 @@ def render_overview(b, ind, mkt, latest: str, colors: dict, compact: bool = Fals
     for c in build_triptych(t, t0, mv, n_up, active, pos, disp, disp_real):
         h(_card(c["judgment"], c["tag"], c["color"], c["rows"], c["invalid"]))
 
+    # ---------- 新增：配置变化拆开看（主动 vs 被动） ----------
+    try:
+        _act = inst.active_change(b, ind, latest)
+        h('<div class="sec">先看一张图 · 配置变化里，有多少是价格自己涨出来的</div>')
+        st.plotly_chart(ic.fig_active_passive(_act), width="stretch",
+                        config={"displayModeBar": False})
+        _e = _act.loc["电子"] if "电子" in _act.index else None
+        _m = _act.loc["医药生物"] if "医药生物" in _act.index else None
+        _txt = []
+        if _e is not None:
+            _txt.append(f"<b>电子</b>配置 {_e['alloc1']:.2f}%、变化 {_e['d_alloc']:+.2f}pp，"
+                        f"但其中 {_e['passive']:+.2f}pp 是价格跌出来的，"
+                        f"机构主动只减了 <b>{_e['active']:+.2f}pp</b>——"
+                        f"把「配置暴跌」读成「机构清仓」是错的")
+        if _m is not None:
+            _txt.append(f"<b>医药生物</b>反过来：配置 {_m['alloc1']:.2f}%、变化 {_m['d_alloc']:+.2f}pp，"
+                        f"其中主动 <b>{_m['active']:+.2f}pp</b>、价格 {_m['passive']:+.2f}pp，"
+                        f"这才是「机构真加仓」")
+        _big = _act["passive"].abs().idxmax()
+        _txt.append(f"横轴最右的 <b>{_big}</b> 被动 {_act.loc[_big, 'passive']:+.2f}pp，"
+                    f"说明这个季度的行业变化主要发生在价格上，不是仓位上")
+        h(f'<div class="cg-note">怎么读：一根横条＝一个行业，<b>灰色段是价格涨跌带来的被动变化，'
+          f'彩色段是机构主动买卖</b>，条长就是这个行业配置比例的实际变化。'
+          f'灰色占比越大，越说明「配置变化」只是价格的错觉。' + "；".join(_txt) + '。</div>')
+    except Exception as _e2:
+        pass
+
     h(f'<div class="cg-note">口径：主判断一律用 <b>Δ超配Z（长历史）</b>＝F2e 的一阶差分；'
       f'Δ配置pp 只作辅助。样本 {len(quarters)} 季，主口径 F2 仅 '
       f'{int(ind["F2_超配Zscore"].dropna(how="all").shape[0])} 季有效，'
@@ -610,6 +638,31 @@ def render(b, ind, mkt, latest: str, colors: dict):
     with c2:
         st.plotly_chart(fig_net_upgrade(s_up, colors), width="stretch",
                         config={"displayModeBar": False})
+
+    # ================= 4a. 共识还是对撞（气泡图） =================
+    h('<div class="sec">④a 一张图看懂「共识 / 对撞 / 撤离」</div>')
+    try:
+        _d0 = akd.latest_quarters()
+        _dis = akd.dispersion_ak(*_d0) if _d0 else pd.DataFrame()
+        if not _dis.empty:
+            _actq = inst.active_change(b, ind, latest)
+            st.plotly_chart(ic.fig_breadth_vs_active(_dis, _actq), width="stretch",
+                            config={"displayModeBar": False})
+            _up = _dis[_dis["判读"] == "共识形成"]
+            _cn = _dis[_dis["判读"] == "多空对撞"]
+            _out = _dis[_dis["判读"] == "系统性撤离"]
+            _low = _dis[(_dis["加仓占比"] < 50) & (_dis["判读"] != "系统性撤离")]
+            h(f'<div class="cg-note">同一个「平均加仓 2pp」，可能是 900 只基金都加 2pp（真共识），'
+              f'也可能是 200 只大基金各加 9pp、700 只小基金在减（少数拉动）。'
+              f'横轴看<b>多少基金在加</b>，纵轴看<b>净买了多少</b>：'
+              f'右上＝真共识，左上＝少数大基金拉动，左下＝一致撤离，右下＝小基金接盘。<br>'
+              f'本期：真共识 <b>{len(_up)}</b> 个、一致撤离 <b>{len(_out)}</b> 个、'
+              f'对撞 <b>{len(_cn)}</b> 个'
+              f'（{("、".join(_cn["行业"].tolist())) if len(_cn) else "—"}）。'
+              f'注意左上角那批：加仓基金不到一半但净额为正，说明是<b>少数大基金在加</b>——'
+              f'这种加仓最不可靠，一旦那几只基金停手就会反转。</div>')
+    except Exception:
+        pass
 
     # ================= 4b. 基金行为分布（真实分歧度） =================
     h('<div class="sec">④b 基金行为分布 · 加仓/减仓基金数与分歧度</div>')

@@ -408,7 +408,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.28-r22.2"
+APP_VERSION = "2026.10.28-r23.0"
 
 
 def _fp_short() -> str:
@@ -954,6 +954,39 @@ if _P == "③ 集中度与结构":
                 f"样本均值；重仓股 {_pos3['重仓股数均值']:.1f} 只" if _pos3 is not None else ""),
         "DELTA": _dmax,
     }, C.COLOR, cols=2))
+    # ---------- 历史类比：现在的结构像哪个季度，之后发生了什么 ----------
+    try:
+        import insight_charts as ic
+        _ha = ic.history_analog(B, k=5)
+        if _ha.get("ok"):
+            _h('<div class="sec">现在的持仓结构，历史上像哪一年？那之后发生了什么</div>')
+            _c1, _c2 = st.columns([0.42, 0.58], gap="small")
+            with _c1:
+                st.dataframe(_ha["matches"], width="stretch", hide_index=True, height=230,
+                             column_config={
+                                 "相似度": st.column_config.NumberColumn(format="%.2f"),
+                                 "次季超额中位": st.column_config.NumberColumn(format="%+.2f%%"),
+                                 "最强超额": st.column_config.NumberColumn(format="%+.2f%%"),
+                                 "最弱超额": st.column_config.NumberColumn(format="%+.2f%%"),
+                             })
+            with _c2:
+                st.plotly_chart(ic.fig_history_analog(_ha), width="stretch",
+                                config={"displayModeBar": False})
+            _n_up = _ha["matches"]["次季上涨行业数"].tolist()
+            _avg = _ha["avg_next"]
+            _h(f'<div class="cg-note">把 31 个行业的配置比例当成一个「结构指纹」，'
+               f'在当前季度与过去 {_ha["n_hist"]} 个季度里找最像的 {len(_ha["matches"])} 个。'
+               f'结果是：<b>{"、".join(_ha["matches"]["相似季度"].tolist())}</b>；'
+               f'这些季度之后一个季度，31 个行业里上涨的有 {_n_up} 个（满值 31），'
+               f'平均超额最强的行业是 <b>{_avg.index[0]} {_avg.iloc[0]:+.1f}%</b>、'
+               f'最弱是 <b>{_avg.index[-1]} {_avg.iloc[-1]:+.1f}%</b>。<br>'
+               f'<b>但别把它当预测</b>：相似季度全部集中在最近两年（结构本身在漂移），'
+               f'样本只有 {len(_ha["matches"])} 个，且历史不会简单重复。它真正有用的地方是'
+               f'提醒你「同样的结构，上一次是靠哪些行业赚钱的」——'
+               f'如果这次没有同样的催化剂，就别假设同样的结果。</div>')
+    except Exception as _e:
+        pass
+
     # 投资机会解读（基于当前拥挤结构的回避/关注提示）
     st.stop()
 
