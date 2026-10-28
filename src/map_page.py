@@ -114,7 +114,11 @@ def render(h) -> None:
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=d["配置%"], y=d["历史分位"], mode="markers+text", text=lab,
-        textposition="top center", textfont=dict(size=9, color=C.COLOR["text_dim"]),
+        # 分位接近 100 的点若把标签放在上方，会被画到坐标区外（电子就丢过标签），
+        # 顶部的点改为把标签放在下方；其余仍放上方。
+        textposition=["bottom center" if v >= 95 else "top center"
+                      for v in d["历史分位"]],
+        textfont=dict(size=9, color=C.COLOR["text_dim"]),
         marker=dict(size=np.minimum(9 + d["较中位pp"].abs() * 2.0, 30),
                     color=[C.COLOR["up"] if v > 0 else C.COLOR["down"]
                            for v in d["较中位pp"]],
