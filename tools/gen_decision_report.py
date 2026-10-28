@@ -97,6 +97,11 @@ def main(quarter: str | None = None) -> str:
         _dp = inst.latest_fund_industry_period()
         disp_real = inst.dispersion_real(*_dp) if _dp else inst.dispersion_real(q, q0)
         _disp_src = "Wind 50 只样本"
+    if not disp_real.empty:
+        # 用真实分歧度中位数给仓位建议（6.3 事前阈值），而不是行业离散度代理
+        pos = inst.position_advice_from_dispersion(
+            float(disp_real["分歧度"].median()),
+            int(disp_real["样本基金数"].max()))
     dec = inst.decision_table(t, active, t0=t0, disp=disp_real)
     # 个股：优先全市场「同披露口径」两期（ak_stock），回退 Wind 前 50 只
     import ak_stock as aks  # noqa: E402

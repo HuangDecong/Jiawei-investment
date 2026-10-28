@@ -153,8 +153,12 @@ def build_triptych(t: pd.DataFrame, t0: pd.DataFrame, mv: dict, n_up: int,
     # ---- 分歧：优先用真实分歧度（50 只样本）；缺失时回退到符号背离代理 ----
     if disp_real is not None and not disp_real.empty:
         _d = disp_real.copy()
-        _d["极值"] = (_d["加仓占比"] - 50).abs()
-        _hot = _d.sort_values(["极值", "分歧度"], ascending=False).iloc[0]
+        # 选「分歧度最高」而不是「加仓占比最极端」：
+        # 后者会把「一致撤离」当成分歧，而真正该预警的是多空对撞。
+        # 加样本门槛，避免小样本行业（几十只基金）靠噪音拿到高分歧度。
+        _big = _d[_d["样本基金数"] >= max(200, int(_d["样本基金数"].max() * 0.15))]
+        _pool = _big if len(_big) else _d
+        _hot = _pool.sort_values(["分歧度", "样本基金数"], ascending=False).iloc[0]
         _n = int(_d["样本基金数"].max())
         _dq, _dq0 = disp_real.attrs.get("q", "最新期"), disp_real.attrs.get("q0", "上一期")
         try:
@@ -177,15 +181,16 @@ def build_triptych(t: pd.DataFrame, t0: pd.DataFrame, mv: dict, n_up: int,
                 f'{int((_d["判读"]=="多空对撞").sum())} 个、「系统性撤离」'
                 f'{int((_d["判读"]=="系统性撤离").sum())} 个。',
                 f'<b>方向</b>：{pos["stance"]}，仓位区间 <b>{pos["low"]}%–{pos["high"]}%</b>。'
-                f'样本为 2026Q2 规模前 50 的偏股混合（偏科技主题），'
-                f'<b>不代表全市场</b>；只取前 10 重仓行业，未出现视为 0；'
+                f'样本为<b>全市场 {_n} 只主动权益基金</b>（普通股票型 + 偏股混合 + 灵活配置），'
+                f'由完整持仓明细按申万一级聚合；季报只披露前十大、半年报披露全部，'
+                f'已按每只基金每期覆盖率归一化后再比较；'
                 f'单行业 >80% 的主题基金已剔除（本行业剔除 '
-                f'{int(_hot.get("剔除主题基金", 0))} 只）；季报期由前十大推导，'
-                f'已按每只基金覆盖率归一化后再比较。',
+                f'{int(_hot.get("剔除主题基金", 0))} 只）。'
+                f'<b>该指标 IC 仅 +0.05、p=0.36，只能描述「谁在买」，不能预测次季收益。</b>',
             ],
-            invalid=("若把样本扩到全市场后该行业的加仓占比回到 40–60%，"
-                     "则「对撞/撤离」判读作废；若下季分歧度 &lt;0.4 且占比 &gt;70%，"
-                     "则升级为「共识」，本条反向。"),
+            invalid=("若下季该行业加仓占比离开 40–60% 区间且分歧度 &lt;0.4，"
+                     "则「对撞」判读作废（转为共识或撤离）；"
+                     "若样本基金数降到 200 以下，本条因样本不足作废。"),
         ))
     conf = t[t["conflict"]].copy()
     conf["abs_d"] = conf["d_alloc"].abs()
@@ -508,7 +513,6 @@ def render_overview(b, ind, mkt, latest: str, colors: dict, compact: bool = Fals
 
     active = inst.active_change(b, ind, latest)
     disp = inst.dispersion_proxy(t)
-    pos = inst.position_advice(disp)
     # 优先用全市场口径（东财/AKShare，约 300+ 只），Wind 50 只作为交叉验证
     disp_real = None
     try:
@@ -525,6 +529,13 @@ def render_overview(b, ind, mkt, latest: str, colors: dict, compact: bool = Fals
             disp_real = inst.dispersion_real(*_dp) if _dp else None
         except Exception:
             disp_real = None
+    # 有真实分歧度就用它给仓位建议（6.3 事前阈值），否则回退到行业离散度代理
+    if disp_real is not None and not disp_real.empty:
+        pos = inst.position_advice_from_dispersion(
+            float(disp_real["分歧度"].median()),
+            int(disp_real["样本基金数"].max()))
+    else:
+        pos = inst.position_advice(disp)
     for c in build_triptych(t, t0, mv, n_up, active, pos, disp, disp_real):
         h(_card(c["judgment"], c["tag"], c["color"], c["rows"], c["invalid"]))
 

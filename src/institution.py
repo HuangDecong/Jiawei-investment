@@ -501,6 +501,35 @@ def _conflict_note(active_pp, add_share, q0_, q_) -> str:
     return ""
 
 
+def position_advice_from_dispersion(median_div: float,
+                                    n_funds: int | None = None) -> dict:
+    """按全市场分歧度中位数给仓位区间（6.3 的事前固定规则）。
+
+    阈值写死、不看结果调参：
+        <0.40 → 共识偏强，仓位可偏高 75%–85%
+        0.40–0.70 → 分歧中性，55%–70%
+        >0.70 → 多空对撞，降仓并缩短持有期 35%–50%
+
+    与 `position_advice(disp_proxy)` 的区别：那个用的是行业 Δ配置 的横截面离散度
+    代理，这个用的是基金级真实的加仓占比分歧度。
+    """
+    if median_div is None or pd.isna(median_div):
+        return dict(median=np.nan, stance="数据不足", low=50, high=60,
+                    why="分歧度缺失，按中性仓位处理")
+    if median_div < 0.40:
+        stance, low, high = "共识偏强", 75, 85
+        why = "多数行业加仓方向一致，行业轮动可跟随"
+    elif median_div > 0.70:
+        stance, low, high = "多空对撞", 35, 50
+        why = "半数行业处于对撞，方向不明，降仓位并缩短持有期"
+    else:
+        stance, low, high = "分歧中性", 55, 70
+        why = "行业间分歧中等，维持中性仓位、按个股信号加减"
+    return dict(median=float(median_div), stance=stance, low=low, high=high,
+                why=(f"{why}；全市场分歧度中位 {median_div:.2f}"
+                     f"{f'（{n_funds} 只基金）' if n_funds else ''}"))
+
+
 def decision_table(t: pd.DataFrame, active: pd.DataFrame,
                    coverage_ok: bool = True,
                    t0: pd.DataFrame | None = None,
