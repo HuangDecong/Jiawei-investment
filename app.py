@@ -1865,7 +1865,7 @@ if _P == "⑤ 数据与方法":
              期数=str(_c_s[2]), 状态="✅ 逐期加总 100.00% ± 0.02（自由流通市值加权）"),
         dict(数据项="行业季度涨跌幅（returns）", 覆盖区间=f"{_c_r[0]} ~ {_c_r[1]}",
              期数=str(_c_r[2]),
-             状态="✅ 42 期 × 31 行业全齐（2026-10-22 修复前值填充，486 格重抓，见 D8）"),
+             状态=f"✅ {len(B.quarters)} 期 × 31 行业全齐（2026-10-22 修复前值填充，486 格重抓，见 D8）"),
         dict(数据项="行业季度成交额（turnover）", 覆盖区间=f"{_c_t[0]} ~ {_c_t[1]}",
              期数=str(_c_t[2]), 状态=f"⚠️ 仅覆盖可建模区间的后 {_c_t[2]} 期，"
                                      "更早季度交易拥挤度不可算（不插补）"),
@@ -1911,16 +1911,20 @@ if _P == "⑤ 数据与方法":
                   f'{_name}</td>{_cells}'
                   f'<td style="font-size:9px;color:#6B7A8F;text-align:right">'
                   f'{int(_ss.sum())}/{len(_Q)}</td></tr>')
-    _h('<div class="sec">数据完整性矩阵 · 42 季度 × 7 数据项</div>')
+    _h(f'<div class="sec">数据完整性矩阵 · {len(_Q)} 季度 × {len(_cvr)} 数据项</div>')
     _h(f'<div style="overflow-x:auto;border:1px solid {C.COLOR["line"]};'
        f'border-radius:6px;padding:6px 8px;background:#FFFFFF">'
        f'<table style="border-collapse:separate;border-spacing:2px">{_hdr}{_rows}</table>'
        f'</div>')
-    _note(f'蓝＝有数据，红＝缺失（不插补、不回填）。<b>主口径持仓 10/{len(_Q)}</b>：'
-          f'2024Q1 起才有主动权益三类的逐期持仓；<b>长历史 37/{len(_Q)}</b>：'
-          f'缺 2016Q1、2017Q1/Q4、2018Q1/Q4 五期（Wind 对这几期返回全市场行业市值，'
-          f'口径污染，判为不采信，见 WIND_RAW.md）；<b>行业成交额 18/{len(_Q)}</b>：'
-          f'2022Q1 起才有 31 行业逐季成交额。缺失项一律留空，任何图表都不会用插值填补。')
+    _cnt = {nm: int(pd.Series(v, dtype=bool).reindex(_Q, fill_value=False).sum())
+            for nm, v in _cvr}
+    _note(f'蓝＝有数据，红＝缺失（不插补、不回填）。'
+          f'<b>主口径持仓 {_cnt["行业配置（主口径）"]}/{len(_Q)}</b>：'
+          f'2024Q1 起才有主动权益三类的逐期持仓；'
+          f'<b>长历史 {_cnt["长历史配置"]}/{len(_Q)}</b>：缺 2016Q1、2017Q1/Q4、2018Q1/Q4 五期'
+          f'（Wind 对这几期返回全市场行业市值，口径污染，判为不采信，见 WIND_RAW.md）；'
+          f'<b>行业成交额 {_cnt["行业季度成交额"]}/{len(_Q)}</b>：2022Q1 起才有 31 行业逐季成交额。'
+          f'缺失项一律留空，任何图表都不会用插值填补。')
 
     _h('<div class="sec">缺口已尝试的补数渠道（交叉验证记录）</div>')
     _gap = pd.DataFrame([

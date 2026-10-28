@@ -52,3 +52,7 @@ output/*.html
 # ===== 调试产物 =====
 output/cdp_profile/
 output/*.html
+
+# ===== 调试用浏览器 profile =====
+output/cdp*/
+output/shot*.js
