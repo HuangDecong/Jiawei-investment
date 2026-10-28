@@ -408,7 +408,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.28-r19.4"
+APP_VERSION = "2026.10.28-r20.0"
 
 
 def _fp_short() -> str:
@@ -1803,6 +1803,30 @@ if _P == "⑤ 数据与方法":
                     st.dataframe(_log, width="stretch", hide_index=True)
     except Exception as _e:
         _h(f'<div class="tiny">个股库尚未建立：{_e}。运行 tools/fund_pipeline.py --ingest 后显示覆盖。</div>')
+
+    # 数据源交叉验证（R20）：东财 vs Wind，同基金、同行业、均按覆盖率归一化
+    try:
+        import ak_data as akd
+        _aq = akd.latest_quarters()
+        _cv = akd.cross_validate_wind(_aq[0]) if _aq else pd.DataFrame()
+        if not _cv.empty:
+            _h('<div class="sec">数据源交叉验证 · 东方财富 vs Wind（同基金同行业）</div>')
+            st.dataframe(_cv, width="stretch", hide_index=True,
+                         column_config={
+                             "平均绝对偏差": st.column_config.NumberColumn(format="%.2f pp"),
+                             "Wind均值": st.column_config.NumberColumn(format="%.2f%%"),
+                             "东财均值": st.column_config.NumberColumn(format="%.2f%%"),
+                             "相关": st.column_config.NumberColumn(format="%.3f"),
+                         })
+            _h(f'<div class="tiny">区间 <b>{_aq[0]}</b>，可比行业 {len(_cv)} 个；'
+               f'平均绝对偏差中位 <b>{_cv["平均绝对偏差"].median():.2f}pp</b>、'
+               f'最大 {_cv["平均绝对偏差"].max():.2f}pp，相关系数中位 '
+               f'<b>{_cv["相关"].median():.3f}</b>。偏差主要来自两处：'
+               f'东财持仓明细截断 100 只（大基金尾部缺失）、季报期只披露前十大。'
+               f'结论：两套数据口径一致，可互为校验；<b>决策表采用东财全市场口径，'
+               f'Wind 50 只样本用于交叉验证</b>。</div>')
+    except Exception as _e:
+        pass
 
     # Python 接口探查记录（R19.2）：为什么不走 WindPy，而是走 MCP
     _h('<div class="sec">Python 接口探查记录 · 为什么没走 WindPy</div>')

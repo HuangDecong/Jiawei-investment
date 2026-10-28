@@ -15,6 +15,7 @@ import streamlit as st
 import change_analysis as ca
 import config as C
 import institution as inst
+import ak_data as akd
 
 # ---------------------------------------------------------------------------
 # 样式（占位符替换）
@@ -507,11 +508,22 @@ def render_overview(b, ind, mkt, latest: str, colors: dict, compact: bool = Fals
     active = inst.active_change(b, ind, latest)
     disp = inst.dispersion_proxy(t)
     pos = inst.position_advice(disp)
+    # 优先用全市场口径（东财/AKShare，约 300+ 只），Wind 50 只作为交叉验证
+    disp_real = None
     try:
-        _dp = inst.latest_fund_industry_period()
-        disp_real = inst.dispersion_real(*_dp) if _dp else None
+        _aq = akd.latest_quarters()
+        if _aq:
+            _d = akd.dispersion_ak(*_aq)
+            if not _d.empty:
+                disp_real = _d
     except Exception:
         disp_real = None
+    if disp_real is None or disp_real.empty:
+        try:
+            _dp = inst.latest_fund_industry_period()
+            disp_real = inst.dispersion_real(*_dp) if _dp else None
+        except Exception:
+            disp_real = None
     for c in build_triptych(t, t0, mv, n_up, active, pos, disp, disp_real):
         h(_card(c["judgment"], c["tag"], c["color"], c["rows"], c["invalid"]))
 
@@ -586,23 +598,34 @@ def render(b, ind, mkt, latest: str, colors: dict):
 
     # ================= 4b. 基金行为分布（真实分歧度） =================
     h('<div class="sec">④b 基金行为分布 · 加仓/减仓基金数与分歧度</div>')
+    _dr = pd.DataFrame()
+    _src_name = ""
     try:
-        _dp2 = inst.latest_fund_industry_period()
-        _dr = inst.dispersion_real(*_dp2) if _dp2 else pd.DataFrame()
+        _aq2 = akd.latest_quarters()
+        if _aq2:
+            _dr = akd.dispersion_ak(*_aq2)
+            _src_name = "东方财富（AKShare）全市场口径"
     except Exception:
         _dr = pd.DataFrame()
+    if _dr.empty:
+        try:
+            _dp2 = inst.latest_fund_industry_period()
+            _dr = inst.dispersion_real(*_dp2) if _dp2 else pd.DataFrame()
+            _src_name = "Wind 50 只样本"
+        except Exception:
+            _dr = pd.DataFrame()
     if _dr.empty:
         h('<div class="cg-note">未找到 50 只样本基金的行业配置数据（'
           'data/raw/fund_industry_50x4.json），本区暂不可用；'
           '数据到位后自动显示，不需要改代码。</div>')
     else:
         _n = int(_dr["样本基金数"].max())
-        h(f'<div class="cg-note">样本 <b>{_n} 只</b>偏股混合基金（2026Q2 规模前 50，'
-          f'偏科技主题）、<b>前 10 重仓行业</b>口径：未出现的行业视为 0，'
-          f'会低估小比例持仓的变化；「不变」包含「两期都不在前十」。'
+        h(f'<div class="cg-note">数据源：<b>{_src_name}</b>，单行业有效样本最多 <b>{_n} 只</b>；'
+          f'季报期只披露前十大、半年报披露全部（东财截断 100 只），'
+          f'已按每只基金每期覆盖率归一化；「不变」包含「两期都不在前十」。'
           f'判读规则事前固定：加仓占比 ≥70% 且分歧度 &lt;0.4＝共识形成；'
           f'40–60% 且 &gt;0.7＝多空对撞；≤30%＝系统性撤离。'
-          f'<b>口径（关键）</b>：本表区间 <b>{_dp2[1]} → {_dp2[0]}</b>。'
+          f'<b>口径（关键）</b>：本表区间 <b>{_dr.attrs.get("q0","—")} → {_dr.attrs.get("q","—")}</b>。'
           f'半年报/年报期用 Wind 全持仓行业表（覆盖约 88% 净值），'
           f'季报期只能由前十大重仓推导（覆盖约 60%），'
           f'因此每只基金每期先除以自身覆盖率再比较（占已覆盖组合的比例）。'

@@ -29,6 +29,7 @@ import config as C                    # noqa: E402
 import data_loader as dl              # noqa: E402
 import factor_engine as fe            # noqa: E402
 import institution as inst            # noqa: E402
+import ak_data as akd                  # noqa: E402
 
 HDR_FILL = PatternFill("solid", fgColor="1F2D3D")
 HDR_FONT = Font(color="FFFFFF", bold=True, size=10)
@@ -73,8 +74,14 @@ def main(quarter: str | None = None) -> str:
               inst.six_checks(b, IND["F1_超配比例"], "超配比例"),
               inst.six_checks(b, IND["F4_超配动量"], "超配动量")]
     ce = inst.counter_evidence(t, checks)
-    _dp = inst.latest_fund_industry_period()
-    disp_real = inst.dispersion_real(*_dp) if _dp else inst.dispersion_real(q, q0)
+    # 优先全市场口径（东财），回退 Wind 50 只
+    _aq = akd.latest_quarters()
+    disp_real = akd.dispersion_ak(*_aq) if _aq else pd.DataFrame()
+    _disp_src = "东方财富（AKShare）全市场"
+    if disp_real.empty:
+        _dp = inst.latest_fund_industry_period()
+        disp_real = inst.dispersion_real(*_dp) if _dp else inst.dispersion_real(q, q0)
+        _disp_src = "Wind 50 只样本"
     dec = inst.decision_table(t, active, t0=t0, disp=disp_real)
     stock = inst.stock_flow(q, q0)
 
@@ -102,8 +109,8 @@ def main(quarter: str | None = None) -> str:
                 ("可用：每期前 50 只持股基金数，共 "
                  f"{stock.shape[0]} 只（两期并集）") if not stock.empty else "未就绪：需先运行数据管道",
                 (f"真实口径：47 只偏股混合（规模前 50 中有两期数据者）；区间 "
-                 f"{_dp[1] if _dp else '—'} → {_dp[0] if _dp else '—'}（跨两季）；"
-                 "仅前 10 行业、剔除>80% 主题基金、按覆盖率归一化；样本偏科技主题")
+                 f"{disp_real.attrs.get('q0','—')} → {disp_real.attrs.get('q','—')}；"
+                 f"样本最多 {int(disp_real['样本基金数'].max())} 只，按覆盖率归一化，剔除>80% 主题基金；来源 {_disp_src}")
                 if not disp_real.empty else "未就绪：需 fund_industry_50x4.json",
                 "本期不给「超配/回避」的可执行指令，只给参考清单；"
                 "原因是超配分位剔 Q4 后 p=0.110、2019–2022 段方向相反（IC −0.055）",
@@ -203,6 +210,17 @@ def main(quarter: str | None = None) -> str:
         })
         spec.to_excel(xw, sheet_name="6 口径说明", index=False)
         _style_sheet(xw.sheets["6 口径说明"], {"A": 22, "B": 110}, freeze="A2")
+
+        # ---------- 7 数据源交叉验证 ----------
+        try:
+            cv = akd.cross_validate_wind(disp_real.attrs.get("q", q))
+            if not cv.empty:
+                cv.to_excel(xw, sheet_name="7 数据源交叉验证", index=False)
+                _style_sheet(xw.sheets["7 数据源交叉验证"],
+                             {"A": 12, "B": 8, "C": 14, "D": 12, "E": 12, "F": 10},
+                             freeze="A2")
+        except Exception as _e:
+            print("交叉验证表写入失败：", _e)
 
     print(f"已生成：{out}")
     print(f"  行业表 {len(dec)} 行；动作分布 {dec['建议动作'].value_counts().to_dict()}")

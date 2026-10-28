@@ -1,0 +1,230 @@
+# -*- coding: utf-8 -*-
+"""东方财富（AKShare）口径的全市场基金持仓分析。
+
+与 Wind 样本的关系
+------------------
+· 本模块：全市场主动权益基金（约 4000 只，去重后），来自东方财富公开披露，
+  单基金一次返回 2026 年各季度全部股票投资明细；用于分歧度、个股流动的全市场口径。
+· institution 模块：50 只样本（Wind MCP 单基金查询），用于**交叉验证**。
+两者同口径（季报/半年报披露的占净值比），但覆盖率不同，跨期必须先归一化。
+
+口径
+----
+· 季报（Q1/Q3）只披露前十大，覆盖率约 44–45%；
+  半年报（Q2）披露全部（东财截断 100 只），覆盖率约 80%。
+· 行业占比 = Σ(该行业股票占净值比) ÷ 该基金该期 coverage × 100，
+  即「占已披露组合的比例」。
+· 港股（5 位代码）不在申万一级内，行业汇总时剔除，但仍计入 coverage。
+"""
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+
+import numpy as np
+import pandas as pd
+
+import config as C
+
+DB_PATH = os.path.join(C.DATA, "db", "fund_ak.db")
+MAP_PATH = os.path.join(C.DATA_RAW, "sw_industry_map.json")
+
+
+def _con():
+    return sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+
+
+def available() -> bool:
+    return os.path.exists(DB_PATH)
+
+
+def coverage_table() -> pd.DataFrame:
+    if not available():
+        return pd.DataFrame()
+    con = _con()
+    try:
+        return pd.read_sql(
+            "SELECT quarter, COUNT(DISTINCT code) n_funds, AVG(coverage) avg_cov,"
+            " SUM(n_stock) n_rows FROM coverage GROUP BY quarter ORDER BY quarter", con)
+    finally:
+        con.close()
+
+
+def latest_quarters() -> tuple[str, str] | None:
+    if not available():
+        return None
+    con = _con()
+    try:
+        qs = [r[0] for r in con.execute(
+            "SELECT DISTINCT quarter FROM coverage ORDER BY quarter")]
+    finally:
+        con.close()
+    if len(qs) < 2:
+        return None
+    return qs[-1], qs[-2]
+
+
+def industry_panel(q: str, normalize: bool = True) -> pd.DataFrame:
+    """基金 × 行业 的占比矩阵。index=基金代码，columns=31 行业。"""
+    if not available():
+        return pd.DataFrame()
+    con = _con()
+    try:
+        df = pd.read_sql(
+            "SELECT code, industry, weight_pct FROM fund_holdings "
+            "WHERE quarter=? AND industry IS NOT NULL", con, params=(q,))
+        cov = pd.read_sql(
+            "SELECT code, coverage FROM coverage WHERE quarter=?", con, params=(q,))
+    finally:
+        con.close()
+    if df.empty:
+        return pd.DataFrame()
+    g = df.groupby(["code", "industry"], as_index=False)["weight_pct"].sum()
+    g = g.merge(cov, on="code", how="left")
+    g["coverage"] = g["coverage"].replace(0, np.nan)
+    g["share"] = (g["weight_pct"] / g["coverage"] * 100) if normalize \
+        else g["weight_pct"]
+    p = g.pivot_table(index="code", columns="industry", values="share", aggfunc="sum")
+    return p.reindex(columns=C.INDUSTRIES).fillna(0.0)
+
+
+def coverage_series(q: str) -> pd.Series:
+    if not available():
+        return pd.Series(dtype=float)
+    con = _con()
+    try:
+        d = pd.read_sql("SELECT code, coverage FROM coverage WHERE quarter=?",
+                        con, params=(q,))
+    finally:
+        con.close()
+    return d.set_index("code")["coverage"] if not d.empty else pd.Series(dtype=float)
+
+
+def dispersion_ak(q: str, q0: str, min_delta: float = 0.10,
+                  theme_cut: float = 80.0, normalize: bool = True) -> pd.DataFrame:
+    """全市场分歧度：与 institution.dispersion_real 同结构、同判读规则。"""
+    a = industry_panel(q, normalize=normalize)
+    b = industry_panel(q0, normalize=normalize)
+    if a.empty or b.empty:
+        return pd.DataFrame()
+    codes = a.index.intersection(b.index)
+    a, b = a.loc[codes], b.loc[codes]
+    rows = []
+    for ind in C.INDUSTRIES:
+        va = a[ind].to_numpy(float) if ind in a else np.zeros(len(codes))
+        vb = b[ind].to_numpy(float) if ind in b else np.zeros(len(codes))
+        ok = ~((va == 0) & (vb == 0))
+        va, vb = va[ok], vb[ok]
+        if len(va) < 5:
+            continue
+        theme = np.maximum(va, vb) > theme_cut
+        va2, vb2 = va[~theme], vb[~theme]
+        d = va2 - vb2
+        up = int((d > min_delta).sum())
+        dn = int((d < -min_delta).sum())
+        fl = int(len(d) - up - dn)
+        n = len(d)
+        if n == 0:
+            continue
+        share = up / n
+        div = 1 - abs(share - 0.5) * 2
+        pos = float(d[d > min_delta].sum())
+        neg = float(-d[d < -min_delta].sum())
+        if share >= 0.70 and div < 0.40:
+            tag = "共识形成"
+        elif 0.40 <= share <= 0.60 and div > 0.70:
+            tag = "多空对撞"
+        elif share <= 0.30:
+            tag = "系统性撤离"
+        else:
+            tag = "分歧"
+        rows.append(dict(
+            行业=ind, 样本基金数=n, 加仓基金数=up, 减仓基金数=dn, 不变基金数=fl,
+            加仓占比=round(share * 100, 1), 分歧度=round(div, 2),
+            加减仓比=(round(pos / neg, 2) if neg > 1e-9 else np.nan),
+            横截面标准差=round(float(pd.Series(va2).std(ddof=1)), 2),
+            判读=tag, 平均配置=round(float(pd.Series(va2).mean()), 2),
+            剔除主题基金=int(theme.sum()),
+        ))
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        out.attrs.update(q=q, q0=q0, n_funds=len(codes), normalized=normalize,
+                         source="东方财富 AKShare（全市场主动权益）")
+    return out
+
+
+def stock_flow_ak(q: str, q0: str, top: int = 30) -> pd.DataFrame:
+    """全市场个股 Δ持有基金数（比 Wind 前 50 只更全）。"""
+    if not available():
+        return pd.DataFrame()
+    con = _con()
+    try:
+        d = pd.read_sql(
+            "SELECT code fund, quarter, stock_code, stock_name, weight_pct, industry"
+            " FROM fund_holdings WHERE quarter IN (?,?)", con, params=(q, q0))
+    finally:
+        con.close()
+    if d.empty:
+        return pd.DataFrame()
+    g = (d.groupby(["stock_code", "quarter"])
+           .agg(n_funds=("fund", "nunique"), mv=("weight_pct", "sum"),
+                name=("stock_name", "first"), ind=("industry", "first"))
+           .reset_index())
+    p = g.pivot_table(index="stock_code", columns="quarter",
+                      values=["n_funds", "mv"], aggfunc="first")
+    out = pd.DataFrame(index=p.index)
+    out["name"] = g.groupby("stock_code")["name"].first()
+    out["industry"] = g.groupby("stock_code")["ind"].first()
+    out["n0"] = p[("n_funds", q0)] if ("n_funds", q0) in p else np.nan
+    out["n1"] = p[("n_funds", q)] if ("n_funds", q) in p else np.nan
+    out["d_n"] = out["n1"].fillna(0) - out["n0"].fillna(0)
+    out = out.dropna(subset=["n0", "n1"], how="all")
+    out = out.sort_values("d_n")
+    return pd.concat([out.head(top), out.tail(top)]).reset_index()
+
+
+def cross_validate_wind(q: str, wind_path: str | None = None) -> pd.DataFrame:
+    """同一批基金、同一季度：东财口径 vs Wind 口径的行业占比对比。
+
+    只比较两套数据都有的基金与行业，按覆盖率归一化后再比，
+    输出每个行业的平均绝对偏差（pp）与相关系数。
+    """
+    wind_path = wind_path or os.path.join(C.DATA_RAW, "fund_industry_50x4.json")
+    if not os.path.exists(wind_path) or not available():
+        return pd.DataFrame()
+    w = json.load(open(wind_path, encoding="utf-8"))
+    wdata = w.get("data", {})
+    wcov = w.get("coverage", {})
+    codes = []
+    for code, per in wdata.items():
+        if q not in per or not per[q]:
+            continue
+        c6 = code.split(".")[0]
+        codes.append((code, c6))
+    if not codes:
+        return pd.DataFrame()
+    a = industry_panel(q)          # 东财，已归一化
+    rows = []
+    for ind in C.INDUSTRIES:
+        xs, ys = [], []
+        for code, c6 in codes:
+            if c6 not in a.index:
+                continue
+            wv = wdata[code][q].get(ind)
+            if wv is None:
+                continue
+            cov = wcov.get(code, {}).get(q) or 100.0
+            xs.append(float(wv) / cov * 100)
+            ys.append(float(a.loc[c6, ind]))
+        if len(xs) >= 5:
+            xs, ys = np.array(xs), np.array(ys)
+            rows.append(dict(行业=ind, n=len(xs),
+                             平均绝对偏差=round(float(np.abs(xs - ys).mean()), 2),
+                             Wind均值=round(float(xs.mean()), 2),
+                             东财均值=round(float(ys.mean()), 2),
+                             相关=round(float(pd.Series(xs).corr(pd.Series(ys))), 3)))
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return pd.DataFrame(columns=["行业", "n", "平均绝对偏差", "Wind均值", "东财均值", "相关"])
+    return out.sort_values("平均绝对偏差", ascending=False)
