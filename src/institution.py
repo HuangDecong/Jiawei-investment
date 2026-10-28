@@ -65,6 +65,10 @@ DATA_STATUS = [
          have="0", need="1074 只", why="同上"),
     dict(key="report_text", name="季报文本", state="blocked",
          have="0", need="1074 份/期", why="Wind MCP 无文本接口"),
+    dict(key="fund_industry", name="基金×申万行业配置（样本）", state="partial",
+         have="50 只偏股混合 × 4 期（2025Q4–2026Q3）",
+         need="全市场 1074 只 × 43 期（逐只查询，约 4.6 万次）",
+         why="MCP 单基金查询；已取规模前 50 只做分歧度，样本偏科技主题"),
     dict(key="stock_holdings", name="重仓股持股基金数", state="available",
          have="每期前 50 只（按持股基金数）", need="—",
          why="批量汇总视图可用；仅前 50、无行业字段"),
@@ -154,6 +158,112 @@ def dispersion_proxy(t: pd.DataFrame) -> dict:
         conflict=int(t["conflict"].sum()),
         note="行业 Δ配置 的横截面离散度；不是基金级加仓占比，不能判读「共识/对撞」",
     )
+
+
+# ---------------------------------------------------------------------------
+# 4.2b 分歧度（真实口径，样本 50 只）
+# ---------------------------------------------------------------------------
+FUND_IND_PATH = os.path.join(C.DATA_RAW, "fund_industry_50x4.json")
+
+
+def load_fund_industry(path: str | None = None) -> dict:
+    """读取基金×行业配置样本。缺失返回空结构，不伪造。"""
+    path = path or FUND_IND_PATH
+    if not os.path.exists(path):
+        return {"funds": [], "data": {}, "note": "未找到 fund_industry_50x4.json"}
+    import json
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def latest_fund_industry_period(path: str | None = None) -> tuple[str, str] | None:
+    """样本里最新两期。Wind 的行业配置字段比前十大重仓滞后一期，
+    2026Q3 实测只有名次、行业与占比为空，故最新可得通常是 2026Q2。"""
+    payload = load_fund_industry(path)
+    qs = set()
+    for per in payload.get("data", {}).values():
+        qs |= {k for k, v in per.items() if v}
+    if len(qs) < 2:
+        return None
+    ordered = sorted(qs, key=lambda x: (int(x[:4]), int(x[-1])))
+    return ordered[-1], ordered[-2]
+
+
+def dispersion_real(q: str, q0: str, path: str | None = None,
+                    min_delta: float = 0.10) -> pd.DataFrame:
+    """真实分歧度：每行业统计 加仓/减仓/不变 基金数。
+
+    口径与边界
+    ----------
+    · 加仓 = 占净值比变化 > +min_delta（默认 0.10pp），减仓 = < -min_delta；
+    · 只取接口返回的前 10 重仓行业，未出现视为 0——这会低估小比例持仓的变化，
+      因此「不变」包含「两期都不在前十」，是本指标最大的已知偏差；
+    · 金额比用「占净值比变化」的正负之和，不是真金额（缺基金资产净值绝对值）。
+    """
+    payload = load_fund_industry(path)
+    funds = payload.get("funds", [])
+    data = payload.get("data", {})
+    if not funds or not data:
+        return pd.DataFrame()
+    codes = [f["code"] for f in funds]
+    rows = []
+    for ind in C.INDUSTRIES:
+        up = dn = fl = n = 0
+        pos = neg = 0.0
+        vals = []
+        theme_drop = 0
+        for c in codes:
+            per = data.get(c, {})
+            a = per.get(q, {}).get(ind)
+            b = per.get(q0, {}).get(ind)
+            if a is None and b is None:
+                continue
+            a = 0.0 if a is None else float(a)
+            b = 0.0 if b is None else float(b)
+            # 清洗规则：该基金本期或上期在本行业配置 >80% → 行业主题基金，
+            # 其变化主要反映主题基金自身申赎，计入会污染行业分歧度。
+            if max(a, b) > 80.0:
+                theme_drop += 1
+                continue
+            n += 1
+            vals.append(a)
+            d = a - b
+            if d > min_delta:
+                up += 1
+                pos += d
+            elif d < -min_delta:
+                dn += 1
+                neg += -d
+            else:
+                fl += 1
+        if n == 0:
+            continue
+        share = up / n
+        div = 1 - abs(share - 0.5) * 2
+        if share >= 0.70 and div < 0.40:
+            tag = "共识形成"
+        elif 0.40 <= share <= 0.60 and div > 0.70:
+            tag = "多空对撞"
+        elif share <= 0.30:
+            tag = "系统性撤离"
+        else:
+            tag = "分歧"
+        rows.append(dict(
+            行业=ind, 样本基金数=n, 加仓基金数=up, 减仓基金数=dn, 不变基金数=fl,
+            加仓占比=round(share * 100, 1), 分歧度=round(div, 2),
+            加减仓比=(round(pos / neg, 2) if neg > 1e-9 else np.nan),
+            横截面标准差=round(float(pd.Series(vals).std(ddof=1)), 2),
+            判读=tag,
+            平均配置=round(float(pd.Series(vals).mean()), 2),
+            剔除主题基金=theme_drop,
+        ))
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        out.attrs["q"], out.attrs["q0"] = q, q0
+        out.attrs["n_funds"] = len(codes)
+        out.attrs["note"] = ("仅前 10 重仓行业，未出现视为 0；样本为 2026Q2 规模前 50 的偏股混合，"
+                             "偏科技主题，不代表全市场")
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -348,7 +458,8 @@ ACTION_ORDER = ["超配", "标配", "低配", "回避"]
 
 def decision_table(t: pd.DataFrame, active: pd.DataFrame,
                    coverage_ok: bool = True,
-                   t0: pd.DataFrame | None = None) -> pd.DataFrame:
+                   t0: pd.DataFrame | None = None,
+                   disp: pd.DataFrame | None = None) -> pd.DataFrame:
     """31 行行业配置表：动作 + 理由 + 失效条件。
 
     规则（事前固定，不按结果调参）：
@@ -358,6 +469,8 @@ def decision_table(t: pd.DataFrame, active: pd.DataFrame,
       · 标配：其余
     证据等级：F3e 剔 Q4 后不显著 → 全部标「参考」；主动项 n=9 → 同样「参考」。
     """
+    if disp is not None and not disp.empty and "行业" in disp.columns:
+        disp = disp.set_index("行业")
     rows = []
     for k in t.index:
         z = t.loc[k, "z"]
@@ -393,6 +506,12 @@ def decision_table(t: pd.DataFrame, active: pd.DataFrame,
                         if t0 is not None and k in t0.index
                         and pd.notna(t0.loc[k].get("active", np.nan)) else np.nan),
             上期等级=(t.loc[k, "lvl0"] if pd.notna(t.loc[k, "lvl0"]) else "—"),
+            加仓基金占比=(float(disp.loc[k, "加仓占比"])
+                          if disp is not None and k in getattr(disp, "index", []) else np.nan),
+            分歧度=(float(disp.loc[k, "分歧度"])
+                    if disp is not None and k in getattr(disp, "index", []) else np.nan),
+            基金行为=(disp.loc[k, "判读"]
+                      if disp is not None and k in getattr(disp, "index", []) else "未采集"),
             理由=why,
             失效条件=("若下季主动项转正且分位回升至 40% 以上" if act in ("低配", "回避")
                       else "若下季主动项转负且分位跌破 50%"),

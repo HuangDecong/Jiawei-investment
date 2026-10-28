@@ -408,7 +408,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.28-r19.1"
+APP_VERSION = "2026.10.28-r19.2"
 
 
 def _fp_short() -> str:
@@ -1803,6 +1803,24 @@ if _P == "⑤ 数据与方法":
                     st.dataframe(_log, width="stretch", hide_index=True)
     except Exception as _e:
         _h(f'<div class="tiny">个股库尚未建立：{_e}。运行 tools/fund_pipeline.py --ingest 后显示覆盖。</div>')
+
+    # Python 接口探查记录（R19.2）：为什么不走 WindPy，而是走 MCP
+    _h('<div class="sec">Python 接口探查记录 · 为什么没走 WindPy</div>')
+    st.dataframe(pd.DataFrame([
+        dict(途径="WindPy", 尝试="pip install WindPy", 结果="PyPI 无此包（No matching distribution）",
+             结论="Wind 官方只通过终端分发，无法从公网安装"),
+        dict(途径="Wind 终端", 尝试="检查 C:/Wind 与进程", 结果="仅剩 Wind.NET.Client 空壳目录，无 exe、无进程",
+             结论="终端未安装/已卸载，即使装上 WindPy 也无法登录取数"),
+        dict(途径="Choice 量化接口", 尝试="检查 C:/eastmoney/Choice 与 EmQuantAPI", 结果="有 Choice.exe，但无 EmQuantAPI 目录或 pyd",
+             结论="接口需在终端内下载安装并登录，无法命令行完成"),
+        dict(途径="掘金 gm", 尝试="pip install gm", 结果="安装失败，且无基金持仓字段",
+             结论="不适用"),
+        dict(途径="Wind MCP", 尝试="单基金 + 批量汇总问句", 结果="单基金可返回行业配置/前十大；批量汇总可返回每期前 50 只",
+             结论="采用：43 期个股 + 50 只×4 期行业配置，逐次调用、断点续传"),
+    ]), width="stretch", hide_index=True)
+    _h('<div class="tiny">这条记录的意义：<b>不是没试，而是试过三条路都不通</b>。'
+       'MCP 是当前唯一可用的取数通道，代价是样本受限（每期前 50 只、50 只基金），'
+       '所有相关结论都已标注样本边界。</div>')
 
     # 个股库数据质量（R19）：断点、别名、ST、代码缺失——数据能用，但要知道它哪里不可比
     try:

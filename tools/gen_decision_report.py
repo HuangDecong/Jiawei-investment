@@ -73,7 +73,9 @@ def main(quarter: str | None = None) -> str:
               inst.six_checks(b, IND["F1_超配比例"], "超配比例"),
               inst.six_checks(b, IND["F4_超配动量"], "超配动量")]
     ce = inst.counter_evidence(t, checks)
-    dec = inst.decision_table(t, active, t0=t0)
+    _dp = inst.latest_fund_industry_period()
+    disp_real = inst.dispersion_real(*_dp) if _dp else inst.dispersion_real(q, q0)
+    dec = inst.decision_table(t, active, t0=t0, disp=disp_real)
     stock = inst.stock_flow(q, q0)
 
     out = os.path.join(ROOT, "报告", "机构持仓决策报告.xlsx")
@@ -84,7 +86,7 @@ def main(quarter: str | None = None) -> str:
         n_ok = sum(1 for c in checks if c["状态"] == "可用")
         summary = pd.DataFrame({
             "项": ["数据季度", "上期", "通过六项验证的度量", "证据等级",
-                   "仓位建议", "分歧度状态", "个股清单状态", "结论"],
+                   "仓位建议", "分歧度状态", "个股清单状态", "分歧度数据", "结论"],
             "内容": [
                 q, q0, f"{n_ok} / {len(checks)} 个",
                 "全部降级为「参考」——无度量同时通过 IC、分组单调、剔Q4、分段、正交化、成本六项",
@@ -92,6 +94,9 @@ def main(quarter: str | None = None) -> str:
                 f"代理：{disp['note']}",
                 ("可用：每期前 50 只持股基金数，共 "
                  f"{stock.shape[0]} 只（两期并集）") if not stock.empty else "未就绪：需先运行数据管道",
+                (f"真实口径：50 只偏股混合（2026Q2 规模前 50）× 3 期；最新可得 {_dp[0] if _dp else '—'}"
+                 "（2026Q3 行业配置未披露）；仅前 10 重仓行业，样本偏科技主题")
+                if not disp_real.empty else "未就绪：需 fund_industry_50x4.json",
                 "本期不给「超配/回避」的可执行指令，只给参考清单；"
                 "原因是超配分位剔 Q4 后 p=0.110、2019–2022 段方向相反（IC −0.055）",
             ],
@@ -106,7 +111,8 @@ def main(quarter: str | None = None) -> str:
         dec.to_excel(xw, sheet_name="1 行业配置", index=False)
         _style_sheet(xw.sheets["1 行业配置"],
                      {"A": 11, "B": 9, "C": 11, "D": 10, "E": 9, "F": 9,
-                      "G": 34, "H": 40, "I": 30}, freeze="A2")
+                      "G": 10, "H": 10, "I": 9, "J": 9, "K": 12,
+                      "L": 9, "M": 34, "N": 40, "O": 30}, freeze="A2")
 
         # ---------- 2 个股清单 ----------
         if stock.empty:
