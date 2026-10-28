@@ -562,11 +562,16 @@ if _P == "① 总览":
                 if float(_dec.loc[_dec["建议动作"] == "超配", "当前配置"].sum()) < 5 else
                 f'「超配」行业合计配置 '
                 f'{float(_dec.loc[_dec["建议动作"] == "超配", "当前配置"].sum()):.1f}%，具备建仓容量。')
+             + (f'<b>质量提示</b>：{int((_dec.loc[_dec["建议动作"] == "超配", "口径一致性"].astype(str).str.startswith("冲突")).sum())}'
+                f' 个「超配」行业是「单季主动加、跨季多数基金在减」——'
+                f'说明是少数大基金拉动，不是共识；只能小仓位跟随，不能重仓。'
+                if int((_dec.loc[_dec["建议动作"] == "超配", "口径一致性"].astype(str).str.startswith("冲突")).sum()) > 0 else
+                '<b>质量提示</b>：「超配」行业的单季主动与跨季基金行为一致。')
              + '</div>')
         _show = _dec.copy()
         _show["理由"] = _show["理由"].astype(str).str.replace(r"<[^>]+>", "", regex=True)
         _show = _show[["行业", "建议动作", "主动加减仓", "加仓基金占比", "分歧度",
-                       "超配分位", "当前配置", "上期配置", "失效条件"]]
+                       "口径一致性", "超配分位", "当前配置", "上期配置", "失效条件"]]
         st.dataframe(
             _show, width="stretch", hide_index=True, height=430,
             column_config={
@@ -574,6 +579,8 @@ if _P == "① 总览":
                 "主动加减仓": st.column_config.NumberColumn(format="%+.2f pp"),
                 "加仓基金占比": st.column_config.NumberColumn(format="%.1f%%"),
                 "分歧度": st.column_config.NumberColumn(format="%.2f"),
+                "口径一致性": st.column_config.TextColumn(
+                    width="medium", help="单季主动方向与「加仓基金占比」是否同向；冲突说明多数小基金在反向操作"),
                 "超配分位": st.column_config.NumberColumn(format="%.0f"),
                 "当前配置": st.column_config.NumberColumn(format="%.2f%%"),
                 "上期配置": st.column_config.NumberColumn(format="%.2f%%"),

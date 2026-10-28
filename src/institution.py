@@ -640,8 +640,12 @@ def decision_table(t: pd.DataFrame, active: pd.DataFrame,
                     if disp is not None and k in getattr(disp, "index", []) else np.nan),
                 (disp.attrs.get("q0", "上期") if disp is not None else "上期"),
                 (disp.attrs.get("q", "本期") if disp is not None else "本期")),
-            失效条件=("若下季主动项转正且分位回升至 40% 以上" if act in ("低配", "回避")
-                      else "若下季主动项转负且分位跌破 50%"),
+            失效条件={
+                "超配": "若下季主动项转负，或超配分位跌破 80%，本判断作废",
+                "回避": "若下季主动项转正，或超配分位升破 20%，本判断作废",
+                "低配": "若下季主动项转正且分位回升至 50% 以上，本判断作废",
+                "标配": "若下季主动项与分位同向突破（主动为正且分位≥80，或主动为负且分位≤20），改判",
+            }[act],
             证据等级="参考（F3e 剔Q4 后 p=0.11；主动项 n=9）" if coverage_ok else "未就绪",
         ))
     return pd.DataFrame(rows).sort_values(
