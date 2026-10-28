@@ -99,7 +99,7 @@ def build():
     t2 = doc.add_paragraph(); t2.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _set_font(t2.add_run("因子手册与操作指南"), "微软雅黑", 16, True, "1F6FEB")
     t3 = doc.add_paragraph(); t3.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    _set_font(t3.add_run("版本 R16（2026-10-22）· 数据源 Wind（主力）+ 东方财富妙想/同花顺 iFinD（交叉验证）"),
+    _set_font(t3.add_run("版本 R17（2026-10-28）· 数据源 Wind（主力）+ 东方财富妙想/同花顺 iFinD（交叉验证）"),
               "宋体", 9, False, "6B7A8C")
 
     # 0 定位

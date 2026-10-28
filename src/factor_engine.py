@@ -330,6 +330,12 @@ def build_all(b) -> dict:
     S3 = pd.DataFrame(np.repeat(s3_ts.to_numpy(dtype=float)[:, None], NI, axis=1),
                       index=Q, columns=INDUSTRIES)
     S3 = S3.mask(~hist_ok.to_numpy()[:, None].repeat(NI, axis=1))
+    # 该期个股集中度整体缺失（如 2026Q3 未采集到个股层面抱团指标）时，
+    # S3 必须记为"未知"而不是 0：否则共振得分会静默少算一维（3→2），
+    # 把"没数据"误读成"不拥挤"。历史期 F7 缺失时 S1/S2 亦缺失，
+    # 该掩码不会改变任何既有季度结果。
+    _f7_missing = f7.isna().all(axis=1).reindex(Q).fillna(True)
+    S3 = S3.mask(np.repeat(_f7_missing.to_numpy()[:, None], NI, axis=1))
     ind["F10_S1_持仓拥挤"] = S1
     ind["F10_S2_交易拥挤"] = S2
     ind["F10_S3_筹码拥挤"] = S3
