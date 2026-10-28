@@ -140,7 +140,7 @@ def build_triptych(t: pd.DataFrame, t0: pd.DataFrame, mv: dict, n_up: int,
                 f'<b>方向</b>：高位加仓（最后一棒风险）——共识最厚时，预期差最小。',
             ],
             invalid=("若下季任一行业主动项转负且分位跌破 50%，该行业共识判断作废；"
-                     "若三行业合计配置仍 <2%，则始终不构成可执行仓位。"),
+                     "若三行业合计配置仍 &lt;2%，则始终不构成可执行仓位。"),
         ))
     else:
         cards.append(dict(kind="cons", color=up, judgment="观察｜本期无「共识」行业",
@@ -154,6 +154,12 @@ def build_triptych(t: pd.DataFrame, t0: pd.DataFrame, mv: dict, n_up: int,
         _d["极值"] = (_d["加仓占比"] - 50).abs()
         _hot = _d.sort_values(["极值", "分歧度"], ascending=False).iloc[0]
         _n = int(_d["样本基金数"].max())
+        _dq, _dq0 = disp_real.attrs.get("q", "最新期"), disp_real.attrs.get("q0", "上一期")
+        try:
+            _span = ("单季" if (int(_dq[:4]) * 4 + int(_dq[-1]))
+                     - (int(_dq0[:4]) * 4 + int(_dq0[-1])) == 1 else "跨季")
+        except Exception:
+            _span = "跨季"
         cards.append(dict(
             kind="div", color="#E8710A",
             judgment=f"观察｜分歧：{_hot['行业']}加仓占比 {_hot['加仓占比']:.0f}%、"
@@ -164,17 +170,18 @@ def build_triptych(t: pd.DataFrame, t0: pd.DataFrame, mv: dict, n_up: int,
                 f'<b>{int(_hot["加仓基金数"])} 只加仓 / {int(_hot["减仓基金数"])} 只减仓 / '
                 f'{int(_hot["不变基金数"])} 只不变</b>；加仓占比 {_hot["加仓占比"]:.0f}%、'
                 f'分歧度 {_hot["分歧度"]:.2f}、加减仓比 {_hot["加减仓比"]:.2f}。',
-                f'<b>上期</b>：{q0} 的分歧度与占比见 ①b「基金行为分布」表；'
-                f'本期 31 行业中「共识形成」'
+                f'<b>上期</b>：{_dq0} → {_dq}（<b>{_span}</b>）；31 行业中「共识形成」'
                 f'{int((_d["判读"]=="共识形成").sum())} 个、「多空对撞」'
                 f'{int((_d["判读"]=="多空对撞").sum())} 个、「系统性撤离」'
                 f'{int((_d["判读"]=="系统性撤离").sum())} 个。',
                 f'<b>方向</b>：{pos["stance"]}，仓位区间 <b>{pos["low"]}%–{pos["high"]}%</b>。'
                 f'样本为 2026Q2 规模前 50 的偏股混合（偏科技主题），'
-                f'<b>不代表全市场</b>；只取前 10 重仓行业，未出现视为 0。',
+                f'<b>不代表全市场</b>；只取前 10 重仓行业，未出现视为 0；'
+                f'单行业 >80% 的主题基金已剔除（本行业剔除 '
+                f'{int(_hot.get("剔除主题基金", 0))} 只）。',
             ],
             invalid=("若把样本扩到全市场后该行业的加仓占比回到 40–60%，"
-                     "则「对撞/撤离」判读作废；若下季分歧度 <0.4 且占比 >70%，"
+                     "则「对撞/撤离」判读作废；若下季分歧度 &lt;0.4 且占比 &gt;70%，"
                      "则升级为「共识」，本条反向。"),
         ))
     conf = t[t["conflict"]].copy()
@@ -594,8 +601,9 @@ def render(b, ind, mkt, latest: str, colors: dict):
           f'会低估小比例持仓的变化；「不变」包含「两期都不在前十」。'
           f'判读规则事前固定：加仓占比 ≥70% 且分歧度 &lt;0.4＝共识形成；'
           f'40–60% 且 &gt;0.7＝多空对撞；≤30%＝系统性撤离。'
-          f'<b>时点</b>：Wind 的行业配置字段比前十大滞后一期，2026Q3 实测只有名次、'
-          f'行业与占比为空，故本表最新可得为 {_dp2[0] if _dp2 else "—"}。</div>')
+          f'<b>时点</b>：本表区间 <b>{_dp2[1]} → {_dp2[0]}</b>；'
+          f'Wind 的行业配置表只在半年报/年报期直出，季报期由前十大重仓按申万汇总推导'
+          f'（已在 2026Q2 与 Wind 表逐项核对一致）。</div>')
         _show = _dr.sort_values(["分歧度", "加仓占比"], ascending=[False, True])
         st.dataframe(_show, width="stretch", hide_index=True, height=420,
                      column_config={

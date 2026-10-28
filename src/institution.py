@@ -456,6 +456,30 @@ def six_checks(b, fac: pd.DataFrame, name: str, expect_positive: bool = True,
 ACTION_ORDER = ["超配", "标配", "低配", "回避"]
 
 
+def _consistency(active_pp, add_share) -> str:
+    """主动加减仓（2026Q3 单季、全市场）与 样本基金加仓占比（跨两季）是否同向。"""
+    if pd.isna(active_pp) or pd.isna(add_share):
+        return "未采集"
+    if active_pp > 0 and add_share < 40:
+        return "冲突（本期加、跨季减）"
+    if active_pp < 0 and add_share > 60:
+        return "冲突（本期减、跨季加）"
+    return "一致"
+
+
+def _conflict_note(active_pp, add_share, q0_, q_) -> str:
+    if pd.isna(active_pp) or pd.isna(add_share):
+        return ""
+    if active_pp > 0 and add_share < 40:
+        return (f"；<b>口径冲突</b>：2026Q3 主动 {active_pp:+.2f}pp（全市场单季），"
+                f"但样本基金 {q0_}→{q_} 仅 {add_share:.0f}% 加仓——可能是跨期反弹，"
+                f"也可能样本偏差，下季需用同口径复核")
+    if active_pp < 0 and add_share > 60:
+        return (f"；<b>口径冲突</b>：2026Q3 主动 {active_pp:+.2f}pp，"
+                f"但样本基金 {q0_}→{q_} 有 {add_share:.0f}% 加仓，需复核")
+    return ""
+
+
 def decision_table(t: pd.DataFrame, active: pd.DataFrame,
                    coverage_ok: bool = True,
                    t0: pd.DataFrame | None = None,
@@ -512,7 +536,14 @@ def decision_table(t: pd.DataFrame, active: pd.DataFrame,
                     if disp is not None and k in getattr(disp, "index", []) else np.nan),
             基金行为=(disp.loc[k, "判读"]
                       if disp is not None and k in getattr(disp, "index", []) else "未采集"),
-            理由=why,
+            口径一致性=_consistency(
+                a, (float(disp.loc[k, "加仓占比"])
+                    if disp is not None and k in getattr(disp, "index", []) else np.nan)),
+            理由=why + _conflict_note(
+                a, (float(disp.loc[k, "加仓占比"])
+                    if disp is not None and k in getattr(disp, "index", []) else np.nan),
+                (disp.attrs.get("q0", "上期") if disp is not None else "上期"),
+                (disp.attrs.get("q", "本期") if disp is not None else "本期")),
             失效条件=("若下季主动项转正且分位回升至 40% 以上" if act in ("低配", "回避")
                       else "若下季主动项转负且分位跌破 50%"),
             证据等级="参考（F3e 剔Q4 后 p=0.11；主动项 n=9）" if coverage_ok else "未就绪",
