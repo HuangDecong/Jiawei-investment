@@ -76,9 +76,13 @@ def _ledger(decomp: pd.DataFrame, br: pd.DataFrame) -> pd.DataFrame:
 
 def render(h, B=None, IND=None) -> None:
     """入口。B/IND 仅为兼容旧签名，本页不依赖 Wind 数据。"""
-    if not cn.available():
-        h('<div class="cg-note">未找到持仓数据库。运行 '
-          '<span class="mono">python tools/run_ak_all.py</span> 后本页自动出现。</div>')
+    # 判「能不能算」而不是「有没有数据库」：线上没有 500MB 的 SQLite，
+    # 但有 data/derived/canon_*.csv.gz 快照，canon 会自动回退。
+    # 这里若只判 available()，线上就会显示「未找到数据库」——明明数据是够的。
+    if not (cn.available() or cn.fallback_available()):
+        h('<div class="cg-note">未找到持仓数据。运行 '
+          '<span class="mono">python tools/run_ak_all.py</span> 抓取，'
+          '或 <span class="mono">python tools/export_canon.py</span> 生成压缩快照。</div>')
         return
 
     q = cn.latest()

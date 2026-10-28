@@ -64,6 +64,13 @@ COV_MIN, COV_MAX = 1.0, 105.0
 # 连接与缓存
 # ---------------------------------------------------------------------------
 def available() -> bool:
+    """数据库是否可用。
+
+    设 `FCD_FORCE_FALLBACK=1` 可强制走压缩快照，用来在本地验证
+    「线上没有数据库」这条路径——否则部署后才发现页面空白就太晚了。
+    """
+    if os.environ.get("FCD_FORCE_FALLBACK"):
+        return False
     return os.path.exists(DB)
 
 
