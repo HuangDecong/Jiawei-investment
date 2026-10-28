@@ -1,0 +1,20 @@
+const url=process.argv[2], waitMs=parseInt(process.argv[3]||'50000',10);
+(async()=>{
+ const r=await fetch('http://127.0.0.1:9781/json/new?about:blank',{method:'PUT'});
+ const tab=await r.json(); const ws=new WebSocket(tab.webSocketDebuggerUrl);
+ let id=0; const send=(m,p={})=>new Promise(res=>{const mid=++id;
+  const on=ev=>{const x=JSON.parse(ev.data); if(x.id===mid){ws.removeEventListener('message',on);res(x.result);}};
+  ws.addEventListener('message',on); ws.send(JSON.stringify({id:mid,method:m,params:p}));});
+ await new Promise(res=>ws.addEventListener('open',res));
+ await send('Page.enable');
+ await send('Emulation.setDeviceMetricsOverride',{width:1440,height:2000,deviceScaleFactor:1,mobile:false});
+ await send('Page.navigate',{url}); await new Promise(r2=>setTimeout(r2,waitMs));
+ const t=await send('Runtime.evaluate',{expression:'document.body.innerText',returnByValue:true});
+ const s=(t.result&&t.result.value)||'';
+ const m=s.match(/版本\s*([0-9a-zA-Z.\-]+)/);
+ console.log('VERSION:', m?m[1]:'(未找到)');
+ console.log('HAS_4159:', s.includes('4159'));
+ console.log('HAS_医药:', s.includes('医药生物'));
+ console.log('LEN:', s.length);
+ process.exit(0);
+})().catch(e=>{console.error('ERR',e.message);process.exit(1);});

@@ -314,7 +314,7 @@ def main(quarter: str | None = None) -> str:
         try:
             _nev = os.path.join(ROOT, "data", "cache", "nav_exposure_50.csv")
             if os.path.exists(_nev):
-                _nq = pd.read_csv(_nev)
+                _nq = pd.read_csv(_nev, dtype={"code": str})
                 _nq.to_excel(xw, sheet_name="9 日度暴露校准", index=False)
                 _style_sheet(xw.sheets["9 日度暴露校准"],
                              {"A": 10, "B": 10, "C": 9, "D": 9, "E": 12,

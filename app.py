@@ -408,7 +408,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.28-r21.2"
+APP_VERSION = "2026.10.28-r21.3"
 
 
 def _fp_short() -> str:
@@ -1808,7 +1808,7 @@ if _P == "⑤ 数据与方法":
     try:
         _nev = os.path.join("data", "cache", "nav_exposure_50.csv")
         if os.path.exists(_nev):
-            _nq = pd.read_csv(_nev)
+            _nq = pd.read_csv(_nev, dtype={"code": str})
             _h('<div class="sec">日度行业暴露 · 净值反推（4.4）</div>')
             _c1, _c2, _c3 = st.columns(3)
             _c1.metric("R² 中位", f"{_nq['r2'].median():.3f}")
@@ -1845,7 +1845,7 @@ if _P == "⑤ 数据与方法":
             _up = _dd.head(3)
             _dn = _dd.tail(3).iloc[::-1]
             _h(f'<div class="tiny">区间 <b>2026-09-30 → 最新交易日</b>，'
-               f'57 只基金（R²≥0.5）。<b>净加仓</b>：'
+               f'样本为有日度净值的主动权益基金（R²≥0.5）。<b>净加仓</b>：'
                + "、".join(f"{r['行业']} {r['行业平均漂移pp']:+.2f}pp"
                           f"（{int(r['加仓基金数'])} 加 / {int(r['减仓基金数'])} 减）"
                           for _, r in _up.iterrows())
