@@ -484,6 +484,7 @@ def render_overview(b, ind, mkt, latest: str, colors: dict, compact: bool = Fals
 def render(b, ind, mkt, latest: str, colors: dict):
     """整页：结论区 → 变化榜 → 四象限 → 迁移 → 个股 → 证据 → 体检。"""
     quarters, t, t0, mv, n_up = _context(b, ind, mkt, latest)
+    q0 = t.attrs.get("q0")
     e_add = t.loc["医药生物"]
     e_elec = t.loc["电子"]
     render_overview(b, ind, mkt, latest, colors)

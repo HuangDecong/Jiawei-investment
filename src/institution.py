@@ -36,6 +36,20 @@ import config as C
 
 DB_PATH = os.path.join(C.DATA, "db", "institution.db")
 
+# A/H 双重主体别名（同一公司两地上市，接口按证券简称返回，需合并）
+STOCK_ALIAS = {
+    "中国海油": "中国海洋石油",
+    "中国石油": "中国石油股份",
+    "中国神华": "中国神华能源",
+    "比亚迪": "比亚迪股份",
+    "中国移动": "中国移动",
+    "中国电信": "中国电信股份",
+}
+
+# 样本池口径断层：这几期重仓股持有基金数的均值出现台阶式跳变（+34%/+39%），
+# 跨断点比较 Δ持股基金数会高估变化，页面与报告必须标注。
+REGIME_BREAK = ("2019Q2", "2020Q2")
+
 # ---------------------------------------------------------------------------
 # 数据状态登记
 # ---------------------------------------------------------------------------
@@ -163,6 +177,15 @@ def stock_flow(q: str, q0: str, db_path: str = DB_PATH) -> pd.DataFrame:
         con.close()
     if df.empty:
         return pd.DataFrame(columns=["name", "n0", "n1", "d_n", "mv1", "d_mv", "state"])
+    # ---- 清洗（R19）：ST/退市剔除 + A/H 双重主体合并 ----
+    _raw = len(df)
+    df = df[~df["name"].astype(str).str.contains(r"退市|^\*?ST", regex=True)].copy()
+    # 同一公司在 A/H 两地会被拆成两个名称（如 中国海油 / 中国海洋石油），
+    # 不合并会重复计数。合并后基金数取 max（同一基金只应计一次），市值求和。
+    df["name"] = df["name"].replace(STOCK_ALIAS)
+    df = (df.groupby(["quarter", "name"], as_index=False)
+            .agg(n_funds=("n_funds", "max"), mv_yi=("mv_yi", "sum")))
+    _dropped = _raw - len(df)
     p = df.pivot_table(index="name", columns="quarter", values=["n_funds", "mv_yi"],
                        aggfunc="first")
     out = pd.DataFrame(index=p.index)
@@ -178,7 +201,10 @@ def stock_flow(q: str, q0: str, db_path: str = DB_PATH) -> pd.DataFrame:
          out["n0"].notna() & out["n1"].notna()],
         ["新进前50", "退出前50", "两期在榜"], default="—")
     out = out[out["n1"].notna() | out["n0"].notna()]
-    return out.sort_values("d_n", ascending=False).reset_index()
+    out = out.sort_values("d_n", ascending=False).reset_index()
+    out.attrs["dropped"] = int(_dropped)
+    out.attrs["break"] = (q in REGIME_BREAK) or (q0 in REGIME_BREAK)
+    return out
 
 
 # ---------------------------------------------------------------------------

@@ -72,7 +72,7 @@
     "code": "",
     "name": "航天信息",
     "n_funds": 62,
-    "mv_yi": 31.3144
+    "mv_yi": 31.314
    },
    {
     "rank": 11,
@@ -9857,6 +9857,5286 @@
     "name": "中国移动",
     "n_funds": 133,
     "mv_yi": 96.4604
+   }
+  ],
+  "2023Q1": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 1113,
+    "mv_yi": 989.5296
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 864,
+    "mv_yi": 732.249
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "五粮液",
+    "n_funds": 626,
+    "mv_yi": 525.8277
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "泸州老窖",
+    "n_funds": 614,
+    "mv_yi": 568.8
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 547,
+    "mv_yi": 541.1959
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "金山办公",
+    "n_funds": 454,
+    "mv_yi": 209.1483
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "海康威视",
+    "n_funds": 341,
+    "mv_yi": 175.2748
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 325,
+    "mv_yi": 215.0922
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 268,
+    "mv_yi": 161.4868
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "山西汾酒",
+    "n_funds": 267,
+    "mv_yi": 258.4426
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "美团-W",
+    "n_funds": 241,
+    "mv_yi": 203.4747
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "药明康德",
+    "n_funds": 240,
+    "mv_yi": 290.9691
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "迈瑞医疗",
+    "n_funds": 237,
+    "mv_yi": 243.7113
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 229,
+    "mv_yi": 163.762
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "晶澳科技",
+    "n_funds": 228,
+    "mv_yi": 181.602
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "恒生电子",
+    "n_funds": 226,
+    "mv_yi": 129.5512
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "科大讯飞",
+    "n_funds": 218,
+    "mv_yi": 82.9021
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 211,
+    "mv_yi": 120.5343
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 207,
+    "mv_yi": 125.0329
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "中兴通讯",
+    "n_funds": 194,
+    "mv_yi": 87.3037
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "万华化学",
+    "n_funds": 187,
+    "mv_yi": 146.4442
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "保利发展",
+    "n_funds": 186,
+    "mv_yi": 157.4248
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "隆基绿能",
+    "n_funds": 185,
+    "mv_yi": 161.609
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "比亚迪",
+    "n_funds": 179,
+    "mv_yi": 120.8614
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "洋河股份",
+    "n_funds": 175,
+    "mv_yi": 165.5329
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "爱尔眼科",
+    "n_funds": 173,
+    "mv_yi": 221.036
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "古井贡酒",
+    "n_funds": 170,
+    "mv_yi": 190.4909
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "舍得酒业",
+    "n_funds": 169,
+    "mv_yi": 71.7953
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "中国中免",
+    "n_funds": 165,
+    "mv_yi": 127.9193
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "TCL中环",
+    "n_funds": 159,
+    "mv_yi": 125.5909
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "爱美客",
+    "n_funds": 159,
+    "mv_yi": 89.02
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 157,
+    "mv_yi": 109.5605
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 157,
+    "mv_yi": 69.1241
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "广联达",
+    "n_funds": 154,
+    "mv_yi": 107.8785
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "青岛啤酒",
+    "n_funds": 153,
+    "mv_yi": 97.349
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "东方财富",
+    "n_funds": 152,
+    "mv_yi": 72.533
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "三七互娱",
+    "n_funds": 151,
+    "mv_yi": 27.3604
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "顺丰控股",
+    "n_funds": 149,
+    "mv_yi": 104.0333
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "中国电信",
+    "n_funds": 147,
+    "mv_yi": 40.7558
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 147,
+    "mv_yi": 84.0975
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "亿纬锂能",
+    "n_funds": 147,
+    "mv_yi": 154.7544
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "宁波银行",
+    "n_funds": 144,
+    "mv_yi": 103.1657
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 139,
+    "mv_yi": 35.5448
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "ST人福",
+    "n_funds": 138,
+    "mv_yi": 46.8553
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 138,
+    "mv_yi": 95.5633
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "今世缘",
+    "n_funds": 137,
+    "mv_yi": 46.3908
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "大华股份",
+    "n_funds": 135,
+    "mv_yi": 41.9504
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "格力电器",
+    "n_funds": 134,
+    "mv_yi": 38.2327
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "华鲁恒升",
+    "n_funds": 128,
+    "mv_yi": 112.7869
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "兆易创新",
+    "n_funds": 127,
+    "mv_yi": 67.846
+   }
+  ],
+  "2023Q2": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 1011,
+    "mv_yi": 825.2786
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 929,
+    "mv_yi": 732.1443
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 510,
+    "mv_yi": 465.1254
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "泸州老窖",
+    "n_funds": 500,
+    "mv_yi": 436.9361
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "五粮液",
+    "n_funds": 498,
+    "mv_yi": 397.3215
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "中兴通讯",
+    "n_funds": 469,
+    "mv_yi": 264.3407
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "金山办公",
+    "n_funds": 459,
+    "mv_yi": 174.5705
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 379,
+    "mv_yi": 182.3612
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 344,
+    "mv_yi": 232.2859
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 340,
+    "mv_yi": 233.5957
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 323,
+    "mv_yi": 205.6765
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 315,
+    "mv_yi": 144.9953
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 310,
+    "mv_yi": 127.8138
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "科大讯飞",
+    "n_funds": 285,
+    "mv_yi": 124.3036
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 252,
+    "mv_yi": 131.0566
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "工业富联",
+    "n_funds": 246,
+    "mv_yi": 122.1927
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 241,
+    "mv_yi": 161.6419
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "迈瑞医疗",
+    "n_funds": 241,
+    "mv_yi": 240.5358
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "三七互娱",
+    "n_funds": 238,
+    "mv_yi": 66.7506
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "比亚迪",
+    "n_funds": 231,
+    "mv_yi": 156.1055
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "传音控股",
+    "n_funds": 222,
+    "mv_yi": 68.0724
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "晶澳科技",
+    "n_funds": 214,
+    "mv_yi": 192.2133
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 211,
+    "mv_yi": 51.5181
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 204,
+    "mv_yi": 64.8547
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "美团-W",
+    "n_funds": 201,
+    "mv_yi": 178.7511
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "三花智控",
+    "n_funds": 188,
+    "mv_yi": 107.1062
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "格力电器",
+    "n_funds": 188,
+    "mv_yi": 70.4321
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 187,
+    "mv_yi": 101.0328
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "拓普集团",
+    "n_funds": 180,
+    "mv_yi": 70.6544
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "天孚通信",
+    "n_funds": 172,
+    "mv_yi": 76.1894
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "万华化学",
+    "n_funds": 171,
+    "mv_yi": 126.7097
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "中国船舶",
+    "n_funds": 170,
+    "mv_yi": 61.689
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "拓荆科技",
+    "n_funds": 162,
+    "mv_yi": 60.2031
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "保利发展",
+    "n_funds": 160,
+    "mv_yi": 132.8025
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "古井贡酒",
+    "n_funds": 157,
+    "mv_yi": 147.0311
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "恺英网络",
+    "n_funds": 155,
+    "mv_yi": 40.0636
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "ST人福",
+    "n_funds": 149,
+    "mv_yi": 53.8622
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 145,
+    "mv_yi": 97.8841
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "中科曙光",
+    "n_funds": 143,
+    "mv_yi": 59.3978
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "海康威视",
+    "n_funds": 142,
+    "mv_yi": 85.8016
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "德赛西威",
+    "n_funds": 140,
+    "mv_yi": 49.7682
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "青岛啤酒",
+    "n_funds": 139,
+    "mv_yi": 75.6917
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "长江电力",
+    "n_funds": 138,
+    "mv_yi": 41.9359
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "安井食品",
+    "n_funds": 136,
+    "mv_yi": 67.1208
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "恒生电子",
+    "n_funds": 136,
+    "mv_yi": 74.4115
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "华鲁恒升",
+    "n_funds": 135,
+    "mv_yi": 94.3385
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "中国建筑",
+    "n_funds": 134,
+    "mv_yi": 52.761
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "伊利股份",
+    "n_funds": 134,
+    "mv_yi": 67.7279
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "浪潮信息",
+    "n_funds": 133,
+    "mv_yi": 52.1903
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "宁波银行",
+    "n_funds": 131,
+    "mv_yi": 80.1782
+   }
+  ],
+  "2023Q3": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 1134,
+    "mv_yi": 870.054
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 854,
+    "mv_yi": 591.5204
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "泸州老窖",
+    "n_funds": 602,
+    "mv_yi": 464.6075
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 454,
+    "mv_yi": 380.3503
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "五粮液",
+    "n_funds": 448,
+    "mv_yi": 349.4175
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 405,
+    "mv_yi": 192.0825
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 386,
+    "mv_yi": 128.0947
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 372,
+    "mv_yi": 214.4023
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 352,
+    "mv_yi": 242.0195
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 335,
+    "mv_yi": 156.4482
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "药明康德",
+    "n_funds": 330,
+    "mv_yi": 316.3006
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "金山办公",
+    "n_funds": 305,
+    "mv_yi": 101.8598
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 289,
+    "mv_yi": 81.6316
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "中兴通讯",
+    "n_funds": 284,
+    "mv_yi": 143.7266
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 277,
+    "mv_yi": 119.5234
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "山西汾酒",
+    "n_funds": 267,
+    "mv_yi": 184.5689
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "三花智控",
+    "n_funds": 245,
+    "mv_yi": 117.4386
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "美团-W",
+    "n_funds": 233,
+    "mv_yi": 165.1642
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "古井贡酒",
+    "n_funds": 220,
+    "mv_yi": 187.9818
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "工业富联",
+    "n_funds": 219,
+    "mv_yi": 107.9587
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "迈瑞医疗",
+    "n_funds": 218,
+    "mv_yi": 207.228
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 210,
+    "mv_yi": 104.2461
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "格力电器",
+    "n_funds": 202,
+    "mv_yi": 79.5817
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "海康威视",
+    "n_funds": 194,
+    "mv_yi": 100.2136
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 192,
+    "mv_yi": 125.0586
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "万华化学",
+    "n_funds": 190,
+    "mv_yi": 122.2405
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "天孚通信",
+    "n_funds": 190,
+    "mv_yi": 60.4698
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "拓普集团",
+    "n_funds": 188,
+    "mv_yi": 59.742
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "沪电股份",
+    "n_funds": 186,
+    "mv_yi": 67.5274
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "今世缘",
+    "n_funds": 181,
+    "mv_yi": 55.4103
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 175,
+    "mv_yi": 107.1924
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "德赛西威",
+    "n_funds": 174,
+    "mv_yi": 66.2674
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "宁波银行",
+    "n_funds": 170,
+    "mv_yi": 86.7535
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "快手-W",
+    "n_funds": 170,
+    "mv_yi": 99.1152
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "保利发展",
+    "n_funds": 167,
+    "mv_yi": 117.2285
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "华鲁恒升",
+    "n_funds": 160,
+    "mv_yi": 116.2106
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "中信证券",
+    "n_funds": 156,
+    "mv_yi": 35.7935
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "中国船舶",
+    "n_funds": 149,
+    "mv_yi": 52.1909
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "传音控股",
+    "n_funds": 149,
+    "mv_yi": 50.6235
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 149,
+    "mv_yi": 38.4523
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "长江电力",
+    "n_funds": 146,
+    "mv_yi": 46.5664
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "赛轮轮胎",
+    "n_funds": 145,
+    "mv_yi": 81.0128
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "科大讯飞",
+    "n_funds": 141,
+    "mv_yi": 50.5468
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "中国海洋石油",
+    "n_funds": 140,
+    "mv_yi": 160.0955
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 140,
+    "mv_yi": 93.608
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "比亚迪",
+    "n_funds": 139,
+    "mv_yi": 95.9183
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "海尔智家",
+    "n_funds": 137,
+    "mv_yi": 89.4926
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "中国太保",
+    "n_funds": 136,
+    "mv_yi": 44.2988
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "中国神华",
+    "n_funds": 134,
+    "mv_yi": 40.7874
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "中国石油",
+    "n_funds": 132,
+    "mv_yi": 32.9804
+   }
+  ],
+  "2023Q4": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 1009,
+    "mv_yi": 753.3181
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 663,
+    "mv_yi": 269.8357
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 640,
+    "mv_yi": 425.8482
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "泸州老窖",
+    "n_funds": 436,
+    "mv_yi": 350.524
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 409,
+    "mv_yi": 258.6844
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 404,
+    "mv_yi": 193.18
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "五粮液",
+    "n_funds": 381,
+    "mv_yi": 296.8486
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 365,
+    "mv_yi": 124.3047
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 352,
+    "mv_yi": 280.708
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 336,
+    "mv_yi": 188.4517
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 326,
+    "mv_yi": 157.2245
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "三花智控",
+    "n_funds": 287,
+    "mv_yi": 121.1423
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "迈瑞医疗",
+    "n_funds": 283,
+    "mv_yi": 243.4698
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "山西汾酒",
+    "n_funds": 278,
+    "mv_yi": 192.7896
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "药明康德",
+    "n_funds": 261,
+    "mv_yi": 244.214
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "海康威视",
+    "n_funds": 249,
+    "mv_yi": 135.8784
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "金山办公",
+    "n_funds": 233,
+    "mv_yi": 72.1716
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 231,
+    "mv_yi": 107.5967
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 220,
+    "mv_yi": 132.2335
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "智飞生物",
+    "n_funds": 206,
+    "mv_yi": 78.6657
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "沪电股份",
+    "n_funds": 201,
+    "mv_yi": 76.2365
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "温氏股份",
+    "n_funds": 193,
+    "mv_yi": 66.3097
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "长江电力",
+    "n_funds": 192,
+    "mv_yi": 54.3635
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "中国船舶",
+    "n_funds": 191,
+    "mv_yi": 62.07
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "天孚通信",
+    "n_funds": 184,
+    "mv_yi": 53.134
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 180,
+    "mv_yi": 112.8732
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "卓胜微",
+    "n_funds": 179,
+    "mv_yi": 70.9626
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "伊利股份",
+    "n_funds": 170,
+    "mv_yi": 39.242
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "中国神华",
+    "n_funds": 165,
+    "mv_yi": 51.494
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 164,
+    "mv_yi": 49.4005
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "陕西煤业",
+    "n_funds": 164,
+    "mv_yi": 60.129
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "拓普集团",
+    "n_funds": 163,
+    "mv_yi": 60.2201
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "古井贡酒",
+    "n_funds": 159,
+    "mv_yi": 143.1568
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "中芯国际",
+    "n_funds": 155,
+    "mv_yi": 75.2423
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "澜起科技",
+    "n_funds": 147,
+    "mv_yi": 78.6379
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "华鲁恒升",
+    "n_funds": 146,
+    "mv_yi": 88.2685
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "长安汽车",
+    "n_funds": 145,
+    "mv_yi": 56.7239
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "赛轮轮胎",
+    "n_funds": 144,
+    "mv_yi": 71.5301
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 140,
+    "mv_yi": 29.4368
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "中国海洋石油",
+    "n_funds": 133,
+    "mv_yi": 137.2998
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "牧原股份",
+    "n_funds": 133,
+    "mv_yi": 65.3
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "通富微电",
+    "n_funds": 133,
+    "mv_yi": 54.0384
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "新宙邦",
+    "n_funds": 131,
+    "mv_yi": 57.6702
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "ST人福",
+    "n_funds": 128,
+    "mv_yi": 53.0517
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "伯特利",
+    "n_funds": 128,
+    "mv_yi": 51.6575
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 128,
+    "mv_yi": 75.9488
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "巨星农牧",
+    "n_funds": 124,
+    "mv_yi": 41.189
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "豪威集团",
+    "n_funds": 121,
+    "mv_yi": 44.8152
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "中航光电",
+    "n_funds": 119,
+    "mv_yi": 61.203
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "德赛西威",
+    "n_funds": 119,
+    "mv_yi": 46.4407
+   }
+  ],
+  "2024Q1": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 952,
+    "mv_yi": 647.3308
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 919,
+    "mv_yi": 553.2627
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 638,
+    "mv_yi": 310.3175
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "五粮液",
+    "n_funds": 459,
+    "mv_yi": 330.7255
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 449,
+    "mv_yi": 210.169
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 446,
+    "mv_yi": 173.0228
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "泸州老窖",
+    "n_funds": 429,
+    "mv_yi": 332.5655
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 420,
+    "mv_yi": 237.1174
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 416,
+    "mv_yi": 215.7188
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 366,
+    "mv_yi": 232.4269
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 347,
+    "mv_yi": 163.7976
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 345,
+    "mv_yi": 262.2005
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "沪电股份",
+    "n_funds": 308,
+    "mv_yi": 110.6149
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 308,
+    "mv_yi": 171.8658
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "山西汾酒",
+    "n_funds": 304,
+    "mv_yi": 220.2512
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "洛阳钼业",
+    "n_funds": 284,
+    "mv_yi": 98.2275
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "天孚通信",
+    "n_funds": 272,
+    "mv_yi": 81.2652
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "长江电力",
+    "n_funds": 260,
+    "mv_yi": 93.1946
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 248,
+    "mv_yi": 77.7456
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "中国船舶",
+    "n_funds": 247,
+    "mv_yi": 79.8629
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "迈瑞医疗",
+    "n_funds": 246,
+    "mv_yi": 209.9276
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "中国海洋石油",
+    "n_funds": 243,
+    "mv_yi": 186.5552
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 235,
+    "mv_yi": 119.2481
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "中国神华",
+    "n_funds": 220,
+    "mv_yi": 59.3452
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "金山办公",
+    "n_funds": 217,
+    "mv_yi": 57.8752
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "格力电器",
+    "n_funds": 205,
+    "mv_yi": 75.9468
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "工业富联",
+    "n_funds": 202,
+    "mv_yi": 69.0969
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 200,
+    "mv_yi": 96.2712
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "古井贡酒",
+    "n_funds": 199,
+    "mv_yi": 159.3087
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "传音控股",
+    "n_funds": 196,
+    "mv_yi": 61.906
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "海康威视",
+    "n_funds": 194,
+    "mv_yi": 88.6729
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "海尔智家",
+    "n_funds": 191,
+    "mv_yi": 120.1165
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "赛轮轮胎",
+    "n_funds": 182,
+    "mv_yi": 82.8737
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "长安汽车",
+    "n_funds": 178,
+    "mv_yi": 50.3549
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "中国海油",
+    "n_funds": 177,
+    "mv_yi": 58.9777
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "陕西煤业",
+    "n_funds": 175,
+    "mv_yi": 51.4666
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "伊利股份",
+    "n_funds": 172,
+    "mv_yi": 33.2556
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "TCL科技",
+    "n_funds": 170,
+    "mv_yi": 41.6377
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "山东黄金",
+    "n_funds": 161,
+    "mv_yi": 48.0357
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "牧原股份",
+    "n_funds": 160,
+    "mv_yi": 77.9136
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "拓普集团",
+    "n_funds": 159,
+    "mv_yi": 46.4124
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "万华化学",
+    "n_funds": 157,
+    "mv_yi": 101.5309
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "三花智控",
+    "n_funds": 153,
+    "mv_yi": 65.0294
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "中国石油",
+    "n_funds": 153,
+    "mv_yi": 33.2417
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "美团-W",
+    "n_funds": 152,
+    "mv_yi": 102.1531
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "中国核电",
+    "n_funds": 145,
+    "mv_yi": 53.8056
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "科伦药业",
+    "n_funds": 144,
+    "mv_yi": 52.6323
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "比亚迪",
+    "n_funds": 135,
+    "mv_yi": 55.5923
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "山金国际",
+    "n_funds": 133,
+    "mv_yi": 65.389
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "潍柴动力",
+    "n_funds": 133,
+    "mv_yi": 48.4959
+   }
+  ],
+  "2024Q2": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 823,
+    "mv_yi": 481.4246
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 803,
+    "mv_yi": 334.9287
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 722,
+    "mv_yi": 437.0245
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 698,
+    "mv_yi": 313.585
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 658,
+    "mv_yi": 245.2712
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 533,
+    "mv_yi": 278.0183
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 502,
+    "mv_yi": 375.6794
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "沪电股份",
+    "n_funds": 445,
+    "mv_yi": 157.8611
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 438,
+    "mv_yi": 224.1618
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 434,
+    "mv_yi": 153.5842
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "工业富联",
+    "n_funds": 407,
+    "mv_yi": 142.732
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 363,
+    "mv_yi": 158.7305
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "比亚迪",
+    "n_funds": 356,
+    "mv_yi": 131.8472
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "中国船舶",
+    "n_funds": 324,
+    "mv_yi": 98.2794
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "五粮液",
+    "n_funds": 311,
+    "mv_yi": 226.2554
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "长江电力",
+    "n_funds": 310,
+    "mv_yi": 113.314
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "中国海洋石油",
+    "n_funds": 291,
+    "mv_yi": 222.5788
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "中国神华",
+    "n_funds": 279,
+    "mv_yi": 63.8847
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "迈瑞医疗",
+    "n_funds": 265,
+    "mv_yi": 215.3301
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "泸州老窖",
+    "n_funds": 259,
+    "mv_yi": 206.4756
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 255,
+    "mv_yi": 140.8831
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "洛阳钼业",
+    "n_funds": 254,
+    "mv_yi": 84.7646
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 253,
+    "mv_yi": 93.1094
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 248,
+    "mv_yi": 163.4054
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "中国海油",
+    "n_funds": 241,
+    "mv_yi": 74.8512
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "格力电器",
+    "n_funds": 241,
+    "mv_yi": 97.3423
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "天孚通信",
+    "n_funds": 235,
+    "mv_yi": 52.5684
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "海尔智家",
+    "n_funds": 227,
+    "mv_yi": 159.3069
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "美团-W",
+    "n_funds": 226,
+    "mv_yi": 142.7855
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "山西汾酒",
+    "n_funds": 222,
+    "mv_yi": 163.2266
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "兆易创新",
+    "n_funds": 198,
+    "mv_yi": 82.4525
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 195,
+    "mv_yi": 98.8006
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "牧原股份",
+    "n_funds": 190,
+    "mv_yi": 80.131
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "石头科技",
+    "n_funds": 188,
+    "mv_yi": 56.6251
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "工商银行",
+    "n_funds": 178,
+    "mv_yi": 49.6232
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "万华化学",
+    "n_funds": 173,
+    "mv_yi": 103.96
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "中国核电",
+    "n_funds": 170,
+    "mv_yi": 56.6392
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "陕西煤业",
+    "n_funds": 162,
+    "mv_yi": 43.3094
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "中天科技",
+    "n_funds": 160,
+    "mv_yi": 48.7398
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "鹏鼎控股",
+    "n_funds": 157,
+    "mv_yi": 67.5113
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "温氏股份",
+    "n_funds": 155,
+    "mv_yi": 63.9494
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "赛轮轮胎",
+    "n_funds": 153,
+    "mv_yi": 60.3676
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "三一重工",
+    "n_funds": 152,
+    "mv_yi": 61.4947
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "寒武纪",
+    "n_funds": 150,
+    "mv_yi": 65.2725
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "山东黄金",
+    "n_funds": 150,
+    "mv_yi": 48.1621
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "许继电气",
+    "n_funds": 148,
+    "mv_yi": 26.3678
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "海康威视",
+    "n_funds": 145,
+    "mv_yi": 63.257
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "中国铝业",
+    "n_funds": 143,
+    "mv_yi": 57.8913
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "中金黄金",
+    "n_funds": 142,
+    "mv_yi": 57.897
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "古井贡酒",
+    "n_funds": 139,
+    "mv_yi": 120.9907
+   }
+  ],
+  "2024Q3": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 1079,
+    "mv_yi": 690.6348
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 824,
+    "mv_yi": 385.07
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 718,
+    "mv_yi": 374.939
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 705,
+    "mv_yi": 472.6204
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 651,
+    "mv_yi": 463.4287
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 634,
+    "mv_yi": 274.7425
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 616,
+    "mv_yi": 295.7799
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 498,
+    "mv_yi": 267.8811
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 496,
+    "mv_yi": 199.4875
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "比亚迪",
+    "n_funds": 487,
+    "mv_yi": 207.7129
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "沪电股份",
+    "n_funds": 431,
+    "mv_yi": 157.6497
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 396,
+    "mv_yi": 180.3524
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "五粮液",
+    "n_funds": 391,
+    "mv_yi": 279.1923
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "格力电器",
+    "n_funds": 385,
+    "mv_yi": 160.4763
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 329,
+    "mv_yi": 205.608
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "美团-W",
+    "n_funds": 297,
+    "mv_yi": 208.4213
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 291,
+    "mv_yi": 187.0232
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "中国船舶",
+    "n_funds": 282,
+    "mv_yi": 90.8322
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "海尔智家",
+    "n_funds": 270,
+    "mv_yi": 144.5333
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 235,
+    "mv_yi": 105.3468
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "中国太保",
+    "n_funds": 232,
+    "mv_yi": 81.8966
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 232,
+    "mv_yi": 89.4694
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "万华化学",
+    "n_funds": 224,
+    "mv_yi": 131.0627
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "阿里巴巴-W",
+    "n_funds": 220,
+    "mv_yi": 133.8194
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "长江电力",
+    "n_funds": 218,
+    "mv_yi": 93.0346
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "迈瑞医疗",
+    "n_funds": 216,
+    "mv_yi": 164.7785
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "天孚通信",
+    "n_funds": 212,
+    "mv_yi": 68.4356
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "中国神华",
+    "n_funds": 206,
+    "mv_yi": 45.1087
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "工业富联",
+    "n_funds": 204,
+    "mv_yi": 65.8575
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "洛阳钼业",
+    "n_funds": 203,
+    "mv_yi": 69.2527
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "寒武纪",
+    "n_funds": 193,
+    "mv_yi": 85.4599
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "中国铝业",
+    "n_funds": 178,
+    "mv_yi": 62.9579
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "海光信息",
+    "n_funds": 176,
+    "mv_yi": 78.6343
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "保利发展",
+    "n_funds": 167,
+    "mv_yi": 82.2971
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "山西汾酒",
+    "n_funds": 164,
+    "mv_yi": 156.875
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "东方电缆",
+    "n_funds": 153,
+    "mv_yi": 47.5205
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "泸州老窖",
+    "n_funds": 153,
+    "mv_yi": 158.4596
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "科伦药业",
+    "n_funds": 148,
+    "mv_yi": 74.3799
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "赛轮轮胎",
+    "n_funds": 148,
+    "mv_yi": 73.5323
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 147,
+    "mv_yi": 92.9494
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "中天科技",
+    "n_funds": 145,
+    "mv_yi": 46.5703
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "胜宏科技",
+    "n_funds": 140,
+    "mv_yi": 38.2871
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "石头科技",
+    "n_funds": 139,
+    "mv_yi": 50.1796
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "福耀玻璃",
+    "n_funds": 139,
+    "mv_yi": 91.9123
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "三一重工",
+    "n_funds": 136,
+    "mv_yi": 65.4318
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "中国海洋石油",
+    "n_funds": 136,
+    "mv_yi": 134.3519
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "歌尔股份",
+    "n_funds": 133,
+    "mv_yi": 30.6655
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "陕西煤业",
+    "n_funds": 132,
+    "mv_yi": 38.5629
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "拓普集团",
+    "n_funds": 129,
+    "mv_yi": 42.6867
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "三花智控",
+    "n_funds": 127,
+    "mv_yi": 54.1982
+   }
+  ],
+  "2024Q4": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 1283,
+    "mv_yi": 703.3347
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 828,
+    "mv_yi": 369.9589
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 804,
+    "mv_yi": 340.4374
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 680,
+    "mv_yi": 458.1198
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 629,
+    "mv_yi": 365.6682
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "中芯国际",
+    "n_funds": 447,
+    "mv_yi": 156.9366
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 425,
+    "mv_yi": 172.3402
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "格力电器",
+    "n_funds": 408,
+    "mv_yi": 151.574
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "寒武纪",
+    "n_funds": 397,
+    "mv_yi": 176.6621
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "比亚迪",
+    "n_funds": 375,
+    "mv_yi": 130.2271
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 364,
+    "mv_yi": 188.3371
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 357,
+    "mv_yi": 155.4217
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "五粮液",
+    "n_funds": 351,
+    "mv_yi": 223.8048
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 336,
+    "mv_yi": 130.48
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "沪电股份",
+    "n_funds": 334,
+    "mv_yi": 122.3175
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 320,
+    "mv_yi": 120.0624
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 315,
+    "mv_yi": 115.0879
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "海光信息",
+    "n_funds": 298,
+    "mv_yi": 111.142
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "长江电力",
+    "n_funds": 285,
+    "mv_yi": 84.5913
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 272,
+    "mv_yi": 156.9488
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "小米集团-W",
+    "n_funds": 254,
+    "mv_yi": 113.5782
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "中兴通讯",
+    "n_funds": 252,
+    "mv_yi": 86.3832
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "美团-W",
+    "n_funds": 237,
+    "mv_yi": 151.4426
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "中国神华",
+    "n_funds": 233,
+    "mv_yi": 39.5056
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 224,
+    "mv_yi": 125.1649
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "工商银行",
+    "n_funds": 220,
+    "mv_yi": 65.1431
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 204,
+    "mv_yi": 42.4639
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "海尔智家",
+    "n_funds": 197,
+    "mv_yi": 103.4397
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "歌尔股份",
+    "n_funds": 194,
+    "mv_yi": 34.9639
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "兆易创新",
+    "n_funds": 186,
+    "mv_yi": 74.2315
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "伊利股份",
+    "n_funds": 181,
+    "mv_yi": 40.6114
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "农业银行",
+    "n_funds": 174,
+    "mv_yi": 55.1046
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "福耀玻璃",
+    "n_funds": 171,
+    "mv_yi": 110.235
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "恒玄科技",
+    "n_funds": 169,
+    "mv_yi": 67.5289
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "迈瑞医疗",
+    "n_funds": 166,
+    "mv_yi": 122.2256
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "东山精密",
+    "n_funds": 165,
+    "mv_yi": 31.8511
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "阿里巴巴-W",
+    "n_funds": 162,
+    "mv_yi": 112.6278
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "江苏银行",
+    "n_funds": 159,
+    "mv_yi": 60.8656
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "药明康德",
+    "n_funds": 157,
+    "mv_yi": 103.6539
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "金山办公",
+    "n_funds": 151,
+    "mv_yi": 47.8782
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "徐工机械",
+    "n_funds": 149,
+    "mv_yi": 55.399
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "宇通客车",
+    "n_funds": 144,
+    "mv_yi": 48.107
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "万华化学",
+    "n_funds": 143,
+    "mv_yi": 85.3841
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "中国海洋石油",
+    "n_funds": 141,
+    "mv_yi": 129.3451
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "建设银行",
+    "n_funds": 141,
+    "mv_yi": 42.9691
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 140,
+    "mv_yi": 101.6801
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "拓普集团",
+    "n_funds": 136,
+    "mv_yi": 49.8936
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "海康威视",
+    "n_funds": 128,
+    "mv_yi": 44.3007
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "上汽集团",
+    "n_funds": 127,
+    "mv_yi": 24.1736
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "东方电缆",
+    "n_funds": 125,
+    "mv_yi": 33.8927
+   }
+  ],
+  "2025Q1": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 1076,
+    "mv_yi": 544.8575
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 1022,
+    "mv_yi": 682.9622
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 744,
+    "mv_yi": 327.1738
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 660,
+    "mv_yi": 308.2499
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 628,
+    "mv_yi": 235.8817
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "中芯国际",
+    "n_funds": 627,
+    "mv_yi": 303.2874
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 625,
+    "mv_yi": 375.2602
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "比亚迪",
+    "n_funds": 595,
+    "mv_yi": 230.8744
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "阿里巴巴-W",
+    "n_funds": 576,
+    "mv_yi": 336.0102
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "格力电器",
+    "n_funds": 380,
+    "mv_yi": 121.126
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 369,
+    "mv_yi": 138.4102
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 361,
+    "mv_yi": 162.1524
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 356,
+    "mv_yi": 177.281
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "小米集团-W",
+    "n_funds": 315,
+    "mv_yi": 184.6907
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "五粮液",
+    "n_funds": 305,
+    "mv_yi": 200.4951
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 288,
+    "mv_yi": 156.1275
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "海光信息",
+    "n_funds": 287,
+    "mv_yi": 96.4267
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "长江电力",
+    "n_funds": 250,
+    "mv_yi": 54.4696
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "恒玄科技",
+    "n_funds": 227,
+    "mv_yi": 76.364
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "药明康德",
+    "n_funds": 226,
+    "mv_yi": 131.9864
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "寒武纪",
+    "n_funds": 221,
+    "mv_yi": 90.9813
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "海尔智家",
+    "n_funds": 214,
+    "mv_yi": 93.1004
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "九号公司-WD",
+    "n_funds": 209,
+    "mv_yi": 93.8101
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "工商银行",
+    "n_funds": 209,
+    "mv_yi": 40.4008
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 202,
+    "mv_yi": 45.7098
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 181,
+    "mv_yi": 62.4595
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "兆易创新",
+    "n_funds": 178,
+    "mv_yi": 90.9148
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "徐工机械",
+    "n_funds": 173,
+    "mv_yi": 65.0657
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 173,
+    "mv_yi": 84.1103
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "山西汾酒",
+    "n_funds": 168,
+    "mv_yi": 159.2055
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "泡泡玛特",
+    "n_funds": 168,
+    "mv_yi": 86.4027
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "泸州老窖",
+    "n_funds": 167,
+    "mv_yi": 134.0776
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "胜宏科技",
+    "n_funds": 161,
+    "mv_yi": 68.5426
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "美团-W",
+    "n_funds": 160,
+    "mv_yi": 95.1484
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "百济神州",
+    "n_funds": 158,
+    "mv_yi": 76.6148
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "三一重工",
+    "n_funds": 157,
+    "mv_yi": 61.7282
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "恒立液压",
+    "n_funds": 157,
+    "mv_yi": 38.6532
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "歌尔股份",
+    "n_funds": 144,
+    "mv_yi": 33.0208
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "蓝思科技",
+    "n_funds": 144,
+    "mv_yi": 35.5661
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "农业银行",
+    "n_funds": 143,
+    "mv_yi": 32.5764
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "江苏银行",
+    "n_funds": 143,
+    "mv_yi": 47.2816
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "中国电信",
+    "n_funds": 142,
+    "mv_yi": 37.9955
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "建设银行",
+    "n_funds": 140,
+    "mv_yi": 43.896
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "中国神华",
+    "n_funds": 136,
+    "mv_yi": 20.101
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "福耀玻璃",
+    "n_funds": 136,
+    "mv_yi": 84.6215
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "泽璟制药-U",
+    "n_funds": 131,
+    "mv_yi": 68.1758
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "拓普集团",
+    "n_funds": 130,
+    "mv_yi": 42.8508
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "伯特利",
+    "n_funds": 127,
+    "mv_yi": 36.1887
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "东山精密",
+    "n_funds": 126,
+    "mv_yi": 40.3702
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "豪威集团",
+    "n_funds": 126,
+    "mv_yi": 32.9662
+   }
+  ],
+  "2025Q2": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 998,
+    "mv_yi": 512.5399
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 906,
+    "mv_yi": 581.4074
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 659,
+    "mv_yi": 241.1463
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 578,
+    "mv_yi": 270.9506
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "中芯国际",
+    "n_funds": 561,
+    "mv_yi": 238.9831
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 497,
+    "mv_yi": 286.3319
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 438,
+    "mv_yi": 190.3926
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 418,
+    "mv_yi": 146.0228
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "阿里巴巴-W",
+    "n_funds": 389,
+    "mv_yi": 204.3195
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 377,
+    "mv_yi": 155.7015
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 367,
+    "mv_yi": 204.047
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "小米集团-W",
+    "n_funds": 346,
+    "mv_yi": 210.0961
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 340,
+    "mv_yi": 168.413
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 325,
+    "mv_yi": 158.701
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 324,
+    "mv_yi": 85.3209
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "格力电器",
+    "n_funds": 315,
+    "mv_yi": 94.1023
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 308,
+    "mv_yi": 157.0376
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "胜宏科技",
+    "n_funds": 305,
+    "mv_yi": 131.5496
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "长江电力",
+    "n_funds": 295,
+    "mv_yi": 66.6521
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "沪电股份",
+    "n_funds": 286,
+    "mv_yi": 108.3678
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "泡泡玛特",
+    "n_funds": 255,
+    "mv_yi": 153.598
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "江苏银行",
+    "n_funds": 247,
+    "mv_yi": 70.2425
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "信达生物",
+    "n_funds": 242,
+    "mv_yi": 115.0075
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "工商银行",
+    "n_funds": 226,
+    "mv_yi": 41.9444
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "兆易创新",
+    "n_funds": 223,
+    "mv_yi": 105.1225
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "药明康德",
+    "n_funds": 212,
+    "mv_yi": 108.7555
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "比亚迪",
+    "n_funds": 202,
+    "mv_yi": 67.8636
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "海光信息",
+    "n_funds": 201,
+    "mv_yi": 76.7714
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "海大集团",
+    "n_funds": 199,
+    "mv_yi": 109.5402
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "农业银行",
+    "n_funds": 197,
+    "mv_yi": 36.7532
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "建设银行",
+    "n_funds": 190,
+    "mv_yi": 53.4689
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "寒武纪",
+    "n_funds": 189,
+    "mv_yi": 87.2745
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "恺英网络",
+    "n_funds": 183,
+    "mv_yi": 42.2215
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "三生制药",
+    "n_funds": 176,
+    "mv_yi": 71.9009
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "海尔智家",
+    "n_funds": 171,
+    "mv_yi": 60.8639
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "山东黄金",
+    "n_funds": 166,
+    "mv_yi": 51.199
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "中国太保",
+    "n_funds": 162,
+    "mv_yi": 47.7276
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "东鹏饮料",
+    "n_funds": 159,
+    "mv_yi": 52.3233
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "顺丰控股",
+    "n_funds": 157,
+    "mv_yi": 100.7633
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "五粮液",
+    "n_funds": 154,
+    "mv_yi": 126.8095
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "百济神州",
+    "n_funds": 151,
+    "mv_yi": 85.8702
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "天孚通信",
+    "n_funds": 148,
+    "mv_yi": 50.5926
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "九号公司-WD",
+    "n_funds": 147,
+    "mv_yi": 66.5149
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 147,
+    "mv_yi": 79.1782
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "美团-W",
+    "n_funds": 142,
+    "mv_yi": 80.8444
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "分众传媒",
+    "n_funds": 141,
+    "mv_yi": 88.8875
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "东山精密",
+    "n_funds": 140,
+    "mv_yi": 54.4295
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "中航沈飞",
+    "n_funds": 135,
+    "mv_yi": 57.2776
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "泽璟制药-U",
+    "n_funds": 135,
+    "mv_yi": 61.5176
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "理想汽车-W",
+    "n_funds": 135,
+    "mv_yi": 65.9134
+   }
+  ],
+  "2025Q3": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 1185,
+    "mv_yi": 746.6595
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 900,
+    "mv_yi": 681.9065
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 838,
+    "mv_yi": 357.0559
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "阿里巴巴-W",
+    "n_funds": 741,
+    "mv_yi": 491.2152
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "中芯国际",
+    "n_funds": 729,
+    "mv_yi": 384.1378
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 728,
+    "mv_yi": 558.9614
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 711,
+    "mv_yi": 555.0933
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 577,
+    "mv_yi": 362.1534
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "寒武纪",
+    "n_funds": 544,
+    "mv_yi": 259.968
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "工业富联",
+    "n_funds": 523,
+    "mv_yi": 361.3834
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 450,
+    "mv_yi": 274.4437
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 400,
+    "mv_yi": 209.6563
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "兆易创新",
+    "n_funds": 375,
+    "mv_yi": 194.3445
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 358,
+    "mv_yi": 182.0683
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "药明康德",
+    "n_funds": 317,
+    "mv_yi": 183.0586
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "沪电股份",
+    "n_funds": 306,
+    "mv_yi": 219.4771
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 302,
+    "mv_yi": 164.0894
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "海光信息",
+    "n_funds": 300,
+    "mv_yi": 130.2852
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "亿纬锂能",
+    "n_funds": 291,
+    "mv_yi": 180.6025
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "华虹宏力",
+    "n_funds": 279,
+    "mv_yi": 127.9824
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 274,
+    "mv_yi": 165.5611
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 268,
+    "mv_yi": 90.313
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "洛阳钼业",
+    "n_funds": 254,
+    "mv_yi": 86.3702
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 242,
+    "mv_yi": 72.6815
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "胜宏科技",
+    "n_funds": 235,
+    "mv_yi": 137.8131
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "恺英网络",
+    "n_funds": 230,
+    "mv_yi": 63.6924
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "信达生物",
+    "n_funds": 224,
+    "mv_yi": 140.3694
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "世纪华通",
+    "n_funds": 221,
+    "mv_yi": 91.7352
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "生益科技",
+    "n_funds": 215,
+    "mv_yi": 91.6415
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "东山精密",
+    "n_funds": 195,
+    "mv_yi": 148.9059
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "华友钴业",
+    "n_funds": 194,
+    "mv_yi": 59.863
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 189,
+    "mv_yi": 97.4718
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "山东黄金",
+    "n_funds": 185,
+    "mv_yi": 72.9236
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "天孚通信",
+    "n_funds": 183,
+    "mv_yi": 133.7808
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 182,
+    "mv_yi": 123.7548
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "三生制药",
+    "n_funds": 178,
+    "mv_yi": 85.7579
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "巨人网络",
+    "n_funds": 172,
+    "mv_yi": 78.696
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "歌尔股份",
+    "n_funds": 162,
+    "mv_yi": 57.6502
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "徐工机械",
+    "n_funds": 159,
+    "mv_yi": 79.9334
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "牧原股份",
+    "n_funds": 157,
+    "mv_yi": 49.8283
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "泡泡玛特",
+    "n_funds": 155,
+    "mv_yi": 106.4251
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "科达利",
+    "n_funds": 154,
+    "mv_yi": 70.8782
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "中金黄金",
+    "n_funds": 144,
+    "mv_yi": 59.3379
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "海尔智家",
+    "n_funds": 144,
+    "mv_yi": 48.8561
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "东方电缆",
+    "n_funds": 143,
+    "mv_yi": 42.1894
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "三一重工",
+    "n_funds": 142,
+    "mv_yi": 56.5985
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "澜起科技",
+    "n_funds": 141,
+    "mv_yi": 95.1753
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "海大集团",
+    "n_funds": 139,
+    "mv_yi": 85.8298
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "小米集团-W",
+    "n_funds": 134,
+    "mv_yi": 102.2044
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "深南电路",
+    "n_funds": 133,
+    "mv_yi": 134.48
+   }
+  ],
+  "2025Q4": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 1102,
+    "mv_yi": 776.5684
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 1093,
+    "mv_yi": 638.769
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 944,
+    "mv_yi": 411.1929
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 890,
+    "mv_yi": 650.6739
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 817,
+    "mv_yi": 576.2036
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "寒武纪",
+    "n_funds": 601,
+    "mv_yi": 295.2161
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 591,
+    "mv_yi": 210.0373
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "中芯国际",
+    "n_funds": 555,
+    "mv_yi": 270.2755
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "阿里巴巴-W",
+    "n_funds": 552,
+    "mv_yi": 310.5382
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 498,
+    "mv_yi": 281.4291
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 452,
+    "mv_yi": 258.9628
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 412,
+    "mv_yi": 199.9665
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 373,
+    "mv_yi": 192.3861
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "洛阳钼业",
+    "n_funds": 350,
+    "mv_yi": 116.4135
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "生益科技",
+    "n_funds": 350,
+    "mv_yi": 151.5169
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 331,
+    "mv_yi": 174.1972
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "工业富联",
+    "n_funds": 330,
+    "mv_yi": 181.0131
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "东山精密",
+    "n_funds": 303,
+    "mv_yi": 247.8884
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "海光信息",
+    "n_funds": 295,
+    "mv_yi": 130.0783
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "兆易创新",
+    "n_funds": 284,
+    "mv_yi": 155.2001
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "沪电股份",
+    "n_funds": 283,
+    "mv_yi": 191.4183
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 277,
+    "mv_yi": 161.4536
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 266,
+    "mv_yi": 72.8981
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "药明康德",
+    "n_funds": 241,
+    "mv_yi": 143.2525
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "中国太保",
+    "n_funds": 228,
+    "mv_yi": 77.6395
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "天孚通信",
+    "n_funds": 224,
+    "mv_yi": 138.3945
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 213,
+    "mv_yi": 105.7602
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "胜宏科技",
+    "n_funds": 192,
+    "mv_yi": 126.5724
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "源杰科技",
+    "n_funds": 185,
+    "mv_yi": 80.2954
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 181,
+    "mv_yi": 75.0514
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "华友钴业",
+    "n_funds": 177,
+    "mv_yi": 58.6921
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "世纪华通",
+    "n_funds": 172,
+    "mv_yi": 48.781
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "牧原股份",
+    "n_funds": 171,
+    "mv_yi": 44.3568
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "思源电气",
+    "n_funds": 166,
+    "mv_yi": 72.5598
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "华虹宏力",
+    "n_funds": 160,
+    "mv_yi": 59.7207
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "英维克",
+    "n_funds": 160,
+    "mv_yi": 79.4647
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "云铝股份",
+    "n_funds": 159,
+    "mv_yi": 54.1548
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "恒立液压",
+    "n_funds": 159,
+    "mv_yi": 38.4556
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "海尔智家",
+    "n_funds": 159,
+    "mv_yi": 62.0539
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "巨人网络",
+    "n_funds": 158,
+    "mv_yi": 40.6691
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "深南电路",
+    "n_funds": 150,
+    "mv_yi": 121.7603
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "拓荆科技",
+    "n_funds": 148,
+    "mv_yi": 62.7287
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "恺英网络",
+    "n_funds": 145,
+    "mv_yi": 33.5344
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "徐工机械",
+    "n_funds": 140,
+    "mv_yi": 62.6194
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "信达生物",
+    "n_funds": 137,
+    "mv_yi": 87.0886
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "中矿资源",
+    "n_funds": 136,
+    "mv_yi": 64.639
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "山东黄金",
+    "n_funds": 135,
+    "mv_yi": 61.284
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "菲利华",
+    "n_funds": 134,
+    "mv_yi": 44.5222
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "万华化学",
+    "n_funds": 133,
+    "mv_yi": 54.0595
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "华鲁恒升",
+    "n_funds": 130,
+    "mv_yi": 46.1106
+   }
+  ],
+  "2026Q1": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 1257,
+    "mv_yi": 716.6775
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 1073,
+    "mv_yi": 732.8467
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 915,
+    "mv_yi": 673.2889
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 693,
+    "mv_yi": 258.4911
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 666,
+    "mv_yi": 298.5495
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 598,
+    "mv_yi": 335.599
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 418,
+    "mv_yi": 132.9515
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "阿里巴巴-W",
+    "n_funds": 383,
+    "mv_yi": 190.564
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "药明康德",
+    "n_funds": 382,
+    "mv_yi": 178.5516
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 348,
+    "mv_yi": 169.3735
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 345,
+    "mv_yi": 119.1468
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "东山精密",
+    "n_funds": 344,
+    "mv_yi": 264.4051
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 343,
+    "mv_yi": 148.1336
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "中国海洋石油",
+    "n_funds": 310,
+    "mv_yi": 159.9475
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "思源电气",
+    "n_funds": 305,
+    "mv_yi": 138.1175
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "海光信息",
+    "n_funds": 300,
+    "mv_yi": 131.441
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "寒武纪",
+    "n_funds": 289,
+    "mv_yi": 128.2562
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 286,
+    "mv_yi": 159.3632
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 266,
+    "mv_yi": 144.7056
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 266,
+    "mv_yi": 64.8715
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "天孚通信",
+    "n_funds": 262,
+    "mv_yi": 152.3386
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 257,
+    "mv_yi": 136.9869
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "中芯国际",
+    "n_funds": 253,
+    "mv_yi": 119.3211
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "源杰科技",
+    "n_funds": 236,
+    "mv_yi": 156.3326
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "沪电股份",
+    "n_funds": 234,
+    "mv_yi": 147.8594
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "万华化学",
+    "n_funds": 231,
+    "mv_yi": 78.8058
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "兆易创新",
+    "n_funds": 228,
+    "mv_yi": 132.4027
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "拓荆科技",
+    "n_funds": 218,
+    "mv_yi": 98.5133
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "潍柴动力",
+    "n_funds": 217,
+    "mv_yi": 65.3286
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "德业股份",
+    "n_funds": 205,
+    "mv_yi": 86.0209
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "亨通光电",
+    "n_funds": 202,
+    "mv_yi": 137.083
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "中国太保",
+    "n_funds": 194,
+    "mv_yi": 44.8684
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "华鲁恒升",
+    "n_funds": 186,
+    "mv_yi": 68.2814
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "盐湖股份",
+    "n_funds": 181,
+    "mv_yi": 55.227
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "杰瑞股份",
+    "n_funds": 177,
+    "mv_yi": 71.3413
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "芯原股份",
+    "n_funds": 166,
+    "mv_yi": 61.7943
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "长飞光纤光缆",
+    "n_funds": 162,
+    "mv_yi": 136.6965
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "赤峰黄金",
+    "n_funds": 160,
+    "mv_yi": 69.8172
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "工业富联",
+    "n_funds": 157,
+    "mv_yi": 76.8921
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "英科医疗",
+    "n_funds": 151,
+    "mv_yi": 53.078
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "中国海油",
+    "n_funds": 150,
+    "mv_yi": 50.7096
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "信达生物",
+    "n_funds": 143,
+    "mv_yi": 85.98
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "华虹宏力",
+    "n_funds": 143,
+    "mv_yi": 61.6192
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "宁波银行",
+    "n_funds": 142,
+    "mv_yi": 61.7032
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "工商银行",
+    "n_funds": 141,
+    "mv_yi": 29.4135
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "安井食品",
+    "n_funds": 139,
+    "mv_yi": 29.874
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "中国神华",
+    "n_funds": 138,
+    "mv_yi": 15.1741
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "长江电力",
+    "n_funds": 137,
+    "mv_yi": 12.5192
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "比亚迪",
+    "n_funds": 135,
+    "mv_yi": 61.0716
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "中国移动",
+    "n_funds": 132,
+    "mv_yi": 59.7931
+   }
+  ],
+  "2026Q2": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 1576,
+    "mv_yi": 1639.821
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 1123,
+    "mv_yi": 1348.6344
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 1080,
+    "mv_yi": 543.1015
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "寒武纪",
+    "n_funds": 747,
+    "mv_yi": 632.4862
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "中芯国际",
+    "n_funds": 742,
+    "mv_yi": 497.6319
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "兆易创新",
+    "n_funds": 704,
+    "mv_yi": 467.3359
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "东山精密",
+    "n_funds": 621,
+    "mv_yi": 667.573
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 562,
+    "mv_yi": 484.7615
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "海光信息",
+    "n_funds": 520,
+    "mv_yi": 313.2193
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 483,
+    "mv_yi": 373.184
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "药明康德",
+    "n_funds": 473,
+    "mv_yi": 239.3487
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "华虹宏力",
+    "n_funds": 464,
+    "mv_yi": 319.5791
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 451,
+    "mv_yi": 326.7358
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 440,
+    "mv_yi": 153.7982
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "三环集团",
+    "n_funds": 394,
+    "mv_yi": 331.8311
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "长川科技",
+    "n_funds": 385,
+    "mv_yi": 237.0128
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "源杰科技",
+    "n_funds": 375,
+    "mv_yi": 459.8492
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 371,
+    "mv_yi": 151.8548
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 365,
+    "mv_yi": 121.9496
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "生益科技",
+    "n_funds": 360,
+    "mv_yi": 303.7827
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 338,
+    "mv_yi": 123.4121
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "沪电股份",
+    "n_funds": 315,
+    "mv_yi": 311.1592
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "拓荆科技",
+    "n_funds": 291,
+    "mv_yi": 229.9464
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "中国巨石",
+    "n_funds": 290,
+    "mv_yi": 168.1703
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "阳光电源",
+    "n_funds": 271,
+    "mv_yi": 116.967
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "澜起科技",
+    "n_funds": 258,
+    "mv_yi": 103.733
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "中科飞测",
+    "n_funds": 241,
+    "mv_yi": 269.4167
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 241,
+    "mv_yi": 128.2716
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 240,
+    "mv_yi": 71.3696
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "杰瑞股份",
+    "n_funds": 239,
+    "mv_yi": 149.9242
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "深南电路",
+    "n_funds": 217,
+    "mv_yi": 208.6131
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "天孚通信",
+    "n_funds": 203,
+    "mv_yi": 159.703
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "芯原股份",
+    "n_funds": 201,
+    "mv_yi": 139.4115
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "华峰测控",
+    "n_funds": 190,
+    "mv_yi": 135.2358
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 189,
+    "mv_yi": 44.3598
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "中信证券",
+    "n_funds": 181,
+    "mv_yi": 32.1601
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "精测电子",
+    "n_funds": 175,
+    "mv_yi": 154.2608
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "亨通光电",
+    "n_funds": 171,
+    "mv_yi": 149.5096
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "华海清科",
+    "n_funds": 171,
+    "mv_yi": 210.239
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "工业富联",
+    "n_funds": 171,
+    "mv_yi": 223.7377
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "芯碁微装",
+    "n_funds": 161,
+    "mv_yi": 55.0891
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "万华化学",
+    "n_funds": 159,
+    "mv_yi": 49.7223
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "德业股份",
+    "n_funds": 159,
+    "mv_yi": 55.4717
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "芯源微",
+    "n_funds": 159,
+    "mv_yi": 159.8933
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "君正股份",
+    "n_funds": 157,
+    "mv_yi": 134.0408
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "京东方A",
+    "n_funds": 156,
+    "mv_yi": 60.4539
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "大族激光",
+    "n_funds": 153,
+    "mv_yi": 108.8896
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "建滔积层板",
+    "n_funds": 153,
+    "mv_yi": 140.5291
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "阿里巴巴-W",
+    "n_funds": 153,
+    "mv_yi": 63.0564
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "宁波银行",
+    "n_funds": 150,
+    "mv_yi": 61.6887
+   }
+  ],
+  "2026Q3": [
+   {
+    "rank": 1,
+    "code": "",
+    "name": "中际旭创",
+    "n_funds": 1379,
+    "mv_yi": 961.1922
+   },
+   {
+    "rank": 2,
+    "code": "",
+    "name": "新易盛",
+    "n_funds": 1070,
+    "mv_yi": 861.1493
+   },
+   {
+    "rank": 3,
+    "code": "",
+    "name": "药明康德",
+    "n_funds": 945,
+    "mv_yi": 452.3
+   },
+   {
+    "rank": 4,
+    "code": "",
+    "name": "宁德时代",
+    "n_funds": 858,
+    "mv_yi": 319.524
+   },
+   {
+    "rank": 5,
+    "code": "",
+    "name": "长鑫科技",
+    "n_funds": 734,
+    "mv_yi": 410.9141
+   },
+   {
+    "rank": 6,
+    "code": "",
+    "name": "寒武纪",
+    "n_funds": 610,
+    "mv_yi": 308.8124
+   },
+   {
+    "rank": 7,
+    "code": "",
+    "name": "紫金矿业",
+    "n_funds": 608,
+    "mv_yi": 218.2551
+   },
+   {
+    "rank": 8,
+    "code": "",
+    "name": "中芯国际",
+    "n_funds": 544,
+    "mv_yi": 228.8814
+   },
+   {
+    "rank": 9,
+    "code": "",
+    "name": "贵州茅台",
+    "n_funds": 508,
+    "mv_yi": 169.6373
+   },
+   {
+    "rank": 10,
+    "code": "",
+    "name": "北方华创",
+    "n_funds": 474,
+    "mv_yi": 266.7232
+   },
+   {
+    "rank": 11,
+    "code": "",
+    "name": "源杰科技",
+    "n_funds": 437,
+    "mv_yi": 360.8732
+   },
+   {
+    "rank": 12,
+    "code": "",
+    "name": "东山精密",
+    "n_funds": 431,
+    "mv_yi": 349.3848
+   },
+   {
+    "rank": 13,
+    "code": "",
+    "name": "腾讯控股",
+    "n_funds": 418,
+    "mv_yi": 172.4157
+   },
+   {
+    "rank": 14,
+    "code": "",
+    "name": "美的集团",
+    "n_funds": 388,
+    "mv_yi": 149.9868
+   },
+   {
+    "rank": 15,
+    "code": "",
+    "name": "生益科技",
+    "n_funds": 383,
+    "mv_yi": 202.2786
+   },
+   {
+    "rank": 16,
+    "code": "",
+    "name": "沪电股份",
+    "n_funds": 379,
+    "mv_yi": 268.3492
+   },
+   {
+    "rank": 17,
+    "code": "",
+    "name": "三环集团",
+    "n_funds": 377,
+    "mv_yi": 219.6952
+   },
+   {
+    "rank": 18,
+    "code": "",
+    "name": "中微公司",
+    "n_funds": 368,
+    "mv_yi": 199.6124
+   },
+   {
+    "rank": 19,
+    "code": "",
+    "name": "天孚通信",
+    "n_funds": 365,
+    "mv_yi": 238.2326
+   },
+   {
+    "rank": 20,
+    "code": "",
+    "name": "立讯精密",
+    "n_funds": 319,
+    "mv_yi": 197.3741
+   },
+   {
+    "rank": 21,
+    "code": "",
+    "name": "长川科技",
+    "n_funds": 306,
+    "mv_yi": 135.1987
+   },
+   {
+    "rank": 22,
+    "code": "",
+    "name": "深南电路",
+    "n_funds": 281,
+    "mv_yi": 199.3336
+   },
+   {
+    "rank": 23,
+    "code": "",
+    "name": "中国平安",
+    "n_funds": 278,
+    "mv_yi": 59.6671
+   },
+   {
+    "rank": 24,
+    "code": "",
+    "name": "拓荆科技",
+    "n_funds": 276,
+    "mv_yi": 176.3516
+   },
+   {
+    "rank": 25,
+    "code": "",
+    "name": "海光信息",
+    "n_funds": 267,
+    "mv_yi": 102.0876
+   },
+   {
+    "rank": 26,
+    "code": "",
+    "name": "招商银行",
+    "n_funds": 263,
+    "mv_yi": 61.6203
+   },
+   {
+    "rank": 27,
+    "code": "",
+    "name": "中科飞测",
+    "n_funds": 257,
+    "mv_yi": 181.2856
+   },
+   {
+    "rank": 28,
+    "code": "",
+    "name": "药明生物",
+    "n_funds": 236,
+    "mv_yi": 115.7169
+   },
+   {
+    "rank": 29,
+    "code": "",
+    "name": "宁波银行",
+    "n_funds": 220,
+    "mv_yi": 77.5448
+   },
+   {
+    "rank": 30,
+    "code": "",
+    "name": "华虹宏力",
+    "n_funds": 218,
+    "mv_yi": 101.7161
+   },
+   {
+    "rank": 31,
+    "code": "",
+    "name": "工商银行",
+    "n_funds": 209,
+    "mv_yi": 40.01
+   },
+   {
+    "rank": 32,
+    "code": "",
+    "name": "松发股份",
+    "n_funds": 200,
+    "mv_yi": 75.6947
+   },
+   {
+    "rank": 33,
+    "code": "",
+    "name": "阿里巴巴-W",
+    "n_funds": 200,
+    "mv_yi": 77.7022
+   },
+   {
+    "rank": 34,
+    "code": "",
+    "name": "兆易创新",
+    "n_funds": 193,
+    "mv_yi": 76.7807
+   },
+   {
+    "rank": 35,
+    "code": "",
+    "name": "睿创微纳",
+    "n_funds": 193,
+    "mv_yi": 78.3027
+   },
+   {
+    "rank": 36,
+    "code": "",
+    "name": "工业富联",
+    "n_funds": 192,
+    "mv_yi": 202.229
+   },
+   {
+    "rank": 37,
+    "code": "",
+    "name": "牧原股份",
+    "n_funds": 187,
+    "mv_yi": 58.2173
+   },
+   {
+    "rank": 38,
+    "code": "",
+    "name": "芯碁微装",
+    "n_funds": 187,
+    "mv_yi": 48.7481
+   },
+   {
+    "rank": 39,
+    "code": "",
+    "name": "凯莱英",
+    "n_funds": 184,
+    "mv_yi": 85.514
+   },
+   {
+    "rank": 40,
+    "code": "",
+    "name": "康龙化成",
+    "n_funds": 182,
+    "mv_yi": 93.1613
+   },
+   {
+    "rank": 41,
+    "code": "",
+    "name": "联讯仪器",
+    "n_funds": 178,
+    "mv_yi": 140.4678
+   },
+   {
+    "rank": 42,
+    "code": "",
+    "name": "澜起科技",
+    "n_funds": 170,
+    "mv_yi": 67.719
+   },
+   {
+    "rank": 43,
+    "code": "",
+    "name": "长江电力",
+    "n_funds": 167,
+    "mv_yi": 30.1899
+   },
+   {
+    "rank": 44,
+    "code": "",
+    "name": "恒瑞医药",
+    "n_funds": 163,
+    "mv_yi": 102.2109
+   },
+   {
+    "rank": 45,
+    "code": "",
+    "name": "芯源微",
+    "n_funds": 159,
+    "mv_yi": 133.8083
+   },
+   {
+    "rank": 46,
+    "code": "",
+    "name": "中国海洋石油",
+    "n_funds": 157,
+    "mv_yi": 74.2335
+   },
+   {
+    "rank": 47,
+    "code": "",
+    "name": "信达生物",
+    "n_funds": 154,
+    "mv_yi": 72.3144
+   },
+   {
+    "rank": 48,
+    "code": "",
+    "name": "建设银行",
+    "n_funds": 153,
+    "mv_yi": 34.598
+   },
+   {
+    "rank": 49,
+    "code": "",
+    "name": "格力电器",
+    "n_funds": 153,
+    "mv_yi": 40.3576
+   },
+   {
+    "rank": 50,
+    "code": "",
+    "name": "新宙邦",
+    "n_funds": 150,
+    "mv_yi": 43.0062
    }
   ]
  },

@@ -408,7 +408,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.28-r19.0"
+APP_VERSION = "2026.10.28-r19.1"
 
 
 def _fp_short() -> str:
@@ -1803,6 +1803,39 @@ if _P == "⑤ 数据与方法":
                     st.dataframe(_log, width="stretch", hide_index=True)
     except Exception as _e:
         _h(f'<div class="tiny">个股库尚未建立：{_e}。运行 tools/fund_pipeline.py --ingest 后显示覆盖。</div>')
+
+    # 个股库数据质量（R19）：断点、别名、ST、代码缺失——数据能用，但要知道它哪里不可比
+    try:
+        import sqlite3
+        if os.path.exists(inst.DB_PATH):
+            _c2 = sqlite3.connect(inst.DB_PATH)
+            _qm = pd.read_sql("SELECT quarter 季度, AVG(n_funds) 平均基金数,"
+                              " COUNT(*) 行数 FROM stock_holdings GROUP BY quarter"
+                              " ORDER BY quarter", _c2)
+            _c2.close()
+            _qm["环比%"] = (_qm["平均基金数"].pct_change() * 100).round(1)
+            _brk = _qm[_qm["季度"].isin(list(inst.REGIME_BREAK))]
+            _h('<div class="sec">个股库数据质量 · 口径断层与不可比项</div>')
+            st.dataframe(pd.DataFrame([
+                dict(项="样本池断层", 事实=f'2019Q2 均值 +34.1%、2020Q2 +39.4%（见下表）',
+                     处理="跨断层比较 Δ持股基金数会高估，页面与报告已标注"),
+                dict(项="A/H 双重主体", 事实="中国海油 / 中国海洋石油同期并存",
+                     处理="已合并 6 组别名（基金数取 max、市值求和）"),
+                dict(项="ST/退市", 事实="库内存在 ST、退市整理期主体",
+                     处理="按名称含「ST/退市」剔除，剔除数记录在 stock_flow.attrs"),
+                dict(项="股票代码", 事实="42/43 期无代码，只能按简称合并",
+                     处理="改名会断链；跨期匹配按名称，已知会低估 Δ"),
+                dict(项="港股", 事实="含腾讯、阿里、中芯国际等港股",
+                     处理="与 A 股同表，行业映射缺失时标「未映射」"),
+                dict(项="榜单截断", 事实="每期只取前 50 只",
+                     处理="「退出前50」≠清仓、「新进前50」≠新建仓"),
+            ]), width="stretch", hide_index=True)
+            _h('<div class="tiny">断层明细（平均持股基金数环比）：</div>')
+            st.dataframe(_qm[_qm["季度"].isin(["2018Q4","2019Q1","2019Q2","2019Q3",
+                                              "2020Q1","2020Q2","2020Q3","2021Q1"])],
+                         width="stretch", hide_index=True)
+    except Exception:
+        pass
 
     # 清洗剔除统计：基金级明细未就绪，如实标注
     _h('<div class="sec">样本清洗 · 剔除统计</div>')

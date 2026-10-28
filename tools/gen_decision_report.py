@@ -121,11 +121,31 @@ def main(quarter: str | None = None) -> str:
         else:
             sdf = stock.rename(columns={
                 "name": "股票名称", "n0": f"{q0} 持股基金数", "n1": f"{q} 持股基金数",
-                "d_n": "Δ持股基金数", "mv1": "持仓市值(亿)", "d_mv": "Δ持仓市值(亿)",
+                "d_n": "Δ持股基金数", "mv1": "持仓市值(亿)", "mv0": f"{q0} 持仓市值(亿)", "d_mv": "Δ持仓市值(亿)",
                 "state": "榜单状态"})
+            # 行业映射：现有 hot_stocks_top20 只覆盖 20 只，其余标未映射（不猜测）
+            try:
+                _pool = ca.load_stock_pool().set_index("股票名称")["行业"]
+                sdf["所属行业"] = sdf["股票名称"].map(_pool).fillna("未映射")
+            except Exception:
+                sdf["所属行业"] = "未映射"
+            _act = dec.set_index("行业")["建议动作"]
+            sdf["行业动作"] = sdf["所属行业"].map(_act).fillna("未映射")
+
+            def _bucket(r):
+                if r["行业动作"] == "超配" and r["Δ持股基金数"] > 0:
+                    return "买入候选（行业超配 + Δ基金数>0；未过IC，降级为观察仓）"
+                if r["行业动作"] == "回避" or r["Δ持股基金数"] <= -100:
+                    return "回避（行业回避或单季减仓≥100家）"
+                if r["行业动作"] == "未映射":
+                    return "观察（行业未映射，不能分档）"
+                return "观察"
+            sdf["分档结论"] = sdf.apply(_bucket, axis=1)
+            sdf = sdf.sort_values("Δ持股基金数", ascending=False)
         sdf.to_excel(xw, sheet_name="2 个股清单", index=False)
-        _style_sheet(xw.sheets["2 个股清单"], {"A": 26, "B": 16, "C": 16, "D": 14,
-                                               "E": 16, "F": 16, "G": 14}, freeze="A2")
+        _style_sheet(xw.sheets["2 个股清单"], {"A": 14, "B": 11, "C": 11, "D": 11,
+                                               "E": 11, "F": 12, "G": 12,
+                                               "H": 12, "I": 12, "J": 11, "K": 40}, freeze="A2")
 
         # ---------- 3 六项验证 ----------
         rows = []
