@@ -43,7 +43,8 @@ if _SRC_DIR not in sys.path:
 # ---------------------------------------------------------------------------
 _LOCAL_MODULES = ("config", "data_loader", "factor_engine", "backtest", "research",
                   "research3", "research4", "rigor", "signal_generator",
-                  "insights", "guide", "factor_docs", "metric_doc", "attribution")
+                  "insights", "guide", "factor_docs", "metric_doc", "attribution",
+                  "change_analysis", "change_page")
 
 
 def _reload_local_modules_if_changed() -> None:
@@ -89,6 +90,8 @@ import guide                   # noqa: E402  投资机会解读/操作指南/更
 import insights as ins         # noqa: E402
 import metric_doc as md        # noqa: E402  指标释义：定义/经济内容/投资含义/读法
 import attribution as atr      # noqa: E402  配置变化归因（主动/被动）与压力测算
+import change_analysis as ca   # noqa: E402  环比变化：Δ超配Z/四象限/IC/多空/成本
+import change_page as cp       # noqa: E402  环比变化页渲染（结论先行）
 import signal_generator as sg  # noqa: E402
 
 
@@ -265,6 +268,8 @@ st.markdown(f"""
   .opp-mini {{ font-size:10.5px; line-height:1.6; color:#37485C; }}
   /* 指标释义卡 / 拆解链 / 四象限（src/metric_doc.py） */
   {md.css(C.COLOR)}
+  /* 环比变化页（src/change_page.py） */
+  {cp.css(C.COLOR)}
 </style>
 """, unsafe_allow_html=True)
 
@@ -402,7 +407,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.28-r17.0"
+APP_VERSION = "2026.10.28-r18.0"
 
 
 def _fp_short() -> str:
@@ -447,7 +452,10 @@ with h1:
                 '<span class="tag" style="background:#EAF1FB;color:#1F6FEB">'
                 '数据源：Wind</span>'
                 '<span class="tag" style="background:#F2F5F8;color:#6B7A8C">'
-                f'31 行业 · {len(QUARTERS)} 季度 · 截至 {LATEST}</span></div>')
+                f'31 行业 · 样本 {len(QUARTERS)} 季（主口径有效 '
+                f'{int(IND["F2_超配Zscore"].dropna(how="all").shape[0])} 季）· 截至 {LATEST}</span>'
+                '<span class="tag" style="background:#F2F5F8;color:#6B7A8C">'
+                '统计结论使用长历史口径</span></div>')
 with h2:
     pct_label = st.radio("分位口径", ["扩窗（无前视）", "全样本"],
                          index=0, horizontal=True, key="pct_mode",
@@ -467,7 +475,7 @@ with h3:
 # ============================================================================
 # 页面切换
 # ============================================================================
-PAGES = ["① 总览", "② 行业拥挤度", "③ 集中度与结构",
+PAGES = ["① 总览", "①b 环比变化", "② 行业拥挤度", "③ 集中度与结构",
          "④ 因子与检验", "⑤ 数据与方法"]
 # 深链：?p=2 直达第 2 页（便于分享与截图走查）；非法值静默忽略，不影响默认行为。
 try:
@@ -533,7 +541,11 @@ if _P == "① 总览":
     _fci_s = MKT["FCI_因子拥挤指数"].dropna()
     _fci_last = float(_fci_s.iloc[-1]) if len(_fci_s) else np.nan
 
-    _h(f'<div class="sec">一屏速览 · {LATEST} 主动权益基金拥挤度状态</div>')
+    # 第一屏必须是「变化结论」：谁在撤、谁在进、对持仓意味着什么。
+    # 水平值（HHI/CR/FCI）整体下移，先回答「这一期相对上一期发生了什么」。
+    cp.render_overview(B, IND, MKT, LATEST, C.COLOR)
+
+    _h(f'<div class="sec">水平值 · {LATEST} 主动权益基金拥挤度状态（看完变化再看位置）</div>')
     _h(f"""<div class="kpis">
       <div class="kpi"><div class="k">数据季度</div><div class="v">{LATEST}</div>
         <div class="s">31 行业 · {len(QUARTERS)} 季度 · Wind</div></div>
@@ -2277,13 +2289,23 @@ if _P == "⑤ 数据与方法":
         "沪深300 天然只覆盖 26–28 个申万一级行业，未覆盖行业的基准权重按 0 处理——"
         "该行业在沪深300中确实无权重，其超配比例 = 配置比例，语义正确。",
         "<b>日度行业成交额为部分覆盖。</b>见上方覆盖率清单，缺失不填补。",
-        "<b>拥挤度是风险描述指标，不是择时或做空信号。</b>高拥挤 ≠ 必然下跌。",
+        "<b>拥挤度是风险描述指标，可交易性取决于「变化方向 + 成交额背离」。</b>"
+        "Δ超配Z 多空在 2023Q1–2026Q2 段 NW t=2.69（显著）、2019Q3–2022Q4 段 t=0.66（不显著）："
+        "只在近三年样本内使用，每季复核，连续两季多空价差为负即暂停。高拥挤本身不等于卖出。",
     ]:
         _h(f'<div class="alert" style="border-color:{C.COLOR["level_偏拥挤"]}">'
                     f'{_t}</div>')
     # 操作指南 + 数据持续更新指南
     _h(guide.render_operation_guide())
     _h(guide.render_update_guide())
+    st.stop()
+
+
+# ============================================================================
+# 页面 ①b 环比变化（结论先行：谁在撤、谁在进、什么情况下判断作废）
+# ============================================================================
+if _P == "①b 环比变化":
+    cp.render(B, IND, MKT, LATEST, C.COLOR)
     st.stop()
 
 

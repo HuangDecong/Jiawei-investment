@@ -347,6 +347,6 @@ MARKET_STATE_RULES = [
     ("极高集中", lambda m: m["HHI"] > SIGNAL_HHI_EXTREME and m["CR3"] > SIGNAL_CR3_HIGH),
     ("高度集中", lambda m: m["CR3"] > SIGNAL_CR3_HIGH or m["HHI"] > SIGNAL_HHI_EXTREME),
     ("结构性风险偏高", lambda m: m["n_extreme"] >= SIGNAL_N_EXTREME),
-    ("分化明显", lambda m: m["n_under"] >= SIGNAL_N_UNDER),
+    ("低配面过半", lambda m: m["n_under"] >= SIGNAL_N_UNDER),
     ("相对均衡", lambda m: True),
 ]

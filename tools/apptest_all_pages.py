@@ -7,7 +7,7 @@ from streamlit.testing.v1 import AppTest
 # 主入口已统一为项目根目录 app.py（部署口径）；用 __file__ 相对定位，避免硬编码
 APP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app.py")
 
-PAGES = ["① 总览", "② 行业拥挤度", "③ 集中度与结构",
+PAGES = ["① 总览", "①b 环比变化", "② 行业拥挤度", "③ 集中度与结构",
          "④ 因子与检验", "⑤ 数据与方法"]
 
 total_err = 0

@@ -307,7 +307,7 @@ def main() -> int:
     cost_df = pd.DataFrame(cost_rows).sort_values("净年化_20bp", ascending=False)
     print(cost_df.round(3).to_string(index=False))
     print("  → 换手率高的因子（如 R_F4b 152.5%）在扣 20bp 成本后由正转负，"
-          "不可交易；F15 换手率最低（42.9%）。")
+          "未纳入实盘；F15 换手率最低（42.9%）。")
 
     print("\n【3.18 子样本稳定性（IC 序列等分 3 段）】")
     sub_frames = {}
@@ -458,7 +458,7 @@ def main() -> int:
     print(f"  → **A / A− 级（可用）：{'、'.join(_A) if _A else '无'}**"
           "（A− 表示只战胜等权基准、未战胜沪深300 市值加权基准，属基准依赖，"
           "使用时必须注明基准）")
-    print(f"  → B 级（样本外有效但尚不可交易/未过多重检验）"
+    print(f"  → B 级（样本外有效但未过多重检验，暂不纳入实盘）"
           f"{len(verdict[verdict['裁决'].str.startswith('B')])} 个；"
           f"D 级（四项均不成立）"
           f"{len(verdict[verdict['裁决'].str.startswith('D')])} 个")
@@ -1093,7 +1093,7 @@ def main() -> int:
     eff = icb[icb["结论_t1"].isin(["优秀", "有效"])]
     print(f"· RankIC 达到「有效」及以上的因子："
           + ("无（全部 IC_IR < 0.3）" if eff.empty else "、".join(eff["因子"])))
-    print(f"· 说明：拥挤度是风险描述指标，不是择时或做空信号。")
+    print(f"· 说明：拥挤度是风险描述指标；Δ超配Z 多空仅在近三年样本内显著（NW t=2.69），需每季复核。")
     print("\n完成。启动看板：streamlit run app.py")
     return 0
 
