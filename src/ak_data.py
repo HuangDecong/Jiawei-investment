@@ -81,7 +81,9 @@ def coverage_table() -> pd.DataFrame:
 
 def latest_quarters() -> tuple[str, str] | None:
     if not available():
-        return None
+        # 无数据库时用聚合面板的期次（部署环境就是这样，否则会退回 Wind 50 只样本）
+        qs = latest_quarters_all()
+        return (qs[-1], qs[-2]) if len(qs) >= 2 else None
     con = _con()
     try:
         qs = [r[0] for r in con.execute(

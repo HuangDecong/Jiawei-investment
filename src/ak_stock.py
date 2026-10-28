@@ -53,14 +53,19 @@ def conn_ok() -> bool:
 
 def quarters() -> list[str]:
     con = _con()
-    if con is None:
-        return []
-    try:
-        qs = [r[0] for r in con.execute(
-            "SELECT DISTINCT quarter FROM fund_holdings ORDER BY quarter")]
-    except Exception:
-        qs = []
-    con.close()
+    qs = []
+    if con is not None:
+        try:
+            qs = [r[0] for r in con.execute(
+                "SELECT DISTINCT quarter FROM fund_holdings ORDER BY quarter")]
+        except Exception:
+            qs = []
+        con.close()
+    if not qs:
+        # 无数据库：用个股流向快照里的两期，保证 comparable_pair 仍能给出同口径对照
+        f = _flow_fallback()
+        if not f.empty and {"q0", "q1"} <= set(f.columns):
+            qs = sorted({str(f["q0"].iloc[0]), str(f["q1"].iloc[0])})
     return qs
 
 
@@ -91,6 +96,21 @@ def comparable_pair(q: str, qs: list[str] | None = None) -> tuple[str, str] | No
     # 否则取最近的一个同年同季（向前找）
     older = sorted([x for x in cand if x < q])
     return (q, older[-1]) if older else None
+
+
+FLOW_FALLBACK = os.path.join(ROOT, "data", "derived", "stock_flow_latest.csv")
+_FLOW = None
+
+
+def _flow_fallback() -> pd.DataFrame:
+    """无数据库时的个股层降级数据（最近一组同披露口径两期，约 3000–4000 行）。"""
+    global _FLOW
+    if _FLOW is None:
+        if os.path.exists(FLOW_FALLBACK):
+            _FLOW = pd.read_csv(FLOW_FALLBACK, dtype={"stock_code": str})
+        else:
+            _FLOW = pd.DataFrame()
+    return _FLOW
 
 
 def snapshot(q: str) -> pd.DataFrame:
@@ -148,6 +168,19 @@ def stock_flow(q: str, q0: str, min_funds: int = 1) -> pd.DataFrame:
     """
     a, b = snapshot(q), snapshot(q0)
     if a.empty or b.empty:
+        # 部署环境没有 504MB 数据库：回退到随仓库分发的个股流向快照
+        f = _flow_fallback()
+        if not f.empty and {"q1", "q0"} <= set(f.columns) \
+                and str(f["q1"].iloc[0]) == q and str(f["q0"].iloc[0]) == q0:
+            cols = ["stock_code", "stock_name", "industry", "n0", "n1", "d_n",
+                    "share", "d_share_pp", "mv0", "mv1", "mv1_yi", "d_mv_yi",
+                    "shares0", "shares1", "d_shares", "state"]
+            out = f[[c for c in cols if c in f.columns]].copy()
+            out.attrs["q"], out.attrs["q0"] = q, q0
+            out.attrs["n_funds"] = (int(f["n_funds0"].iloc[0]), int(f["n_funds1"].iloc[0])) \
+                if {"n_funds0", "n_funds1"} <= set(f.columns) else (0, 0)
+            out.attrs["disclosure"] = ("top10", "top10")
+            return out
         return pd.DataFrame()
     n1f, n0f = sample_funds(q), sample_funds(q0)
     m = a.merge(b, on="stock_code", how="outer", suffixes=("", "_0"))

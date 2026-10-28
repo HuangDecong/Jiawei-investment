@@ -43,6 +43,28 @@ def main():
     print(f"期次 {d['quarter'].nunique()}、基金 {d['code'].nunique()}、"
           f"行业 {d['industry'].nunique()}")
 
+    # ---- 个股层：最近一组「同披露口径」两期的流向，供无数据库环境展示榜单 ----
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    import ak_stock as aks
+    qs = sorted(d["quarter"].unique().tolist())
+    pair = None
+    for q in reversed(qs):
+        pair = aks.comparable_pair(q, qs)
+        if pair:
+            break
+    if pair:
+        f = aks.stock_flow(*pair)
+        if not f.empty:
+            f = f.copy()
+            f["q1"], f["q0"] = pair[0], pair[1]
+            f["n_funds1"], f["n_funds0"] = f.attrs.get("n_funds", (0, 0))[1], \
+                f.attrs.get("n_funds", (0, 0))[0]
+            out2 = os.path.join(ROOT, "data", "derived", "stock_flow_latest.csv")
+            f.to_csv(out2, index=False, encoding="utf-8")
+            print(f"个股流向 {len(f):,} 行（{pair[1]} → {pair[0]}）→ {out2}"
+                  f"（{os.path.getsize(out2) / 1e6:.2f} MB）")
+
 
 if __name__ == "__main__":
     main()
