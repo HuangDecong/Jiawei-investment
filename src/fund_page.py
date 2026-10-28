@@ -78,12 +78,10 @@ def _peer(q: str) -> pd.Series:
 
 @st.cache_data(show_spinner=False)
 def _top_holdings(code: str, q: str) -> pd.DataFrame:
-    with cn._con() as con:
-        d = pd.read_sql(
-            "SELECT stock_code, stock_name, industry, weight_pct, shares, mv, is_hk "
-            "FROM fund_holdings WHERE code=? AND quarter=? "
-            "ORDER BY weight_pct DESC LIMIT 12", con, params=(code, q))
+    """走 canon，自动在「查库」与「读快照」之间切换。"""
+    d = cn.fund_holdings(code, q, limit=12)
     if not d.empty:
+        d = d.copy()
         d["mv_yi"] = d["mv"] / 1e4
     return d
 

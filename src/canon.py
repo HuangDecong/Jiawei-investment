@@ -656,6 +656,41 @@ def stock_flow(q0: str, q: str) -> pd.DataFrame:
     return j
 
 
+@lru_cache(maxsize=4)
+def _fb_top10_stock() -> pd.DataFrame:
+    p = os.path.join(DERIVED, "canon_fund_top10.csv.gz")
+    if not os.path.exists(p):
+        return pd.DataFrame()
+    d = pd.read_csv(p, compression="gzip",
+                    dtype={"code": str, "stock_code": str})
+    d["code"] = d["code"].astype(str).str.zfill(6)
+    return d
+
+
+def fund_holdings(code: str, q: str, limit: int = 12) -> pd.DataFrame:
+    """单只基金某期的前 N 大持仓（含股票名、行业、占净值比、持股数、市值）。
+
+    线上没有 SQLite 时读 `canon_fund_top10.csv.gz` 快照（只含最近两个全持仓期，
+    正好够「单只基金」页用）。这也是唯一一处需要股票级明细的页面。
+    """
+    if available():
+        try:
+            with _con() as con:
+                d = pd.read_sql(
+                    "SELECT stock_code, stock_name, industry, weight_pct, shares, mv, is_hk "
+                    "FROM fund_holdings WHERE code=? AND quarter=? "
+                    "ORDER BY weight_pct DESC LIMIT ?", con,
+                    params=(code, q, limit))
+            return d
+        except Exception:
+            return pd.DataFrame()
+    d = _fb_top10_stock()
+    if d.empty:
+        return pd.DataFrame()
+    d = d[(d["code"] == code) & (d["quarter"] == q)]
+    return d.sort_values("weight_pct", ascending=False).head(limit).reset_index(drop=True)
+
+
 # ---------------------------------------------------------------------------
 # 自检：口径差异有多大（改口径前必须看这个数）
 # ---------------------------------------------------------------------------

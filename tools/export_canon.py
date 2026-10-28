@@ -99,6 +99,21 @@ def main() -> None:
     except Exception as e:
         print("档案导出失败：", e)
 
+    # 6) 单只基金页需要：最近两个全持仓期的前 12 大持仓（股票级）
+    last2 = fq[-2:]
+    ph2 = ",".join("?" * len(last2))
+    d6 = pd.read_sql(f"""
+        SELECT code, quarter, stock_code, stock_name, industry,
+               weight_pct, shares, mv, is_hk
+        FROM (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY code, quarter
+                                         ORDER BY weight_pct DESC) rn
+            FROM fund_holdings WHERE quarter IN ({ph2})
+        )
+        WHERE rn <= 12
+    """, con, params=last2, dtype={"code": str, "stock_code": str})
+    _write(d6, "canon_fund_top10.csv.gz")
+
     con.close()
     tot = sum(os.path.getsize(os.path.join(OUT, f))
               for f in os.listdir(OUT) if f.startswith("canon_"))
