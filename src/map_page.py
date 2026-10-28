@@ -115,7 +115,7 @@ def render(h) -> None:
     fig.add_trace(go.Scatter(
         x=d["配置%"], y=d["历史分位"], mode="markers+text", text=lab,
         textposition="top center", textfont=dict(size=9, color=C.COLOR["text_dim"]),
-        marker=dict(size=9 + d["较中位pp"].abs() * 2.2,
+        marker=dict(size=np.minimum(9 + d["较中位pp"].abs() * 2.0, 30),
                     color=[C.COLOR["up"] if v > 0 else C.COLOR["down"]
                            for v in d["较中位pp"]],
                     opacity=0.72, line=dict(width=0.8, color="#FFFFFF")),
@@ -167,7 +167,7 @@ def render(h) -> None:
                               hovertemplate="%{x}　前三大 %{y:.1f}%<extra></extra>"),
                    secondary_y=True)
     fig2.update_yaxes(title_text="HHI（0.05 以下＝分散）", secondary_y=False)
-    fig2.update_yaxes(title_text="前三大行业合计 %", secondary_y=True)
+    fig2.update_yaxes(title_text="前三大%", secondary_y=True)
     # 只标半年报期的刻度：11 个季度全标会挤成一片，而这页本来就是半年频
     _tk = [x for x in hhi.index if str(x).endswith("Q2")]
     fig2.update_xaxes(tickangle=-45, tickmode="array", tickvals=_tk, ticktext=_tk)
