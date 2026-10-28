@@ -79,7 +79,26 @@ DATA_STATUS = [
 
 
 def data_status() -> pd.DataFrame:
-    return pd.DataFrame(DATA_STATUS)
+    """数据源状态。能算的一律现算，避免文档写着「7 期」而库里其实是 15 期。"""
+    rows = [dict(x) for x in DATA_STATUS]
+    try:
+        import ak_data as akd
+        qs = akd.latest_quarters_all()
+        if qs:
+            con = akd._con()
+            n_fund = con.execute("SELECT COUNT(DISTINCT code) FROM fund_holdings").fetchone()[0]
+            n_row = con.execute("SELECT COUNT(*) FROM fund_holdings").fetchone()[0]
+            con.close()
+            for r in rows:
+                if r["key"] == "fund_stock_detail":
+                    r["have"] = (f"东方财富完整持仓明细：{n_fund:,} 只基金 × {len(qs)} 期"
+                                 f"（{qs[0]}–{qs[-1]}），{n_row:,} 行")
+                elif r["key"] == "full_holding":
+                    r["have"] = (f"半年报/年报期全持仓（{sum(1 for q in qs if q[-1] in '24')} 期），"
+                                 f"用于校准前十大口径")
+    except Exception:
+        pass
+    return pd.DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -499,6 +518,33 @@ def _conflict_note(active_pp, add_share, q0_, q_) -> str:
         return (f"；<b>口径冲突</b>：2026Q3 主动 {active_pp:+.2f}pp，"
                 f"但样本基金 {q0_}→{q_} 有 {add_share:.0f}% 加仓，需复核")
     return ""
+
+
+def decision_brief(b, ind: dict, q: str | None = None,
+                   disp_real=None) -> dict:
+    """页面与报告共用的「本期决策表」构建器——避免两处各算一遍再对不上。
+
+    返回 dict：t（本期变化表）、t0（上期）、active（主动加减仓）、
+                dec（决策表）、q、q0、disp（真实分歧度，可能为 None）
+    """
+    import change_analysis as ca
+    import ak_data as akd
+    q = q or b.latest
+    qs = list(b.quarters)
+    q0 = qs[qs.index(q) - 1]
+    t = ca.credibility_gate(b, ind, ca.delta_table(b, ind, q),
+                            b.market.get("F8_样本基金数"))
+    t0 = ca.credibility_gate(b, ind, ca.delta_table(b, ind, q0),
+                             b.market.get("F8_样本基金数"))
+    active = active_change(b, ind, q)
+    if disp_real is None:
+        try:
+            dp = akd.latest_quarters()
+            disp_real = akd.dispersion_ak(*dp) if dp else None
+        except Exception:
+            disp_real = None
+    dec = decision_table(t, active, t0=t0, disp=disp_real)
+    return dict(t=t, t0=t0, active=active, dec=dec, q=q, q0=q0, disp=disp_real)
 
 
 def position_advice_from_dispersion(median_div: float,

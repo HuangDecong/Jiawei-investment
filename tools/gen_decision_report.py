@@ -322,6 +322,16 @@ def main(quarter: str | None = None) -> str:
         except Exception as _e:
             print("日度暴露表写入失败：", _e)
 
+        # ---------- 10 自检与证伪 ----------
+        try:
+            _aud = os.path.join(ROOT, "报告", "自检表.csv")
+            if os.path.exists(_aud):
+                pd.read_csv(_aud).to_excel(xw, sheet_name="10 自检与证伪", index=False)
+                _style_sheet(xw.sheets["10 自检与证伪"],
+                             {"A": 9, "B": 40, "C": 16, "D": 70}, freeze="A2")
+        except Exception as _e:
+            print("自检表写入失败：", _e)
+
         # ---------- 7 数据源交叉验证 ----------
         try:
             cv = akd.cross_validate_wind(disp_real.attrs.get("q", q))

@@ -142,7 +142,7 @@ def build_triptych(t: pd.DataFrame, t0: pd.DataFrame, mv: dict, n_up: int,
                 f'<b>方向</b>：高位加仓（最后一棒风险）——共识最厚时，预期差最小。',
             ],
             invalid=("若下季任一行业主动项转负且分位跌破 50%，该行业共识判断作废；"
-                     "若三行业合计配置仍 &lt;2%，则始终不构成可执行仓位。"),
+                     "若三行业合计配置仍低于 2%，则始终不构成可执行仓位。"),
         ))
     else:
         cards.append(dict(kind="cons", color=up, judgment="观察｜本期无「共识」行业",
@@ -188,7 +188,7 @@ def build_triptych(t: pd.DataFrame, t0: pd.DataFrame, mv: dict, n_up: int,
                 f'{int(_hot.get("剔除主题基金", 0))} 只）。'
                 f'<b>该指标 IC 仅 +0.05、p=0.36，只能描述「谁在买」，不能预测次季收益。</b>',
             ],
-            invalid=("若下季该行业加仓占比离开 40–60% 区间且分歧度 &lt;0.4，"
+            invalid=("若下季该行业加仓占比离开 40–60% 区间且分歧度小于 0.4，"
                      "则「对撞」判读作废（转为共识或撤离）；"
                      "若样本基金数降到 200 以下，本条因样本不足作废。"),
         ))
@@ -263,7 +263,7 @@ def build_conclusions(t: pd.DataFrame, t0: pd.DataFrame, mv: dict,
         tag="按 Δ超配Z 排序",
         rows=[
             f'<b>数字</b>：Δ超配Z <b style="color:{up}">{add["dz"]:+.2f}σ</b>'
-            f'（可交易行业中最高：剔除配置 &lt; {mv["min_alloc"]:.1f}% 的行业，且要求 Δ配置同号），'
+            f'（可交易行业中最高：剔除配置低于 {mv["min_alloc"]:.1f}% 的行业，且要求 Δ配置同号），'
             f'配置 {_fmt(add["alloc0"])}% → <b>{_fmt(add["alloc"])}%</b>'
             f'（{add["d_alloc"]:+.2f}pp），当前 Z {_fmt(add["z"])}、分位 {_fmt(add["pct"], "{:.0f}%")}。',
             f'<b>上期</b>：{q0} 的 ΔZ 为 {_sgn(a_prev_dz)}σ、等级 {add["lvl0"]}；'
@@ -281,7 +281,7 @@ def build_conclusions(t: pd.DataFrame, t0: pd.DataFrame, mv: dict,
         tag="按 Δ超配Z 排序",
         rows=[
             f'<b>数字</b>：Δ超配Z <b style="color:{dn}">{cut["dz"]:+.2f}σ</b>'
-            f'（可交易行业中最低：剔除配置 &lt; {mv["min_alloc"]:.1f}% 的行业，且要求 Δ配置同号），配置 {_fmt(cut["alloc0"])}% → <b>{_fmt(cut["alloc"])}%</b>'
+            f'（可交易行业中最低：剔除配置低于 {mv["min_alloc"]:.1f}% 的行业，且要求 Δ配置同号），配置 {_fmt(cut["alloc0"])}% → <b>{_fmt(cut["alloc"])}%</b>'
             f'（{cut["d_alloc"]:+.2f}pp），当前 Z {_fmt(cut["z"])}、分位 {_fmt(cut["pct"], "{:.0f}%")}。',
             f'<b>上期</b>：{q0} 的 ΔZ 为 {_sgn(c_prev_dz)}σ、等级 {cut["lvl0"]}；'
             f'本期等级 {cut["lvl"]}。',
@@ -548,12 +548,15 @@ def render_overview(b, ind, mkt, latest: str, colors: dict, compact: bool = Fals
 
 
 def render(b, ind, mkt, latest: str, colors: dict):
-    """整页：结论区 → 变化榜 → 四象限 → 迁移 → 个股 → 证据 → 体检。"""
+    """本页只讲「本期变化」：变化榜 → 四象限 → 等级迁移 → 基金行为 → 个股 → 榜单。
+
+    首页（render_overview）已经给过结论与三块卡，这里不再重复渲染一遍——
+    重复会把「结论」和「证据」混在一起，也让页面长度翻倍。
+    """
     quarters, t, t0, mv, n_up = _context(b, ind, mkt, latest)
     q0 = t.attrs.get("q0")
     e_add = t.loc["医药生物"]
     e_elec = t.loc["电子"]
-    render_overview(b, ind, mkt, latest, colors)
 
     # ================= 2. 变化榜 =================
     h('<div class="sec">② 变化榜 · 31 行业按 Δ超配Z 排序（红＝加仓，绿＝减仓）</div>')
@@ -635,8 +638,8 @@ def render(b, ind, mkt, latest: str, colors: dict):
         h(f'<div class="cg-note">数据源：<b>{_src_name}</b>，单行业有效样本最多 <b>{_n} 只</b>；'
           f'季报期只披露前十大、半年报披露全部（东财截断 100 只），'
           f'已按每只基金每期覆盖率归一化；「不变」包含「两期都不在前十」。'
-          f'判读规则事前固定：加仓占比 ≥70% 且分歧度 &lt;0.4＝共识形成；'
-          f'40–60% 且 &gt;0.7＝多空对撞；≤30%＝系统性撤离。'
+          f'判读规则事前固定：加仓占比 ≥70% 且分歧度小于 0.4＝共识形成；'
+          f'40–60% 且大于 0.7＝多空对撞；≤30%＝系统性撤离。'
           f'<b>口径（关键）</b>：本表区间 <b>{_dr.attrs.get("q0","—")} → {_dr.attrs.get("q","—")}</b>。'
           f'半年报/年报期用 Wind 全持仓行业表（覆盖约 88% 净值），'
           f'季报期只能由前十大重仓推导（覆盖约 60%），'
@@ -711,95 +714,11 @@ def render(b, ind, mkt, latest: str, colors: dict):
             _ty = "全持仓（半年报）" if _q[-1] in ("2", "4") else "前十大（季报）"
             h(f'<div class="cg-note"><b>口径</b>：数据源东方财富（AKShare）完整持仓明细，'
               f'{_q0} → {_q} 均为 <b>{_ty}</b>，样本基金 '
-              f'{_nf[1]} 只；已过滤两期任一期持股基金数 &lt;10 的小票（Δ 噪音极大）。'
+              f'{_nf[1]} 只；已过滤两期任一期持股基金数少于 10 只的小票（Δ 噪音极大）。'
               f'机构持仓占比 = 持有该股的样本基金数 ÷ 当期样本基金总数，'
               f'已消除样本扩容带来的水位抬升。</div>')
 
-    # ================= 6. 证据面板 =================
-    h('<div class="sec">⑥ 证据面板 · 为什么用 ΔZ 而不是 Δ配置pp</div>')
-    ic = ca.ic_compare(b, ind, start="2024Q1")
-    show = ic[ic["区间"] == "2024Q1 起"].copy()
-    show = show[["口径", "n", "RankIC", "IC_IR", "t_NW", "p_NW", "胜率", "判定"]]
-    show.columns = ["口径", "n", "RankIC", "IC_IR", "t(NW)", "p", "胜率%", "判定"]
-    st.dataframe(show, width="stretch", hide_index=True,
-                 column_config={
-                     "RankIC": st.column_config.NumberColumn(format="%+.3f"),
-                     "IC_IR": st.column_config.NumberColumn(format="%.2f"),
-                     "t(NW)": st.column_config.NumberColumn(format="%.2f"),
-                     "p": st.column_config.NumberColumn(format="%.3f"),
-                     "胜率%": st.column_config.NumberColumn(format="%.0f"),
-                 })
-    r_cfg = ic[ic["口径"].str.startswith("Δ配置")].iloc[0]
-    r_dz = ic[ic["口径"].str.startswith("Δ超配Z")].iloc[0]
-    h(f'<div class="cg-note"><b>结论</b>：Δ配置pp 的 RankIC {r_cfg["RankIC"]:+.3f}'
-      f'（t {r_cfg["t_NW"]:.2f}，p {r_cfg["p_NW"]:.3f}，n={r_cfg["n"]}，'
-      f'{r_cfg["起始"]}–{r_cfg["终止"]}）——<b>不显著</b>，无信息；'
-      f'Δ超配Z {r_dz["RankIC"]:+.3f}（t {r_dz["t_NW"]:.2f}，p {r_dz["p_NW"]:.3f}，'
-      f'n={r_dz["n"]}，{r_dz["起始"]}–{r_dz["终止"]}）——<b>{r_dz["判定"]}</b>。'
-      f'两者相差一个数量级，所以页面只用 ΔZ 排序。'
-      f't 为 Newey-West 调整（滞后 2 期），与任务书基准口径一致。</div>')
-
-    lsb = ca.long_short_bundle(b, ind, k=8)
-    f = lsb["full"]
-    h('<div class="sec">⑦ 多空组合 · 每期做多 ΔZ 最高 8 个行业、做空最低 8 个</div>')
-    c3, c4 = st.columns([0.6, 0.4], gap="small")
-    with c3:
-        st.plotly_chart(fig_nav(lsb["series"], colors), width="stretch",
-                        config={"displayModeBar": False})
-    with c4:
-        h(f'<div class="cg-note" style="font-size:11px;line-height:1.85">'
-          f'样本：{lsb["series"].index[0]}–{lsb["series"].index[-1]}，n={f["n"]} 季<br>'
-          f'年化（复利）：<b>{f["ann"]:+.2f}%</b>　算术：{f["ann_arith"]:+.2f}%<br>'
-          f't = <b>{f["t"]:.2f}</b>，p = <b>{f["p"]:.3f}</b>　（NW t {f["nw_t"]:.2f}）<br>'
-          f'胜率：<b>{f["win"]:.0f}%</b>　累计：{f["total"]:+.1f}%<br>'
-          f'判定：<b>{ca.verdict(f["p"])}</b></div>')
-    seg = lsb["segments"]
-    st.dataframe(seg, width="stretch", hide_index=True,
-                 column_config={
-                     "年化": st.column_config.NumberColumn(format="%+.2f%%"),
-                     "t": st.column_config.NumberColumn(format="%.2f"),
-                     "p": st.column_config.NumberColumn(format="%.3f"),
-                     "胜率": st.column_config.NumberColumn(format="%.0f%%"),
-                 })
-    s1 = seg.iloc[0]
-    s2 = seg.iloc[1]
-    h(f'<div class="cg-note"><b>边界声明（不是自我否定，是划范围）</b>：'
-      f'{s1["区间"]} t = {s1["t"]:.2f}（p {s1["p"]:.3f}，<b>不显著</b>），'
-      f'{s2["区间"]} t = {s2["t"]:.2f}（p {s2["p"]:.3f}，<b>{s2["判定"]}</b>）。'
-      f'信号的有效性集中在 2023 年之后，因此<b>只在近三年样本内使用，且每季复核</b>；'
-      f'一旦连续两季多空价差为负，暂停使用该信号。</div>')
-
-    # 成本敏感性
-    cst = ca.cost_sensitivity(b, ind, k=8)
-    h('<div class="sec">⑧ 交易成本敏感性 · 单边 0–30bp</div>')
-    st.dataframe(cst, width="stretch", hide_index=True,
-                 column_config={
-                     "年化毛": st.column_config.NumberColumn(format="%+.2f%%"),
-                     "年换手": st.column_config.NumberColumn(format="%.0f%%"),
-                     "成本拖累": st.column_config.NumberColumn(format="%.2f%%"),
-                     "年化净": st.column_config.NumberColumn(format="%+.2f%%"),
-                 })
-    h(f'<div class="cg-note">年换手约 {cst["年换手"].iloc[0]:.0f}%（季度调仓、上下各 8 只，'
-      f'换手偏高）。即使按单边 30bp 计，净年化仍有 {cst["年化净"].iloc[-1]:+.2f}%，'
-      f'但这是<b>未考虑冲击成本与融券约束</b>的理论值；小市值行业（综合、美容护理）'
-      f'实际难以按收盘价成交。</div>')
-
-    # 动量正交化
-    mn = ca.momentum_neutral(b, ind, k=8)
-    h('<div class="sec">⑨ 动量正交化 · 证伪「ΔZ 只是价格动量的代理」</div>')
-    h(f'<div class="cg-note" style="font-size:11px;line-height:1.8">'
-      f'对过去 4 季涨幅做横截面回归后取残差，再做同样的多空：'
-      f'原始年化 {mn["raw"]["ann"]:+.2f}%（t {mn["raw"]["t"]:.2f}）→ '
-      f'残差年化 <b>{mn["resid"]["ann"]:+.2f}%</b>（t {mn["resid"]["t"]:.2f}，'
-      f'p {mn["resid"]["p"]:.3f}），量级未衰减。'
-      f'ΔZ 与过去 4 季涨幅的横截面相关 {mn["corr_mean"]:+.3f}（{mn["corr_n"]} 期均值），'
-      f'重叠很小。<b>证伪未通过</b>：ΔZ 的收益不能由价格动量解释。</div>')
-
-    # ================= 7. 样本体检 =================
-    h('<div class="sec">⑩ 样本充分性体检 · 每个因子究竟几期有效</div>')
-    aud = ca.sample_audit(b, ind)
-    st.dataframe(aud, width="stretch", hide_index=True)
-    h(f'<div class="cg-note">「{len(quarters)} 季度」是日历长度，不等于可用样本：'
-      f'主口径 F2 只有 {int(ind["F2_超配Zscore"].dropna(how="all").shape[0])} 季有效，'
-      f'F2e 长历史 {int(ind["F2e_超配Z_长历史"].dropna(how="all").shape[0])} 季。'
-      f'任何 IC / 多空结论都只用有效样本，不用日历长度充数。</div>')
+    # ================= 6. 指向 ④：本页不再重复因子检验 =================
+    h('<div class="cg-note">本页只回答「本期发生了什么」。'
+      '因子的 IC / 分组 / 多空组合 / 成本敏感性 / 正交化 / 样本体检属于「这个因子是否可信」，'
+      '统一放在 <b>④ 因子与检验</b>，此处不重复。</div>')

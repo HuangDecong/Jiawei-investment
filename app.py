@@ -408,7 +408,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.28-r21.3"
+APP_VERSION = "2026.10.28-r22.0"
 
 
 def _fp_short() -> str:
@@ -546,10 +546,46 @@ if _P == "① 总览":
     # 水平值（HHI/CR/FCI）整体下移，先回答「这一期相对上一期发生了什么」。
     cp.render_overview(B, IND, MKT, LATEST, C.COLOR)
 
+    # 本期决策表（与《机构持仓决策报告》同源：institution.decision_brief）
+    try:
+        _db = inst.decision_brief(B, IND, LATEST)
+        _dec = _db["dec"].copy()
+        _cnt = _dec["建议动作"].value_counts().to_dict()
+        _h('<div class="sec">本期决策表 · 31 行业（动作 + 数字 + 上期对照 + 失效条件）</div>')
+        _h(f'<div class="cg-note">动作分布：'
+           + "　".join(f'<b>{k}</b> {v} 个' for k, v in _cnt.items())
+           + f'。判据事前固定：<b>超配</b>＝分位≥80 且主动&gt;0；<b>回避</b>＝分位≤20 且主动&lt;0；'
+             f'<b>低配</b>＝二者其一；<b>标配</b>＝其余。'
+             + (f'<b>注意</b>：{int((_dec["建议动作"] == "超配").sum())} 个「超配」行业'
+                f'合计配置仅 {float(_dec.loc[_dec["建议动作"] == "超配", "当前配置"].sum()):.1f}%，'
+                f'容量不足以建仓，只能作为「不要低配」的依据，不能作为买入依据。'
+                if float(_dec.loc[_dec["建议动作"] == "超配", "当前配置"].sum()) < 5 else
+                f'「超配」行业合计配置 '
+                f'{float(_dec.loc[_dec["建议动作"] == "超配", "当前配置"].sum()):.1f}%，具备建仓容量。')
+             + '</div>')
+        _show = _dec.copy()
+        _show["理由"] = _show["理由"].astype(str).str.replace(r"<[^>]+>", "", regex=True)
+        _show = _show[["行业", "建议动作", "主动加减仓", "加仓基金占比", "分歧度",
+                       "超配分位", "当前配置", "上期配置", "失效条件"]]
+        st.dataframe(
+            _show, width="stretch", hide_index=True, height=430,
+            column_config={
+                "建议动作": st.column_config.TextColumn(width="small"),
+                "主动加减仓": st.column_config.NumberColumn(format="%+.2f pp"),
+                "加仓基金占比": st.column_config.NumberColumn(format="%.1f%%"),
+                "分歧度": st.column_config.NumberColumn(format="%.2f"),
+                "超配分位": st.column_config.NumberColumn(format="%.0f"),
+                "当前配置": st.column_config.NumberColumn(format="%.2f%%"),
+                "上期配置": st.column_config.NumberColumn(format="%.2f%%"),
+                "失效条件": st.column_config.TextColumn(width="large"),
+            })
+        _h('<div class="tiny">失效条件可直接观测：例如「若下季主动项转负且分歧度升破 0.7，本判断作废」。'
+           '完整 31 行含理由与上期等级，见《机构持仓决策报告.xlsx》「1 行业配置」。</div>')
+    except Exception as _e:
+        _h(f'<div class="tiny">决策表暂不可用：{type(_e).__name__}</div>')
+
     _h(f'<div class="sec">水平值 · {LATEST} 主动权益基金拥挤度状态（看完变化再看位置）</div>')
     _h(f"""<div class="kpis">
-      <div class="kpi"><div class="k">数据季度</div><div class="v">{LATEST}</div>
-        <div class="s">31 行业 · {len(QUARTERS)} 季度 · Wind</div></div>
       <div class="kpi"><div class="k">市场状态</div>
         <div class="v" style="font-size:13px">{M_SUM['state']}</div>
         <div class="s">样本基金 {M_SUM['n_funds']:.0f} 只</div></div>
@@ -1765,7 +1801,7 @@ if _P == "④ 因子与检验":
 # 页面 ⑤ 数据与方法（数据质量 + 方法说明）
 # ============================================================================
 if _P == "⑤ 数据与方法":
-    _h('<div class="sec">一、数据来源 · Wind 金融终端</div>')
+    _h('<div class="sec">一、数据来源 · 东方财富（主口径）+ Wind（交叉校验）</div>')
 
     # 数据健康（R19）：五类数据源的覆盖、缺口、取数方式——先看能不能用，再看结论
     _ds = inst.data_status()
@@ -1775,10 +1811,10 @@ if _P == "⑤ 数据与方法":
             "name": "数据源", "have": "现有覆盖", "need": "补齐所需", "why": "约束"})
     _h('<div class="sec">数据健康 · 五类数据源覆盖与缺口（先看能不能用）</div>')
     st.dataframe(_ds_show, width="stretch", hide_index=True)
-    _h('<div class="tiny">结论：<b>只有「重仓股持股基金数」与「行业聚合配置」可用</b>；'
-       '基金×个股明细、全持仓、日度净值、季报文本四类均未就绪——'
-       'Wind MCP 只能按单只基金单期查询，全量需约 4.6 万次调用，本机也未安装 WindPy。'
-       '因此分歧度、日度暴露、全持仓校准、文本因子四项度量不进入决策表。</div>')
+    _h('<div class="tiny">口径：持仓明细与行业聚合来自<b>东方财富公开披露</b>（逐基金全量抓取，'
+       '可随时用 tools/run_ak_all.py 重建）；Wind 只保留<b>交叉验证</b>角色（同基金同行业'
+       '相关系数 0.98–0.99）。<b>仍未就绪的只有两项</b>：基金经理任职区间、季报正文——'
+       '前者影响「经理变更不可比」的剔除，后者影响文本因子，两者都不影响当前结论。</div>')
 
     # 个股库覆盖（若管道已入库）
     try:
@@ -1794,10 +1830,13 @@ if _P == "⑤ 数据与方法":
                 "FROM fetch_log ORDER BY id DESC LIMIT 12", _con)
             _con.close()
             if not _cov.empty:
-                _h('<div class="sec">重仓股持股基金数 · 逐期覆盖</div>')
-                st.dataframe(_cov, width="stretch", hide_index=True)
-                _h('<div class="tiny">接口只返回<b>按持股基金数排序的前 50 只</b>，'
-                   '因此「跌出前 50」会被误判为「退出」；表中退出/新进只作观察，不作买卖依据。</div>')
+                with st.expander("历史口径：Wind 重仓股前 50 只 · 逐期覆盖（已被全市场口径取代）",
+                                 expanded=False):
+                    st.dataframe(_cov, width="stretch", hide_index=True)
+                    _h('<div class="tiny">这张表<b>只作历史留档</b>：Wind 接口每期只给'
+                       '「按持股基金数排序的前 50 只」，跌出前 50 会被误判为退出。'
+                       '现行口径已换成东方财富完整明细（见上「全市场持仓库 · 逐期覆盖」），'
+                       '本表不再参与任何结论。</div>')
             if not _log.empty:
                 with st.expander("取数日志（最近 12 条）", expanded=False):
                     st.dataframe(_log, width="stretch", hide_index=True)
@@ -1883,6 +1922,34 @@ if _P == "⑤ 数据与方法":
                f'{("：" + "、".join(_low["industry"].tolist())) if len(_low) else ""}，'
                f'这些行业的「前十大读数」不能直接用，必须双口径对照。</div>')
     except Exception:
+        pass
+
+    # 自检与证伪（R22）：每次改数据/改页面后跑 tools/audit_selfcheck.py
+    try:
+        _aud = os.path.join("报告", "自检表.csv")
+        if os.path.exists(_aud):
+            _a = pd.read_csv(_aud)
+            _n = len(_a)
+            _ok = int((_a["结果"] == "通过").sum())
+            _fail = _a[_a["结果"] == "失败"]
+            _fal = _a[_a["结果"].str.startswith("被证伪")]
+            _h('<div class="sec">自检与证伪 · 数据自洽 + 主动找反证</div>')
+            _c = st.columns(3)
+            _c[0].metric("不变量通过", f"{_ok}/{int((_a['类别']=='不变量').sum())}")
+            _c[1].metric("被证伪的假设", f"{len(_fal)}",
+                         help="这是结论：说明那些说法在你的数据上不成立")
+            _c[2].metric("失败项", f"{len(_fail)}",
+                         delta=None if len(_fail) == 0 else "需修数据", delta_color="inverse")
+            st.dataframe(_a, width="stretch", hide_index=True, height=320)
+            _h('<div class="tiny">'
+               + (f'<b>失败项 {len(_fail)} 个，页面数字此时不可信，必须先修数据。</b>' if len(_fail) else
+                  '不变量（合计=100、HHI=Σw²、分歧度三类计数、个股Δ=两期之差、港股不混入行业、'
+                  '覆盖率=明细合计、未过验证不得标“可用”）<b>全部通过</b>。')
+               + ('　被证伪项是结论而非错误：' +
+                  '；'.join(f'{r["检查项"]}（{r["证据"]}）' for _, r in _fal.iterrows())
+                  if len(_fal) else '')
+               + f'　复跑命令：<span class="mono">python tools/audit_selfcheck.py</span></div>')
+    except Exception as _e:
         pass
 
     # 全市场持仓库健康度（R20.1）：期次、基金数、覆盖率、披露口径
@@ -1983,21 +2050,48 @@ if _P == "⑤ 数据与方法":
     except Exception:
         pass
 
-    # 清洗剔除统计：基金级明细未就绪，如实标注
-    _h('<div class="sec">样本清洗 · 剔除统计</div>')
-    st.dataframe(pd.DataFrame([
-        dict(步骤="新基金（成立不足 2 期）", 剔除="未执行", 原因="需基金成立日与逐期持仓明细"),
-        dict(步骤="清盘/转型/类型变更", 剔除="未执行", 原因="需基金档案与变更记录"),
-        dict(步骤="近4季仓位<60% 的灵活配置", 剔除="未执行", 原因="需基金资产净值与股票投资市值"),
-        dict(步骤="规模<5000万 迷你基金", 剔除="未执行", 原因="需基金规模"),
-        dict(步骤="单行业>80% 的主题基金", 剔除="未执行", 原因="需基金级行业配置"),
-        dict(步骤="基金经理变更（不可比）", 剔除="未执行", 原因="需经理任职起止日期"),
-        dict(步骤="ST/停牌/上市<12月", 剔除="未执行", 原因="需个股状态与上市日"),
-        dict(步骤="流动性<5000万/日", 剔除="未执行", 原因="需个股日成交额"),
-        dict(步骤="总市值<50亿", 剔除="未执行", 原因="需个股总市值"),
-    ]), width="stretch", hide_index=True)
-    _h('<div class="tiny">清洗规则<b>已实现为可执行清单</b>，但缺少基金级/个股级字段，'
-       '当前一步都无法实际剔除。这与「未清洗就算分歧度」的红线一致：既然清洗不了，就不算分歧度。</div>')
+    # 样本清洗：区分「已执行」与「未执行」，数字现算不写死
+    _h('<div class="sec">样本清洗 · 已执行的剔除与未执行的原因</div>')
+    _rows = []
+    try:
+        import ak_data as akd
+        _q = akd.latest_quarters()
+        _pan = akd.industry_panel(_q[0], normalize=True) if _q else pd.DataFrame()
+        if not _pan.empty:
+            _theme = int((_pan.max(axis=1) > 80).sum())
+            _rows.append(dict(步骤="单行业>80% 的主题基金", 状态="已执行",
+                              剔除=f"{_theme} 只（占样本 {_theme / len(_pan) * 100:.1f}%）",
+                              说明="该基金在单一行业配置超过 80%，其变动反映主题申赎而非行业观点"))
+        if akd.available():
+            import sqlite3 as _s3
+            _c = _s3.connect(f"file:{os.path.join('data','db','fund_ak.db')}?mode=ro", uri=True)
+            _bad = _c.execute("SELECT COUNT(*) FROM coverage WHERE coverage>105 OR coverage<1").fetchone()[0]
+            _tot = _c.execute("SELECT COUNT(*) FROM coverage").fetchone()[0]
+            _c.close()
+            _rows.append(dict(步骤="覆盖率异常（>105% 或 <1%）", 状态="已执行",
+                              剔除=f"{_bad} 组（基金×期，共 {_tot:,} 组）",
+                              说明="东财个别分级/联接/QDII 的占净值比合计失真，归一化会压低真实占比"))
+    except Exception:
+        pass
+    _rows += [
+        dict(步骤="ST / 退市主体", 状态="部分执行",
+             剔除="个股不进行业聚合（行业置空）", 说明="缺少个股状态字段，个股榜无法按 ST 剔除"),
+        dict(步骤="新基金（成立不足 2 期）", 状态="未执行", 剔除="—",
+             说明="需基金成立日；现有基金列表无该字段"),
+        dict(步骤="清盘 / 转型 / 类型变更", 状态="未执行", 剔除="—", 说明="需基金档案与变更记录"),
+        dict(步骤="近4季仓位<60% 的灵活配置", 状态="未执行", 剔除="—",
+             说明="需基金资产净值与股票投资市值（东财明细只有占净值比）"),
+        dict(步骤="规模<5000万 迷你基金", 状态="未执行", 剔除="—", 说明="需逐期基金规模"),
+        dict(步骤="基金经理变更（不可比）", 状态="未执行", 剔除="—", 说明="需经理任职起止日期"),
+        dict(步骤="流动性<5000万/日、总市值<50亿", 状态="未执行", 剔除="—",
+             说明="需个股日成交额与总市值；个股榜目前只用「持股基金数≥10」过滤噪音"),
+    ]
+    st.dataframe(pd.DataFrame(_rows), width="stretch", hide_index=True,
+                 column_config={"说明": st.column_config.TextColumn(width="large")})
+    _h('<div class="tiny">只把<b>真正执行过</b>的规则标「已执行」，其余写清缺哪个字段。'
+       '分歧度的样本边界因此是「覆盖率可用的主动权益基金」，不含迷你基金/经理变更等更细的剔除——'
+       '这些会在结论里以「样本边界」标注，而不是假装做过。</div>')
+
     _h(f"""<div class="kpis">
           <div class="kpi"><div class="k">数据源</div><div class="v" style="font-size:15px">Wind</div>
             <div class="s">MCP 结构化取数</div></div>

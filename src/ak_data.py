@@ -140,6 +140,11 @@ def industry_panel(q: str, normalize: bool = True) -> pd.DataFrame:
         return pd.DataFrame()
     g = df.groupby(["code", "industry"], as_index=False)["weight_pct"].sum()
     g = g.merge(cov, on="code", how="left")
+    # 覆盖率异常剔除：东财个别基金（分级/联接/QDII）的「占净值比」合计会 >105%，
+    # 归一化后会把真实行业占比压小。这类（基金×期）不参与分歧度计算，也不填补。
+    bad = (g["coverage"] < 1) | (g["coverage"] > 105)
+    if bad.any():
+        g = g[~bad].copy()
     g["coverage"] = g["coverage"].replace(0, np.nan)
     g["share"] = (g["weight_pct"] / g["coverage"] * 100) if normalize \
         else g["weight_pct"]
