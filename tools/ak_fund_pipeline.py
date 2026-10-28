@@ -68,11 +68,43 @@ CREATE TABLE IF NOT EXISTS coverage (
 """
 
 
-def connect():
+def connect(retries: int = 8):
+    """并发安全的连接。
+
+    坑：`PRAGMA journal_mode=WAL` 需要短暂的排他锁，5 个进程同时启动会互相撞，
+    直接抛 `database is locked` 让整个分片退出。做法是：
+    ① 先由单进程把库切成 WAL（见 `init_wal()`），后续连接不再切换；
+    ② 建表与连接整体加重试 + 退避，最坏情况也能等到锁释放。
+    """
     os.makedirs(DB_DIR, exist_ok=True)
-    con = sqlite3.connect(DB_PATH)
-    con.executescript(SCHEMA)
-    return con
+    last = None
+    for i in range(retries):
+        try:
+            con = sqlite3.connect(DB_PATH, timeout=90)
+            con.execute("PRAGMA busy_timeout=90000")
+            try:
+                con.execute("PRAGMA journal_mode=WAL")
+            except sqlite3.OperationalError:
+                pass  # 已是 WAL 或暂时拿不到锁，不阻塞启动
+            con.execute("PRAGMA synchronous=NORMAL")
+            # 自动提交：每条语句独立短事务，写完立刻释放写锁。
+            # 不用长事务是因为两个连接同时持读锁再升级写锁时，
+            # SQLite 的 busy handler 不会等待，会立刻抛 database is locked。
+            con.isolation_level = None
+            con.executescript(SCHEMA)
+            return con
+        except sqlite3.OperationalError as e:
+            last = e
+            time.sleep(1 + i * 1.5)
+    raise last
+
+
+def init_wal():
+    """单进程调用一次，把库切到 WAL 模式。"""
+    con = sqlite3.connect(DB_PATH, timeout=60)
+    mode = con.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+    con.close()
+    print(f"journal_mode = {mode}")
 
 
 def build_map():
@@ -93,6 +125,28 @@ def build_map():
     print(f"申万映射：{len(mp)} 只股票 / {len(set(mp.values()))} 个行业 → {MAP_PATH}")
 
 
+def norm_stock_code(x) -> tuple[str, int]:
+    """把东财返回的股票代码规范化，返回 (代码, 是否港股)。
+
+    坑：东财的「股票代码」有时是数值型（920045.0），有时是 5 位港股（700 / 00700）。
+    早期一律 `zfill(6)` 会把 00700 变成 000700——正好撞上 A 股模塑科技（真实 000700），
+    于是腾讯控股被记成了「汽车」行业的模塑科技。规则改为：
+      · 去掉小数点与小数尾（920045.0 → 920045）
+      · 只留数字；长度 ≤5 视为港股 → 补足 5 位
+      · 长度 6 视为 A 股 → 补足 6 位
+    """
+    import re
+    s = str(x).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    digits = re.sub(r"\D", "", s)
+    if not digits:
+        return "", 1
+    if len(digits) <= 5:
+        return digits.zfill(5), 1
+    return digits.zfill(6), 0
+
+
 def _quarter(label: str) -> str | None:
     """'2026年2季度股票投资明细' → '2026Q2'。"""
     import re
@@ -110,23 +164,32 @@ def _dedup_funds(df: pd.DataFrame) -> pd.DataFrame:
     return d[["基金代码", "基金简称", "基金类型"]]
 
 
-def fetch(limit: int | None = None, year: str = "2026", codes: str | None = None):
+def fetch(limit: int | None = None, year: str = "2026", codes: str | None = None,
+          shard: int = 0, nshards: int = 1):
     import akshare as ak
     if not os.path.exists(MAP_PATH):
         print("缺少申万映射，先运行 --build-map")
         return
     mp = json.load(open(MAP_PATH, encoding="utf-8"))
     con = connect()
-    done = {r[0] for r in con.execute("SELECT DISTINCT code FROM fund_holdings")}
+    # 断点续传必须按「年份」判断：一只基金 2026 年抓过，不代表 2024 年也抓过。
+    # 早期版本按全库 code 去重，导致换年份后 todo 为空、静默跳过。
+    done = {r[0] for r in con.execute(
+        "SELECT DISTINCT code FROM fund_holdings WHERE quarter LIKE ?", (f"{year}%",))}
     names = _dedup_funds(ak.fund_name_em())
     todo = [r for r in names.itertuples(index=False) if r[0] not in done]
     if codes:
         want = [c.strip() for c in codes.split(",") if c.strip()]
         meta = {r[0]: (r[0], r[1], r[2]) for r in names.itertuples(index=False)}
         todo = [meta.get(c, (c, c, "指定")) for c in want if c not in done]
+    todo = sorted(todo, key=lambda x: x[0])
+    if nshards > 1:
+        # 按代码排序后取模分片：多进程各抓一份，互不重叠、天然可续跑
+        todo = [t for i, t in enumerate(todo) if i % nshards == shard]
     if limit:
         todo = todo[:limit]
-    print(f"待抓 {len(todo)} 只（已完成 {len(done)} 只），目标年份 {year}")
+    print(f"[分片 {shard}/{nshards}] 待抓 {len(todo)} 只（该年已完成 {len(done)} 只），年份 {year}",
+          flush=True)
     ok = fail = 0
     t0 = time.time()
     for i, (code, name, typ) in enumerate(todo, 1):
@@ -145,37 +208,71 @@ def fetch(limit: int | None = None, year: str = "2026", codes: str | None = None
             continue
         d["q"] = d["季度"].map(_quarter)
         d = d.dropna(subset=["q"])
+        rows = []
+        cov_rows = []
         for q, g in d.groupby("q"):
             cov = float(pd.to_numeric(g["占净值比例"], errors="coerce").fillna(0).sum())
-            n_hk = int(g["股票代码"].astype(str).str.len().ne(6).sum())
-            con.execute("INSERT OR REPLACE INTO coverage VALUES (?,?,?,?,?)",
-                        (code, q, round(cov, 4), len(g), n_hk))
+            n_hk = int(sum(1 for x in g["股票代码"] if norm_stock_code(x)[1]))
+            cov_rows.append((code, q, round(cov, 4), len(g), n_hk))
             for r in g.itertuples(index=False):
-                sc = str(getattr(r, "股票代码")).zfill(6)
-                ind = mp.get(sc)
+                sc, is_hk = norm_stock_code(getattr(r, "股票代码"))
+                # 行业只对 6 位 A 股代码查表；港股没有申万一级，留空
+                ind = None if is_hk else mp.get(sc)
                 rows.append((code, name, q, sc, getattr(r, "股票名称"),
                              float(pd.to_numeric(getattr(r, "占净值比例"), errors="coerce") or 0),
                              float(pd.to_numeric(getattr(r, "持股数"), errors="coerce") or 0),
                              float(pd.to_numeric(getattr(r, "持仓市值"), errors="coerce") or 0),
-                             ind, 0 if ind else 1, "eastmoney_akshare",
+                             ind, is_hk, "eastmoney_akshare",
                              dt.datetime.now().isoformat(timespec="seconds")))
-        if rows:
-            con.executemany(
-                "INSERT OR REPLACE INTO fund_holdings VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
-            con.execute("INSERT OR REPLACE INTO fund_meta VALUES (?,?,?,?)",
-                        (code, name, typ, dt.datetime.now().isoformat(timespec="seconds")))
-            ok += 1
-        con.execute("INSERT INTO fetch_log (code,status,rows,ts,note) VALUES (?,?,?,?,?)",
-                    (code, "ok" if rows else "empty", len(rows),
-                     dt.datetime.now().isoformat(timespec="seconds"), ""))
-        if i % 50 == 0:
-            con.commit()
+
+        def _write():
+            for cr in cov_rows:
+                con.execute("INSERT OR REPLACE INTO coverage VALUES (?,?,?,?,?)", cr)
+            if rows:
+                con.executemany(
+                    "INSERT OR REPLACE INTO fund_holdings VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+                con.execute("INSERT OR REPLACE INTO fund_meta VALUES (?,?,?,?)",
+                            (code, name, typ, dt.datetime.now().isoformat(timespec="seconds")))
+            con.execute("INSERT INTO fetch_log (code,status,rows,ts,note) VALUES (?,?,?,?,?)",
+                        (code, "ok" if rows else "empty", len(rows),
+                         dt.datetime.now().isoformat(timespec="seconds"), ""))
+
+        for attempt in range(5):
+            try:
+                _write()
+                if rows:
+                    ok += 1
+                break
+            except sqlite3.OperationalError:
+                time.sleep(1 + attempt)
+        else:
+            # 5 次都写不进去：记失败但不中断分片，下一轮补跑会重新抓这只
+            fail += 1
+            try:
+                con.execute("INSERT INTO fetch_log (code,status,rows,ts,note) "
+                            "VALUES (?,?,?,?,?)",
+                            (code, "db_locked", len(rows),
+                             dt.datetime.now().isoformat(timespec="seconds"), "写入重试失败"))
+            except Exception:
+                pass
+        if i % 20 == 0:
             el = time.time() - t0
             print(f"  {i}/{len(todo)}  成功 {ok} 失败 {fail}  "
-                  f"{el:.0f}s  预计剩余 {el / i * (len(todo) - i) / 60:.0f} 分钟")
-    con.commit()
+                  f"{el:.0f}s  预计剩余 {el / i * (len(todo) - i) / 60:.0f} 分钟", flush=True)
+    _safe_commit(con)
     con.close()
     print(f"完成：成功 {ok}、空/失败 {fail}，耗时 {(time.time()-t0)/60:.1f} 分钟")
+
+
+def _safe_commit(con, retries: int = 6) -> bool:
+    """并发提交：撞锁时退避重试，失败只丢这一批，不让整个分片退出。"""
+    for i in range(retries):
+        try:
+            con.commit()
+            return True
+        except sqlite3.OperationalError:
+            time.sleep(0.5 + i)
+    return False
 
 
 def report():
@@ -199,12 +296,14 @@ if __name__ == "__main__":
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--year", default="2026")
     ap.add_argument("--codes", default=None, help="逗号分隔的基金代码，只抓这些")
+    ap.add_argument("--shard", type=int, default=0)
+    ap.add_argument("--nshards", type=int, default=1)
     ap.add_argument("--report", action="store_true")
     a = ap.parse_args()
     if a.build_map:
         build_map()
     elif a.fetch:
-        fetch(a.limit, a.year, a.codes)
+        fetch(a.limit, a.year, a.codes, a.shard, a.nshards)
     elif a.report:
         report()
     else:

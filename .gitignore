@@ -60,3 +60,11 @@ output/shot*.js
 # 取数中间产物
  data/raw/.tmp_wind/
  data/raw/*.tmp
+
+# 全市场持仓库（504MB，超出 GitHub 单文件上限，不入库；用 tools/run_ak_all.py 重建）
+data/db/*.db
+data/db/*.db-wal
+data/db/*.db-shm
+
+# 净值缓存（体积小但可重抓，避免仓库膨胀）
+data/cache/fund_nav/

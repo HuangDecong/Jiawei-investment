@@ -16,6 +16,7 @@ import change_analysis as ca
 import config as C
 import institution as inst
 import ak_data as akd
+import ak_stock as aks
 
 # ---------------------------------------------------------------------------
 # 样式（占位符替换）
@@ -665,39 +666,43 @@ def render(b, ind, mkt, latest: str, colors: dict):
           f'因此若某行业 Δ配置与 ΔZ 符号相反（如有色金属 +0.43pp / −0.85σ），'
           f'个股结论会显示「减」，与该行业配置上升并不矛盾。</div>')
 
-    # ================= 5b. 机构建仓/撤离榜 =================
-    h('<div class="sec">⑤b 机构新增建仓榜 / 撤离榜 · 按 Δ持股基金数（前 50 只口径）</div>')
-    flow = inst.stock_flow(latest, q0)
-    if flow.empty:
-        try:
-            import sqlite3
-            _con = sqlite3.connect(inst.DB_PATH)
-            _qs = [r[0] for r in _con.execute(
-                "SELECT DISTINCT quarter FROM stock_holdings ORDER BY quarter")]
-            _con.close()
-        except Exception:
-            _qs = []
-        h(f'<div class="cg-note">库内尚无 {latest} 的个股数据（已入库 '
-          f'{len(_qs)} 期：{_qs[0] if _qs else "—"}–{_qs[-1] if _qs else "—"}）。'
-          f'抓取仍在进行，完成后本区自动显示，无需改代码。</div>')
+    # ================= 5b. 机构建仓/撤离榜（全市场） =================
+    h('<div class="sec">⑤b 机构新增建仓榜 / 撤离榜 · 全市场 Δ持股基金数</div>')
+    _pair = None
+    try:
+        _pair = aks.comparable_pair(latest)
+    except Exception:
+        _pair = None
+    if _pair is None:
+        h(f'<div class="cg-note">尚无与 {latest} <b>同披露口径</b>的对照期'
+          f'（季报只能和上年同季比、半年报只能和上年半年报比，否则会把'
+          f'「掉出前十大」误判成「清仓」）。等历史期抓取完成后本区自动出现，无需改代码。</div>')
     else:
-        cols = ["name", "n0", "n1", "d_n", "mv1", "d_mv", "state"]
-        c1, c2 = st.columns(2, gap="small")
-        with c1:
-            h('<div class="cg-note" style="font-weight:700;color:#B42318">新增建仓榜（Δ持股基金数最大）</div>')
-            st.dataframe(flow.nlargest(10, "d_n")[cols].rename(columns={
-                "name": "股票", "n0": f"{q0}", "n1": f"{latest}", "d_n": "Δ基金数",
-                "mv1": "持仓(亿)", "d_mv": "Δ市值(亿)", "state": "榜单状态"}),
-                width="stretch", hide_index=True, height=330)
-        with c2:
-            h('<div class="cg-note" style="font-weight:700;color:#1A7F37">机构撤离榜（Δ持股基金数最小）</div>')
-            st.dataframe(flow.nsmallest(10, "d_n")[cols].rename(columns={
-                "name": "股票", "n0": f"{q0}", "n1": f"{latest}", "d_n": "Δ基金数",
-                "mv1": "持仓(亿)", "d_mv": "Δ市值(亿)", "state": "榜单状态"}),
-                width="stretch", hide_index=True, height=330)
-        h('<div class="cg-note"><b>口径边界</b>：接口每期只返回「按持股基金数排序的前 50 只」，'
-          '因此「退出前 50」不等于清仓、「新进前 50」不等于新建仓，两者都只作观察。'
-          'Δ基金数未做基金样本数归一（样本基金数逐季变化），跨期比较需谨慎。</div>')
+        _rock = aks.stock_rank(*_pair, top=12, min_n1=10)
+        if _rock["add"].empty:
+            h('<div class="cg-note">两期个股数据不足，暂无法计算。</div>')
+        else:
+            _q, _q0 = _pair
+            _nf = _rock["meta"].get("n_funds") or (0, 0)
+            c1, c2 = st.columns(2, gap="small")
+            _cols = ["stock_name", "industry", "n0", "n1", "d_n", "share", "d_share_pp", "mv1_yi", "d_mv_yi"]
+            _ren = {"stock_name": "股票", "industry": "申万一级", "n0": f"{_q0} 基金数",
+                    "n1": f"{_q} 基金数", "d_n": "Δ基金数", "share": "机构持仓占比%",
+                    "d_share_pp": "Δ占比pp", "mv1_yi": "持仓(亿)", "d_mv_yi": "Δ市值(亿)"}
+            with c1:
+                h('<div class="cg-note" style="font-weight:700;color:#B42318">新增建仓榜（Δ持股基金数最大）</div>')
+                st.dataframe(_rock["add"][_cols].rename(columns=_ren),
+                             width="stretch", hide_index=True, height=360)
+            with c2:
+                h('<div class="cg-note" style="font-weight:700;color:#1A7F37">机构撤离榜（Δ持股基金数最小）</div>')
+                st.dataframe(_rock["cut"][_cols].rename(columns=_ren),
+                             width="stretch", hide_index=True, height=360)
+            _ty = "全持仓（半年报）" if _q[-1] in ("2", "4") else "前十大（季报）"
+            h(f'<div class="cg-note"><b>口径</b>：数据源东方财富（AKShare）完整持仓明细，'
+              f'{_q0} → {_q} 均为 <b>{_ty}</b>，样本基金 '
+              f'{_nf[1]} 只；已过滤两期任一期持股基金数 &lt;10 的小票（Δ 噪音极大）。'
+              f'机构持仓占比 = 持有该股的样本基金数 ÷ 当期样本基金总数，'
+              f'已消除样本扩容带来的水位抬升。</div>')
 
     # ================= 6. 证据面板 =================
     h('<div class="sec">⑥ 证据面板 · 为什么用 ΔZ 而不是 Δ配置pp</div>')

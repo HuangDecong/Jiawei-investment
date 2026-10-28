@@ -39,9 +39,37 @@ def available() -> bool:
     return os.path.exists(DB_PATH)
 
 
+PANEL_PATH = os.path.join(C.DATA, "derived", "fund_industry_panel.csv.gz")
+_PANEL = None
+
+
+def _panel() -> pd.DataFrame:
+    """聚合面板（无数据库时的降级数据源，3.5MB，随仓库分发）。"""
+    global _PANEL
+    if _PANEL is None:
+        if not os.path.exists(PANEL_PATH):
+            _PANEL = pd.DataFrame()
+        else:
+            _PANEL = pd.read_csv(PANEL_PATH, compression="gzip")
+    return _PANEL
+
+
+def panel_available() -> bool:
+    return os.path.exists(PANEL_PATH)
+
+
 def coverage_table() -> pd.DataFrame:
     if not available():
-        return pd.DataFrame()
+        # 降级：从聚合面板重建逐期覆盖
+        p = _panel()
+        if p.empty:
+            return pd.DataFrame()
+        g = (p.groupby("quarter")
+               .agg(n_funds=("code", "nunique"),
+                    avg_cov=("coverage", "mean"),
+                    n_rows=("weight_pct", "size"))
+               .reset_index())
+        return g
     con = _con()
     try:
         return pd.read_sql(
@@ -65,10 +93,38 @@ def latest_quarters() -> tuple[str, str] | None:
     return qs[-1], qs[-2]
 
 
-def industry_panel(q: str, normalize: bool = True) -> pd.DataFrame:
-    """基金 × 行业 的占比矩阵。index=基金代码，columns=31 行业。"""
+def latest_quarters_all() -> list[str]:
+    """库内全部期次（升序）。时序验证需要全部期，而不只是最新两期。"""
     if not available():
-        return pd.DataFrame()
+        p = _panel()
+        return sorted(p["quarter"].unique().tolist()) if not p.empty else []
+    con = _con()
+    try:
+        return [r[0] for r in con.execute(
+            "SELECT DISTINCT quarter FROM fund_holdings ORDER BY quarter")]
+    finally:
+        con.close()
+
+
+def industry_panel(q: str, normalize: bool = True) -> pd.DataFrame:
+    """基金 × 行业 的占比矩阵。index=基金代码，columns=31 行业。
+
+    优先读 SQLite；无数据库时回退到 `data/derived/fund_industry_panel.csv.gz`，
+    两者口径相同（都是持仓明细按申万一级聚合后的占净值比 + 覆盖率）。
+    """
+    if not available():
+        p = _panel()
+        if p.empty:
+            return pd.DataFrame()
+        d = p[p["quarter"] == q]
+        if d.empty:
+            return pd.DataFrame()
+        d = d.copy()
+        d["coverage"] = d["coverage"].replace(0, np.nan)
+        d["share"] = (d["weight_pct"] / d["coverage"] * 100) if normalize else d["weight_pct"]
+        return d.pivot_table(index="code", columns="industry", values="share",
+                             aggfunc="sum").reindex(columns=C.INDUSTRIES).fillna(0.0)
+
     con = _con()
     try:
         df = pd.read_sql(
@@ -151,6 +207,63 @@ def dispersion_ak(q: str, q0: str, min_delta: float = 0.10,
     if not out.empty:
         out.attrs.update(q=q, q0=q0, n_funds=len(codes), normalized=normalize,
                          source="东方财富 AKShare（全市场主动权益）")
+    return out
+
+
+def top10_bias(q: str = "2026Q2", min_share: float = 3.0) -> pd.DataFrame:
+    """前十大口径 vs 全持仓口径的行业偏差（4.5 全持仓校准）。
+
+    做法
+    ----
+    只对「披露全部持仓」的半年报/年报期（Q2/Q4）可用：拿同一只基金的完整明细，
+    先按占净值比排序取前 10 只算一遍行业结构，再用全部明细算一遍，两者相除。
+
+    · 分子分母都先各自归一化到「已披露组合的 100%」——否则分母大的全持仓
+      天然占优，比值会被覆盖率而不是集中度决定；
+    · 只在全持仓口径下行业占比 ≥ min_share 的基金上取中位数，
+      避免小分母（0.2% 对 0.1%）产生 2 倍的伪偏差；
+    · 比值 <0.7 表示「前十大系统性低估该行业」，页面必须给出双口径对照。
+    """
+    if not available():
+        return pd.DataFrame()
+    con = _con()
+    try:
+        d = pd.read_sql(
+            "SELECT code, industry, weight_pct FROM fund_holdings "
+            "WHERE quarter=? AND industry IS NOT NULL AND industry!='未映射'",
+            con, params=(q,))
+    finally:
+        con.close()
+    if d.empty:
+        return pd.DataFrame()
+    rows = []
+    for code, g in d.groupby("code"):
+        g = g.sort_values("weight_pct", ascending=False)
+        full = g.groupby("industry")["weight_pct"].sum()
+        top = g.head(10).groupby("industry")["weight_pct"].sum()
+        fs, ts = full.sum(), top.sum()
+        if fs <= 0 or ts <= 0:
+            continue
+        fn_ = (full / fs * 100)
+        tn_ = (top / ts * 100).reindex(fn_.index).fillna(0.0)
+        for ind in fn_.index:
+            if fn_[ind] >= min_share:
+                rows.append(dict(code=code, industry=ind,
+                                 full=fn_[ind], top=tn_[ind],
+                                 ratio=tn_[ind] / fn_[ind] if fn_[ind] else np.nan))
+    if not rows:
+        return pd.DataFrame()
+    r = pd.DataFrame(rows)
+    out = r.groupby("industry").agg(
+        基金数=("code", "nunique"),
+        全持仓占比中位=("full", "median"),
+        前十大占比中位=("top", "median"),
+        前十大除以全持仓=("ratio", "median"),
+    ).round(3).reset_index()
+    out["低估"] = out["前十大除以全持仓"].apply(
+        lambda x: "是（<0.7，前十大系统性低估）" if x < 0.7 else "否")
+    out = out.sort_values("前十大除以全持仓")
+    out.attrs["q"] = q
     return out
 
 

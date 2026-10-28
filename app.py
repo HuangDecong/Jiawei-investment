@@ -408,7 +408,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.28-r20.0"
+APP_VERSION = "2026.10.28-r21.0"
 
 
 def _fp_short() -> str:
@@ -1803,6 +1803,110 @@ if _P == "⑤ 数据与方法":
                     st.dataframe(_log, width="stretch", hide_index=True)
     except Exception as _e:
         _h(f'<div class="tiny">个股库尚未建立：{_e}。运行 tools/fund_pipeline.py --ingest 后显示覆盖。</div>')
+
+    # 日度行业暴露（4.4）：净值对 31 行业日收益做滚动约束回归
+    try:
+        _nev = os.path.join("data", "cache", "nav_exposure_50.csv")
+        if os.path.exists(_nev):
+            _nq = pd.read_csv(_nev)
+            _h('<div class="sec">日度行业暴露 · 净值反推（4.4）</div>')
+            _c1, _c2, _c3 = st.columns(3)
+            _c1.metric("R² 中位", f"{_nq['r2'].median():.3f}")
+            _c2.metric("R² < 0.5 占比", f"{(_nq['r2'] < 0.5).mean() * 100:.0f}%")
+            _c3.metric("样本基金", f"{len(_nq)} 只")
+            st.dataframe(_nq.head(20), width="stretch", hide_index=True,
+                         column_config={
+                             "r2": st.column_config.NumberColumn("R²", format="%.3f"),
+                             "w_sum": st.column_config.NumberColumn("Σ权重", format="%.2f"),
+                             "top1_w": st.column_config.NumberColumn("第一大行业%", format="%.1f%%"),
+                         })
+            _bad = (_nq["r2"] < 0.5).mean()
+            _h(f'<div class="tiny">模型：r(基金) = Σ w_k·r(申万一级行业)，w≥0、Σw≤1，'
+               f'窗口 60 个交易日滚动。<b>R² 中位 {_nq["r2"].median():.3f}、'
+               f'低于 0.5 的占 {_bad * 100:.0f}%</b>——'
+               f'{"未超过 30% 阈值，日度暴露可用于压缩季报滞后（从 56 天压到 1–2 周）" if _bad < 0.3 else "超过 30% 阈值，按规则回退季频"}。'
+               f'<b>已知偏差</b>：31 个行业日收益高度共线，多数基金的 Σw 会顶到上限 1，'
+               f'所以这里得到的是<b>相对行业结构</b>（谁多谁少），不是绝对仓位；'
+               f'要得到绝对仓位需再乘基金实际股票仓位。</div>')
+    except Exception:
+        pass
+
+    # 季末以来漂移（4.4 时效性）：同模型前后对比，把 56 天滞后压到 1–2 周
+    try:
+        _drf = os.path.join("data", "cache", "nav_drift_2026Q3.csv")
+        if os.path.exists(_drf):
+            _dd = pd.read_csv(_drf)
+            _h('<div class="sec">季末以来行业漂移 · 净值反推（补 56 天滞后）</div>')
+            st.dataframe(_dd, width="stretch", hide_index=True, height=330,
+                         column_config={
+                             "行业平均漂移pp": st.column_config.NumberColumn(format="%+.2f"),
+                             "平均绝对漂移pp": st.column_config.NumberColumn(format="%.2f"),
+                         })
+            _up = _dd.head(3)
+            _dn = _dd.tail(3).iloc[::-1]
+            _h(f'<div class="tiny">区间 <b>2026-09-30 → 最新交易日</b>，'
+               f'57 只基金（R²≥0.5）。<b>净加仓</b>：'
+               + "、".join(f"{r['行业']} {r['行业平均漂移pp']:+.2f}pp"
+                          f"（{int(r['加仓基金数'])} 加 / {int(r['减仓基金数'])} 减）"
+                          for _, r in _up.iterrows())
+               + f'；<b>净减仓</b>：'
+               + "、".join(f"{r['行业']} {r['行业平均漂移pp']:+.2f}pp"
+                          f"（{int(r['加仓基金数'])} 加 / {int(r['减仓基金数'])} 减）"
+                          for _, r in _dn.iterrows())
+               + '。<b>这是季报之后发生的事，季报里看不到</b>；'
+                 '口径为同一回归模型内「季末窗口权重」与「最新窗口权重」之差，'
+                 '避免与季报占比混比产生口径差。</div>')
+    except Exception:
+        pass
+
+    # 前十大偏差校准（4.5）：用半年报全持仓反推前十大口径低估了哪些行业
+    try:
+        import ak_data as akd
+        _fq = next((x for x in reversed(akd.latest_quarters_all())
+                    if x[-1] in ("2", "4")), None)
+        _tb = akd.top10_bias(_fq) if _fq else pd.DataFrame()
+        if not _tb.empty:
+            _h('<div class="sec">前十大口径偏差校准 · 前十大 ÷ 全持仓（按行业）</div>')
+            _low = _tb[_tb["前十大除以全持仓"] < 0.7]
+            st.dataframe(_tb, width="stretch", hide_index=True, height=380,
+                         column_config={
+                             "前十大除以全持仓": st.column_config.NumberColumn(format="%.2f"),
+                             "全持仓占比中位": st.column_config.NumberColumn(format="%.1f%%"),
+                             "前十大占比中位": st.column_config.NumberColumn(format="%.1f%%"),
+                         })
+            _h(f'<div class="tiny">样本期 <b>{_fq}</b>（半年报，披露全部持仓）。'
+               f'做法：同一只基金里取权重前 10 只算行业结构，与全部明细的行业结构相除，'
+               f'两边都先归一化到 100% 以剥离覆盖率差异。<b>中位比值 '
+               f'{_tb["前十大除以全持仓"].median():.2f}</b>——说明前十大整体上'
+               f'<b>高估</b>了集中行业、把尾部行业直接归零，而不是系统性低估。'
+               f'比值 &lt;0.7 的行业有 <b>{len(_low)}</b> 个'
+               f'{("：" + "、".join(_low["industry"].tolist())) if len(_low) else ""}，'
+               f'这些行业的「前十大读数」不能直接用，必须双口径对照。</div>')
+    except Exception:
+        pass
+
+    # 全市场持仓库健康度（R20.1）：期次、基金数、覆盖率、披露口径
+    try:
+        import ak_data as akd
+        _ct = akd.coverage_table()
+        if not _ct.empty:
+            _ct = _ct.rename(columns={"quarter": "期次", "n_funds": "基金数",
+                                      "avg_cov": "平均覆盖率%", "n_rows": "明细行数"})
+            _ct["平均覆盖率%"] = _ct["平均覆盖率%"].round(1)
+            _ct["披露口径"] = _ct["期次"].str[-1].map(
+                lambda x: "全持仓（半年报/年报）" if x in ("2", "4") else "前十大（季报）")
+            _ct["跨期可比"] = _ct["披露口径"].map(
+                lambda x: "只与上年同季可比" if "前十大" in x else "只与上年同期可比")
+            _h('<div class="sec">全市场持仓库 · 逐期覆盖与披露口径</div>')
+            st.dataframe(_ct, width="stretch", hide_index=True)
+            _h(f'<div class="tiny">共 <b>{len(_ct)}</b> 期、'
+               f'<b>{int(_ct["基金数"].max())}</b> 只基金（去重后）。'
+               f'季报只披露前十大（覆盖率约 {_ct[_ct["披露口径"].str.contains("前十大")]["平均覆盖率%"].mean():.0f}%），'
+               f'半年报披露全部（约 {_ct[_ct["披露口径"].str.contains("全持仓")]["平均覆盖率%"].mean():.0f}%）。'
+               f'<b>所以任何跨期比较都必须先除以每只基金每期覆盖率，并且只和同披露口径的期比。</b>'
+               f'抓取可随时中断，重跑 <span class="mono">python tools/run_ak_all.py</span> 从断点继续。</div>')
+    except Exception as _e:
+        pass
 
     # 数据源交叉验证（R20）：东财 vs Wind，同基金、同行业、均按覆盖率归一化
     try:
