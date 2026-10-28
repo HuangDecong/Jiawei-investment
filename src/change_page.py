@@ -14,6 +14,7 @@ import streamlit as st
 
 import change_analysis as ca
 import config as C
+import institution as inst
 
 # ---------------------------------------------------------------------------
 # 样式（占位符替换）
@@ -105,6 +106,96 @@ def _dir_line(r) -> str:
                 f'区位不极端（Z {_fmt(r["z"])}、分位 {_fmt(r["pct"], "{:.0f}%")}），'
                 f'但 ΔZ {r["dz"]:+.2f}σ 方向明确，仍按{side}执行。')
     return f'<b>方向</b>：{meta["name"]}——{meta["tag"]}。'
+
+
+def build_triptych(t: pd.DataFrame, t0: pd.DataFrame, mv: dict, n_up: int,
+                   active: pd.DataFrame, pos: dict, disp: dict) -> list[dict]:
+    """首页第一屏三块：共识 · 分歧 · 移动。每条含判断/数字/上期/失效。"""
+    q, q0 = t.attrs.get("q"), t.attrs.get("q0")
+    up, dn = C.COLOR["up"], C.COLOR["down"]
+    cards = []
+
+    # ---- 共识：分位 ≥80 且主动项 >0 ----
+    # t 已含 credibility_gate 写入的 active（= Δ配置 − 被动），与 active_change 同源
+    cons = t[(t["pct"] >= 80) & (t["alloc"].fillna(0) >= 0.5)].copy()
+    cons = cons[cons["active"] > 0].sort_values("active", ascending=False)
+    if len(cons):
+        names = "、".join(cons.index[:3])
+        detail = "；".join(
+            f"{n} 分位 {r['pct']:.0f}%、主动 {r['active']:+.2f}pp、配置 {r['alloc']:.2f}%"
+            for n, r in cons.head(3).iterrows())
+        total_w = float(cons.head(3)["alloc"].sum())
+        cards.append(dict(
+            kind="cons", color=up,
+            judgment=f"超｜共识：{names}（分位≥80 且主动加仓）",
+            tag="共识形成 · 参考级",
+            rows=[
+                f'<b>数字</b>：{len(cons)} 个行业满足「超配分位 ≥80% 且主动项 >0」；'
+                f'{detail}。三者合计配置 {total_w:.2f}%——'
+                f'{"容量过小，只能观察不能建仓" if total_w < 2 else "具备一定容量"}。',
+                f'<b>上期</b>：{q0} 同样条件命中 '
+                f'{int(((t0["pct"] >= 80) & (t0["alloc"].fillna(0) >= 0.5)).sum())} 个；'
+                f'本期等级净升级 {n_up:+d} 家。',
+                f'<b>方向</b>：高位加仓（最后一棒风险）——共识最厚时，预期差最小。',
+            ],
+            invalid=("若下季任一行业主动项转负且分位跌破 50%，该行业共识判断作废；"
+                     "若三行业合计配置仍 <2%，则始终不构成可执行仓位。"),
+        ))
+    else:
+        cards.append(dict(kind="cons", color=up, judgment="观察｜本期无「共识」行业",
+                          tag="共识缺失",
+                          rows=[f'<b>数字</b>：0 个行业同时满足分位 ≥80% 与主动项 >0。'],
+                          invalid="若下季出现分位 ≥80% 且主动 >0 的行业，本条作废。"))
+
+    # ---- 分歧：Δ配置 与 ΔZ 符号相反 ----
+    conf = t[t["conflict"]].copy()
+    conf["abs_d"] = conf["d_alloc"].abs()
+    conf = conf.sort_values("abs_d", ascending=False)
+    if len(conf):
+        c0 = conf.iloc[0]
+        cards.append(dict(
+            kind="div", color="#E8710A",
+            judgment=f"观察｜分歧：{int(t['conflict'].sum())} 个行业「配置与历史位置」符号相反",
+            tag="代理指标 · 非基金级分歧度",
+            rows=[
+                f'<b>数字</b>：{c0.name} Δ配置 {c0["d_alloc"]:+.2f}pp 但 ΔZ {c0["dz"]:+.2f}σ；'
+                f'全行业 Δ配置 横截面标准差 <b>{disp["cross_std"]:.2f}pp</b>、'
+                f'中位 {disp["median"]:+.2f}pp。',
+                f'<b>上期</b>：{q0} 符号相反 '
+                f'{int(t0["conflict"].sum())} 个；本期 {int(t["conflict"].sum())} 个。',
+                f'<b>方向</b>：{pos["stance"]}，仓位区间 <b>{pos["low"]}%–{pos["high"]}%</b>。'
+                f'真正的基金级分歧度（加仓基金占比）需要明细，本期不可得——'
+                f'这里只用行业配置变化的离散度代理，<b>不能判读「共识/对撞」</b>。',
+            ],
+            invalid=("若拿到基金级明细后，加仓占比落在 40–60%、分歧度 >0.7，"
+                     "则「分歧」升级为「对撞」；若加仓占比 ≥70%，本条作废。"),
+        ))
+
+    # ---- 移动：主动金额 top / bottom ----
+    mv_ok = active["active_mv"].notna() & (active["alloc1"].fillna(0) >= 0.5)
+    mov = active[mv_ok].copy()
+    if len(mov):
+        buy = mov.sort_values("active_mv", ascending=False).head(3)
+        sell = mov.sort_values("active_mv").head(3)
+        cards.append(dict(
+            kind="move", color=up,
+            judgment=f"加｜主动买入第一：{buy.index[0]} {buy.iloc[0]['active_mv']:+.0f} 亿",
+            tag="剔价格口径 · 主动金额",
+            rows=[
+                f'<b>数字（主动买入）</b>：' +
+                "、".join(f"{n} {r['active_mv']:+.0f} 亿（{r['active']:+.2f}pp）"
+                          for n, r in buy.iterrows()) + "。",
+                f'<b>数字（主动卖出）</b>：' +
+                "、".join(f"{n} {r['active_mv']:+.0f} 亿（{r['active']:+.2f}pp）"
+                          for n, r in sell.iterrows()) + "。",
+                f'<b>上期</b>：{q0} 主动净额 '
+                f'{float(active["active_mv"].sum()):+.0f} 亿；'
+                f'本期 {float(mov["active_mv"].sum()):+.0f} 亿（缓存重仓口径，量级参考）。',
+            ],
+            invalid=("若下季主动净额整体反转，或某行业主动项与其 ΔZ 符号转一致，"
+                     "则「移动」方向按新数据重算，本条作废。"),
+        ))
+    return cards
 
 
 def build_conclusions(t: pd.DataFrame, t0: pd.DataFrame, mv: dict,
@@ -341,7 +432,7 @@ def render_overview(b, ind, mkt, latest: str, colors: dict, compact: bool = Fals
     share = (abs(passive) / abs(e_elec["d_alloc"]) * 100
              if pd.notna(passive) and e_elec["d_alloc"] else np.nan)
 
-    h(f'<div class="sec">本期变化结论 · {q0} → {latest}（谁在撤、谁在进）</div>')
+    h(f'<div class="sec">共识 · 分歧 · 移动 · {q0} → {latest}</div>')
     hero = (
         f'<div class="cg-hero"><div class="cg-k">一句话判断</div>'
         f'<div class="cg-t">AI 算力链撤出，医药与低估值顺周期承接：'
@@ -376,7 +467,10 @@ def render_overview(b, ind, mkt, latest: str, colors: dict, compact: bool = Fals
           · 全样本最大 {t['dz'].abs().idxmax()} {t['dz'].abs().max():+.2f}σ（容量 {_fmt(t.loc[t['dz'].abs().idxmax(), 'alloc'], "{:.2f}%")}）</div></div>
     </div>""")
 
-    for c in build_conclusions(t, t0, mv, n_up):
+    active = inst.active_change(b, ind, latest)
+    disp = inst.dispersion_proxy(t)
+    pos = inst.position_advice(disp)
+    for c in build_triptych(t, t0, mv, n_up, active, pos, disp):
         h(_card(c["judgment"], c["tag"], c["color"], c["rows"], c["invalid"]))
 
     h(f'<div class="cg-note">口径：主判断一律用 <b>Δ超配Z（长历史）</b>＝F2e 的一阶差分；'
@@ -471,6 +565,40 @@ def render(b, ind, mkt, latest: str, colors: dict):
           f'与当前季度存在一个季度的时滞，结论列只用行业 ΔZ，不用市值排序；'
           f'因此若某行业 Δ配置与 ΔZ 符号相反（如有色金属 +0.43pp / −0.85σ），'
           f'个股结论会显示「减」，与该行业配置上升并不矛盾。</div>')
+
+    # ================= 5b. 机构建仓/撤离榜 =================
+    h('<div class="sec">⑤b 机构新增建仓榜 / 撤离榜 · 按 Δ持股基金数（前 50 只口径）</div>')
+    flow = inst.stock_flow(latest, q0)
+    if flow.empty:
+        try:
+            import sqlite3
+            _con = sqlite3.connect(inst.DB_PATH)
+            _qs = [r[0] for r in _con.execute(
+                "SELECT DISTINCT quarter FROM stock_holdings ORDER BY quarter")]
+            _con.close()
+        except Exception:
+            _qs = []
+        h(f'<div class="cg-note">库内尚无 {latest} 的个股数据（已入库 '
+          f'{len(_qs)} 期：{_qs[0] if _qs else "—"}–{_qs[-1] if _qs else "—"}）。'
+          f'抓取仍在进行，完成后本区自动显示，无需改代码。</div>')
+    else:
+        cols = ["name", "n0", "n1", "d_n", "mv1", "d_mv", "state"]
+        c1, c2 = st.columns(2, gap="small")
+        with c1:
+            h('<div class="cg-note" style="font-weight:700;color:#B42318">新增建仓榜（Δ持股基金数最大）</div>')
+            st.dataframe(flow.nlargest(10, "d_n")[cols].rename(columns={
+                "name": "股票", "n0": f"{q0}", "n1": f"{latest}", "d_n": "Δ基金数",
+                "mv1": "持仓(亿)", "d_mv": "Δ市值(亿)", "state": "榜单状态"}),
+                width="stretch", hide_index=True, height=330)
+        with c2:
+            h('<div class="cg-note" style="font-weight:700;color:#1A7F37">机构撤离榜（Δ持股基金数最小）</div>')
+            st.dataframe(flow.nsmallest(10, "d_n")[cols].rename(columns={
+                "name": "股票", "n0": f"{q0}", "n1": f"{latest}", "d_n": "Δ基金数",
+                "mv1": "持仓(亿)", "d_mv": "Δ市值(亿)", "state": "榜单状态"}),
+                width="stretch", hide_index=True, height=330)
+        h('<div class="cg-note"><b>口径边界</b>：接口每期只返回「按持股基金数排序的前 50 只」，'
+          '因此「退出前 50」不等于清仓、「新进前 50」不等于新建仓，两者都只作观察。'
+          'Δ基金数未做基金样本数归一（样本基金数逐季变化），跨期比较需谨慎。</div>')
 
     # ================= 6. 证据面板 =================
     h('<div class="sec">⑥ 证据面板 · 为什么用 ΔZ 而不是 Δ配置pp</div>')

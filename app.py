@@ -44,7 +44,7 @@ if _SRC_DIR not in sys.path:
 _LOCAL_MODULES = ("config", "data_loader", "factor_engine", "backtest", "research",
                   "research3", "research4", "rigor", "signal_generator",
                   "insights", "guide", "factor_docs", "metric_doc", "attribution",
-                  "change_analysis", "change_page")
+                  "change_analysis", "change_page", "institution")
 
 
 def _reload_local_modules_if_changed() -> None:
@@ -92,6 +92,7 @@ import metric_doc as md        # noqa: E402  指标释义：定义/经济内容/
 import attribution as atr      # noqa: E402  配置变化归因（主动/被动）与压力测算
 import change_analysis as ca   # noqa: E402  环比变化：Δ超配Z/四象限/IC/多空/成本
 import change_page as cp       # noqa: E402  环比变化页渲染（结论先行）
+import institution as inst     # noqa: E402  六度量/六验证/决策表/数据健康
 import signal_generator as sg  # noqa: E402
 
 
@@ -407,7 +408,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.28-r18.0"
+APP_VERSION = "2026.10.28-r19.0"
 
 
 def _fp_short() -> str:
@@ -1765,6 +1766,59 @@ if _P == "④ 因子与检验":
 # ============================================================================
 if _P == "⑤ 数据与方法":
     _h('<div class="sec">一、数据来源 · Wind 金融终端</div>')
+
+    # 数据健康（R19）：五类数据源的覆盖、缺口、取数方式——先看能不能用，再看结论
+    _ds = inst.data_status()
+    _badge = {"available": "✅ 可用", "proxy": "⚠️ 代理", "blocked": "⛔ 未就绪"}
+    _ds_show = _ds.assign(状态=_ds["state"].map(_badge))[
+        ["name", "状态", "have", "need", "why"]].rename(columns={
+            "name": "数据源", "have": "现有覆盖", "need": "补齐所需", "why": "约束"})
+    _h('<div class="sec">数据健康 · 五类数据源覆盖与缺口（先看能不能用）</div>')
+    st.dataframe(_ds_show, width="stretch", hide_index=True)
+    _h('<div class="tiny">结论：<b>只有「重仓股持股基金数」与「行业聚合配置」可用</b>；'
+       '基金×个股明细、全持仓、日度净值、季报文本四类均未就绪——'
+       'Wind MCP 只能按单只基金单期查询，全量需约 4.6 万次调用，本机也未安装 WindPy。'
+       '因此分歧度、日度暴露、全持仓校准、文本因子四项度量不进入决策表。</div>')
+
+    # 个股库覆盖（若管道已入库）
+    try:
+        import sqlite3
+        if os.path.exists(inst.DB_PATH):
+            _con = sqlite3.connect(inst.DB_PATH)
+            _cov = pd.read_sql(
+                "SELECT quarter 季度, COUNT(*) 行数, MIN(n_funds) 最少基金数,"
+                " MAX(n_funds) 最多基金数, ROUND(SUM(mv_yi),1) 持仓市值合计亿元 "
+                "FROM stock_holdings GROUP BY quarter ORDER BY quarter", _con)
+            _log = pd.read_sql(
+                "SELECT quarter 季度, status 状态, rows 行数, ts 时间, note 备注 "
+                "FROM fetch_log ORDER BY id DESC LIMIT 12", _con)
+            _con.close()
+            if not _cov.empty:
+                _h('<div class="sec">重仓股持股基金数 · 逐期覆盖</div>')
+                st.dataframe(_cov, width="stretch", hide_index=True)
+                _h('<div class="tiny">接口只返回<b>按持股基金数排序的前 50 只</b>，'
+                   '因此「跌出前 50」会被误判为「退出」；表中退出/新进只作观察，不作买卖依据。</div>')
+            if not _log.empty:
+                with st.expander("取数日志（最近 12 条）", expanded=False):
+                    st.dataframe(_log, width="stretch", hide_index=True)
+    except Exception as _e:
+        _h(f'<div class="tiny">个股库尚未建立：{_e}。运行 tools/fund_pipeline.py --ingest 后显示覆盖。</div>')
+
+    # 清洗剔除统计：基金级明细未就绪，如实标注
+    _h('<div class="sec">样本清洗 · 剔除统计</div>')
+    st.dataframe(pd.DataFrame([
+        dict(步骤="新基金（成立不足 2 期）", 剔除="未执行", 原因="需基金成立日与逐期持仓明细"),
+        dict(步骤="清盘/转型/类型变更", 剔除="未执行", 原因="需基金档案与变更记录"),
+        dict(步骤="近4季仓位<60% 的灵活配置", 剔除="未执行", 原因="需基金资产净值与股票投资市值"),
+        dict(步骤="规模<5000万 迷你基金", 剔除="未执行", 原因="需基金规模"),
+        dict(步骤="单行业>80% 的主题基金", 剔除="未执行", 原因="需基金级行业配置"),
+        dict(步骤="基金经理变更（不可比）", 剔除="未执行", 原因="需经理任职起止日期"),
+        dict(步骤="ST/停牌/上市<12月", 剔除="未执行", 原因="需个股状态与上市日"),
+        dict(步骤="流动性<5000万/日", 剔除="未执行", 原因="需个股日成交额"),
+        dict(步骤="总市值<50亿", 剔除="未执行", 原因="需个股总市值"),
+    ]), width="stretch", hide_index=True)
+    _h('<div class="tiny">清洗规则<b>已实现为可执行清单</b>，但缺少基金级/个股级字段，'
+       '当前一步都无法实际剔除。这与「未清洗就算分歧度」的红线一致：既然清洗不了，就不算分歧度。</div>')
     _h(f"""<div class="kpis">
           <div class="kpi"><div class="k">数据源</div><div class="v" style="font-size:15px">Wind</div>
             <div class="s">MCP 结构化取数</div></div>

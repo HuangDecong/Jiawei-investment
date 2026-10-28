@@ -1,0 +1,419 @@
+# -*- coding: utf-8 -*-
+"""机构持仓决策系统：六个度量、六项验证、决策表。
+
+设计原则
+--------
+1. **数据可得性先于方法**：每个度量都带 `state`（available / proxy / blocked），
+   blocked 的度量不进入决策表，只说明缺什么、需要多少次取数。
+2. **未过验证的度量降级为参考**，不写「显著」二字（样本 <12 期直接降级）。
+3. **决策动作只有四个**：超配 / 标配 / 低配 / 回避；每条含数字、上期对照、失效条件。
+4. **不插值、不填补**：个股清单只列真实取到的记录，缺失留空。
+
+当前取数约束（已实测）
+----------------------
+Wind MCP 的 `get_fund_holdings` 只能按「单只基金 × 单个报告期」查询，无批量参数；
+本机未安装 WindPy / iFinDPy。全量基金×个股明细需 1074 只 × 43 期 ≈ 4.6 万次调用
+（按每次 3 秒计约 40 小时），无法在单次会话完成。因此：
+    · 4.1 主动加减仓       → available（行业聚合 + 价格漂移分解）
+    · 4.2 分歧度           → blocked（需基金级明细），仅给市场层面代理
+    · 4.3 个股持股变动     → available（每期前 50 只，按名称合并）
+    · 4.4 日度行业暴露     → blocked（需基金日度复权净值）
+    · 4.5 全持仓校准       → blocked（需半年报/年报全持仓）
+    · 4.6 季报文本因子     → blocked（Wind MCP 无文本接口）
+"""
+from __future__ import annotations
+
+import os
+import sqlite3
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+import attribution as atr
+import backtest as bt
+import config as C
+
+DB_PATH = os.path.join(C.DATA, "db", "institution.db")
+
+# ---------------------------------------------------------------------------
+# 数据状态登记
+# ---------------------------------------------------------------------------
+DATA_STATUS = [
+    dict(key="fund_stock_detail", name="基金×个股明细", state="blocked",
+         have="0 期（仅 20 只 2026Q2 快照）", need="1074 只 × 43 期 ≈ 4.6 万次调用",
+         why="Wind MCP 仅支持单基金单期查询，无批量参数；本机无 WindPy"),
+    dict(key="full_holding", name="全持仓（半年报/年报）", state="blocked",
+         have="0", need="同基金×个股明细", why="同上"),
+    dict(key="nav_daily", name="基金日度复权净值", state="blocked",
+         have="0", need="1074 只 × 约 2600 交易日", why="Wind MCP 按单基金查询，无批量"),
+    dict(key="fund_profile", name="基金档案与经理变更", state="blocked",
+         have="0", need="1074 只", why="同上"),
+    dict(key="report_text", name="季报文本", state="blocked",
+         have="0", need="1074 份/期", why="Wind MCP 无文本接口"),
+    dict(key="stock_holdings", name="重仓股持股基金数", state="available",
+         have="每期前 50 只（按持股基金数）", need="—",
+         why="批量汇总视图可用；仅前 50、无行业字段"),
+]
+
+
+def data_status() -> pd.DataFrame:
+    return pd.DataFrame(DATA_STATUS)
+
+
+# ---------------------------------------------------------------------------
+# 4.1 主动加减仓（双口径交叉验证）
+# ---------------------------------------------------------------------------
+def active_change(b, ind: dict, q: str | None = None) -> pd.DataFrame:
+    """行业主动加减仓：占比口径 + 市值口径。
+
+    占比口径：Δw = 被动漂移（价格）+ 主动（其余），沿用 attribution 的 GK 分解。
+    市值口径：ΔMV − 价格效应 = 主动金额（亿元）。总市值为缓存重仓口径（偏低约 40%），
+    故金额只作量级参考，比例与符号才是结论。
+    """
+    q = q or b.latest
+    qs = list(b.quarters)
+    i = qs.index(q)
+    q0 = qs[i - 1] if i > 0 else None
+    dec = atr.decompose(b.alloc, b.market["ret"])
+    rows = {}
+    for k in C.INDUSTRIES:
+        sp = atr.split_one(dec, q, k)
+        rows[k] = dict(d_alloc=sp.get("变化", np.nan),
+                       passive=sp.get("被动贡献", np.nan),
+                       active=sp.get("主动贡献", np.nan),
+                       alloc0=sp.get("上季配置", np.nan),
+                       alloc1=sp.get("本季配置", np.nan))
+    t = pd.DataFrame(rows).T
+    # 市值口径
+    hv = getattr(b, "holdings_value", None)
+    if hv is not None and q in getattr(hv, "index", []) and q0 in getattr(hv, "index", []):
+        mv1 = b.alloc.loc[q] / 100 * float(hv.loc[q])
+        mv0 = b.alloc.loc[q0] / 100 * float(hv.loc[q0])
+        ret = b.market["ret"].loc[q].reindex(C.INDUSTRIES)
+        price = mv0 * ret / 100
+        t["mv1"] = mv1
+        t["mv0"] = mv0
+        t["d_mv"] = mv1 - mv0
+        t["price_mv"] = price
+        t["active_mv"] = t["d_mv"] - t["price_mv"]
+        t["sign_agree"] = np.sign(t["active"]) == np.sign(t["active_mv"])
+    else:
+        for c in ("mv1", "mv0", "d_mv", "price_mv", "active_mv"):
+            t[c] = np.nan
+        t["sign_agree"] = False
+    t.attrs["q"], t.attrs["q0"] = q, q0
+    return t
+
+
+def active_panel(b, ind: dict) -> pd.DataFrame:
+    """全历史主动加减仓矩阵（季度 × 行业），用于六项验证。"""
+    dec = atr.decompose(b.alloc, b.market["ret"])
+    qs = list(b.quarters)
+    out = pd.DataFrame(index=qs, columns=C.INDUSTRIES, dtype=float)
+    for q in qs:
+        if q not in b.alloc.index:
+            continue
+        for k in C.INDUSTRIES:
+            sp = atr.split_one(dec, q, k)
+            out.loc[q, k] = (sp or {}).get("主动贡献", np.nan)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 4.2 分歧度（blocked）＋ 市场层面代理
+# ---------------------------------------------------------------------------
+def dispersion_proxy(t: pd.DataFrame) -> dict:
+    """分歧度的**代理**：不是基金级加仓占比，只反映行业配置变化的离散程度。
+
+    真正的分歧度需要「加仓基金数 / 减仓基金数 / 金额比」，必须基金级明细；
+    当前不可得，故本函数明确标注为 proxy，不进入决策表。
+    """
+    d = t["d_alloc"].dropna()
+    dz = t["dz"].dropna()
+    hist_disp = None
+    return dict(
+        state="proxy",
+        n_add=int((d > 0).sum()), n_cut=int((d < 0).sum()),
+        cross_std=float(d.std(ddof=1)) if len(d) > 1 else np.nan,
+        median=float(d.median()) if len(d) else np.nan,
+        conflict=int(t["conflict"].sum()),
+        note="行业 Δ配置 的横截面离散度；不是基金级加仓占比，不能判读「共识/对撞」",
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4.3 个股持股变动
+# ---------------------------------------------------------------------------
+def stock_flow(q: str, q0: str, db_path: str = DB_PATH) -> pd.DataFrame:
+    """两期前 50 只重仓股的持股基金数变化。
+
+    重要边界：接口只返回「按持股基金数排序的前 50 只」，因此
+    「跌出前 50」会被误判为「退出」。表中用 in_top 标记两期是否都在榜内，
+    退出/新进只作观察，不作买卖依据。
+    """
+    if not os.path.exists(db_path):
+        return pd.DataFrame(columns=["name", "n0", "n1", "d_n", "mv1", "d_mv", "state"])
+    con = sqlite3.connect(db_path)
+    try:
+        df = pd.read_sql(
+            "SELECT quarter,name,n_funds,mv_yi FROM stock_holdings WHERE quarter IN (?,?)",
+            con, params=(q0, q))
+    finally:
+        con.close()
+    if df.empty:
+        return pd.DataFrame(columns=["name", "n0", "n1", "d_n", "mv1", "d_mv", "state"])
+    p = df.pivot_table(index="name", columns="quarter", values=["n_funds", "mv_yi"],
+                       aggfunc="first")
+    out = pd.DataFrame(index=p.index)
+    out["n0"] = p[("n_funds", q0)] if ("n_funds", q0) in p else np.nan
+    out["n1"] = p[("n_funds", q)] if ("n_funds", q) in p else np.nan
+    out["mv1"] = p[("mv_yi", q)] if ("mv_yi", q) in p else np.nan
+    out["mv0"] = p[("mv_yi", q0)] if ("mv_yi", q0) in p else np.nan
+    out["d_n"] = out["n1"].fillna(0) - out["n0"].fillna(0)
+    out["d_mv"] = out["mv1"].fillna(0) - out["mv0"].fillna(0)
+    out["state"] = np.select(
+        [out["n0"].isna() & out["n1"].notna(),
+         out["n0"].notna() & out["n1"].isna(),
+         out["n0"].notna() & out["n1"].notna()],
+        ["新进前50", "退出前50", "两期在榜"], default="—")
+    out = out[out["n1"].notna() | out["n0"].notna()]
+    return out.sort_values("d_n", ascending=False).reset_index()
+
+
+# ---------------------------------------------------------------------------
+# 4.4 / 4.5 / 4.6 状态
+# ---------------------------------------------------------------------------
+def daily_exposure_status() -> dict:
+    return dict(state="blocked", name="日度行业暴露",
+                reason="需 1074 只基金 2016 年至今的日度复权净值；Wind MCP 仅支持单基金查询",
+                fallback="回退季频：信号在季报披露后约 15 个工作日可用，季度内不再更新",
+                required="1074 只 × 1 次日度净值调用（约 2600 行/只）")
+
+
+def full_holding_status() -> dict:
+    return dict(state="blocked", name="全持仓校准",
+                reason="半年报/年报全持仓需要逐基金逐期取数，当前无批量接口",
+                fallback="前十大口径的行业占比合计约 46–48.5%，结论按「重仓口径」标注",
+                required="1074 只 × 20 个半年/年度报告期")
+
+
+def text_factor_status() -> dict:
+    return dict(state="blocked", name="季报文本因子",
+                reason="Wind MCP 无季报文本字段（投资策略/市场展望）",
+                fallback="不做文本观点，不用其他字段替代",
+                required="1074 份/期 × 43 期")
+
+
+# ---------------------------------------------------------------------------
+# 六项验证
+# ---------------------------------------------------------------------------
+def _monotonic(groups: list[float]) -> float:
+    """分组均值与组序号的 Spearman 相关（1=完全单调递增）。"""
+    g = pd.Series(groups).dropna()
+    if len(g) < 3:
+        return np.nan
+    return float(stats.spearmanr(np.arange(len(g)), g.values).correlation)
+
+
+def group_returns(fac: pd.DataFrame, fwd: pd.DataFrame, n_grp: int = 5) -> pd.DataFrame:
+    ret_abs = None
+    rows = []
+    for gi in range(n_grp):
+        lo, hi = gi * 100 / n_grp, (gi + 1) * 100 / n_grp
+        vals = []
+        for q in fac.index:
+            if q not in fwd.index:
+                continue
+            s = fac.loc[q]
+            r = fwd.loc[q]
+            m = (s >= lo) & (s < hi) if gi < n_grp - 1 else (s >= lo) & (s <= hi)
+            sel = s[m].dropna().index
+            if len(sel) >= 2:
+                vals.append(float(r.reindex(sel).mean()))
+        v = pd.Series(vals)
+        rows.append(dict(组=f"{lo:.0f}-{hi:.0f}", n期=len(v),
+                         均值=float(v.mean()) if len(v) else np.nan,
+                         胜率=float((v > 0).mean() * 100) if len(v) else np.nan))
+    return pd.DataFrame(rows)
+
+
+def six_checks(b, fac: pd.DataFrame, name: str, expect_positive: bool = True,
+               min_n: int = 12) -> dict:
+    """IC / 分组单调 / 剔Q4 / 分段 / 正交化 / 成本 六项。"""
+    fwd = bt.forward_excess(b.market, lag=1)
+    ic = bt.rank_ic_panel(fac, fwd).dropna()
+    n = len(ic)
+    nw_t, nw_p = bt.nw_tstat(ic)
+    checks = []
+
+    # 1 IC
+    ok1 = (n >= min_n) and (nw_p == nw_p and nw_p < 0.10) and \
+          (np.sign(ic.mean()) == (1 if expect_positive else -1))
+    checks.append(dict(项="IC 检验", 通过=bool(ok1),
+                       结果=f"n={n}，RankIC {ic.mean():+.3f}，NW t {nw_t:.2f}，p {nw_p:.3f}"))
+    # 2 分组单调
+    g = group_returns(fac, fwd, 5)
+    mono = _monotonic(g["均值"].tolist())
+    ok2 = pd.notna(mono) and abs(mono) >= 0.8 and np.sign(mono) == (1 if expect_positive else -1)
+    checks.append(dict(项="分组单调性", 通过=bool(ok2),
+                       结果=f"5 组均值 {', '.join(f'{v:+.2f}' for v in g['均值'])}；秩相关 {mono:+.2f}" if pd.notna(mono) else "样本不足"))
+    # 3 剔 Q4
+    fac_noq4 = fac.loc[[q for q in fac.index if not str(q).endswith("Q4")]]
+    ic2 = bt.rank_ic_panel(fac_noq4, fwd).dropna()
+    nw2, np2 = bt.nw_tstat(ic2)
+    ok3 = (np2 == np2 and np2 < 0.10) and (np.sign(ic2.mean()) == np.sign(ic.mean()))
+    checks.append(dict(项="剔 Q4 复检", 通过=bool(ok3),
+                       结果=f"剔后 n={len(ic2)}，RankIC {ic2.mean():+.3f}，NW p {np2:.3f}"))
+    # 4 分段
+    seg = []
+    for a, z_ in [("2019Q3", "2022Q4"), ("2023Q1", "2026Q2")]:
+        x = ic.loc[a:z_]
+        if len(x) >= 6:
+            t_, p_ = bt.nw_tstat(x)
+            seg.append((a, z_, len(x), float(x.mean()), float(t_), float(p_)))
+    if seg:
+        same = len({np.sign(s[3]) for s in seg}) == 1
+        ok4 = same and all(s[5] < 0.10 for s in seg)
+        detail = "；".join(f"{s[0]}–{s[1]} n={s[2]} IC {s[3]:+.3f} p {s[5]:.3f}" for s in seg)
+    else:
+        ok4, detail = False, "样本不足以分段（<6 期/段）"
+    checks.append(dict(项="分段稳定性", 通过=bool(ok4), 结果=detail))
+    # 5 正交化（对过去 4 季涨幅）
+    ret = b.market["ret"].reindex(columns=C.INDUSTRIES)
+    mom4 = (1 + ret / 100).rolling(4).apply(np.prod, raw=True).sub(1) * 100
+    resid = pd.DataFrame(index=fac.index, columns=fac.columns, dtype=float)
+    for q in fac.index:
+        if q not in mom4.index:
+            continue
+        d = pd.concat([fac.loc[q], mom4.loc[q]], axis=1).dropna()
+        if len(d) < 10:
+            continue
+        X = np.column_stack([np.ones(len(d)), d.iloc[:, 1].to_numpy(float)])
+        beta = np.linalg.lstsq(X, d.iloc[:, 0].to_numpy(float), rcond=None)[0]
+        resid.loc[q] = fac.loc[q] - (beta[0] + beta[1] * mom4.loc[q])
+    ic3 = bt.rank_ic_panel(resid, fwd).dropna()
+    nw3, np3 = bt.nw_tstat(ic3)
+    ok5 = (len(ic3) >= min_n) and (np3 == np3 and np3 < 0.10) and \
+          (np.sign(ic3.mean()) == np.sign(ic.mean()))
+    checks.append(dict(项="动量正交化", 通过=bool(ok5),
+                       结果=f"残差 n={len(ic3)}，RankIC {ic3.mean():+.3f}，NW p {np3:.3f}"))
+    # 6 成本
+    from change_analysis import long_short, perf
+    s = long_short(b, fac, k=8)
+    pf = perf(s)
+    turn = 2.0  # 季度双边换手近似：上下各 8 只、全换 = 200%
+    net = pf["ann"] - turn * 4 * 0.001 * 2 * 100 if pd.notna(pf["ann"]) else np.nan
+    ok6 = pd.notna(net) and net > 0
+    checks.append(dict(项="交易成本(20bp)", 通过=bool(ok6),
+                       结果=f"毛年化 {pf['ann']:+.2f}%、扣费后 {net:+.2f}%（假设年换手 {turn*4*100:.0f}%）"))
+    n_pass = sum(c["通过"] for c in checks)
+    status = "可用" if n_pass == 6 else ("参考" if n_pass >= 4 else "不可用")
+    return dict(指标=name, 通过项=int(n_pass), 总项=len(checks), 状态=status,
+                检验=pd.DataFrame(checks), n=n, ic_mean=float(ic.mean()),
+                nw_t=float(nw_t), nw_p=float(nw_p))
+
+
+# ---------------------------------------------------------------------------
+# 行业决策表
+# ---------------------------------------------------------------------------
+ACTION_ORDER = ["超配", "标配", "低配", "回避"]
+
+
+def decision_table(t: pd.DataFrame, active: pd.DataFrame,
+                   coverage_ok: bool = True,
+                   t0: pd.DataFrame | None = None) -> pd.DataFrame:
+    """31 行行业配置表：动作 + 理由 + 失效条件。
+
+    规则（事前固定，不按结果调参）：
+      · 超配：超配分位 ≥ 80 且 主动项 > 0
+      · 回避：超配分位 ≤ 20 且 主动项 < 0
+      · 低配：超配分位 ≤ 20 或 主动项 < 0（二者其一）
+      · 标配：其余
+    证据等级：F3e 剔 Q4 后不显著 → 全部标「参考」；主动项 n=9 → 同样「参考」。
+    """
+    rows = []
+    for k in t.index:
+        z = t.loc[k, "z"]
+        pct = t.loc[k, "pct"]
+        dz = t.loc[k, "dz"]
+        d_alloc = t.loc[k, "d_alloc"]
+        a = active.loc[k, "active"] if k in active.index else np.nan
+        if pd.isna(pct):
+            act = "标配"
+            why = "超配分位缺失，不给方向"
+        elif pct >= 80 and pd.notna(a) and a > 0:
+            act = "超配"
+            why = f"分位 {pct:.0f}%（高位）且主动加仓 {a:+.2f}pp"
+        elif pct <= 20 and pd.notna(a) and a < 0:
+            act = "回避"
+            why = f"分位 {pct:.0f}%（低位）且主动减仓 {a:+.2f}pp"
+        elif pct <= 20 or (pd.notna(a) and a < 0):
+            act = "低配"
+            why = (f"分位 {pct:.0f}%" if pct <= 20 else "主动项为负")
+        else:
+            act = "标配"
+            why = f"分位 {pct:.0f}%、主动 {a:+.2f}pp，无极端信号" if pd.notna(a) else f"分位 {pct:.0f}%"
+        rows.append(dict(
+            行业=k, 建议动作=act,
+            主动加减仓=round(float(a), 2) if pd.notna(a) else np.nan,
+            配置变化pp=round(float(d_alloc), 2) if pd.notna(d_alloc) else np.nan,
+            超配分位=round(float(pct), 0) if pd.notna(pct) else np.nan,
+            当前配置=round(float(t.loc[k, "alloc"]), 2) if pd.notna(t.loc[k, "alloc"]) else np.nan,
+            # 上期对照（本轮新增）：没有对照的结论不允许进决策表
+            上期配置=(round(float(t.loc[k, "alloc0"]), 2)
+                      if pd.notna(t.loc[k, "alloc0"]) else np.nan),
+            上期主动项=(round(float(t0.loc[k, "active"]), 2)
+                        if t0 is not None and k in t0.index
+                        and pd.notna(t0.loc[k].get("active", np.nan)) else np.nan),
+            上期等级=(t.loc[k, "lvl0"] if pd.notna(t.loc[k, "lvl0"]) else "—"),
+            理由=why,
+            失效条件=("若下季主动项转正且分位回升至 40% 以上" if act in ("低配", "回避")
+                      else "若下季主动项转负且分位跌破 50%"),
+            证据等级="参考（F3e 剔Q4 后 p=0.11；主动项 n=9）" if coverage_ok else "未就绪",
+        ))
+    return pd.DataFrame(rows).sort_values(
+        ["建议动作", "主动加减仓"], key=lambda s: s.map({a: i for i, a in enumerate(ACTION_ORDER)})
+        if s.name == "建议动作" else s, ascending=[True, False])
+
+
+# ---------------------------------------------------------------------------
+# 仓位建议
+# ---------------------------------------------------------------------------
+def position_advice(disp: dict) -> dict:
+    """基于分歧代理的仓位区间。代理非基金级，故区间偏保守并注明依据。"""
+    sd = disp.get("cross_std", np.nan)
+    med = disp.get("median", np.nan)
+    if pd.isna(sd):
+        return dict(low=np.nan, high=np.nan, stance="数据不足", why="横截面离散度缺失")
+    # 口径：2024–2026 期间 Δ配置 横截面标准差的历史分位
+    if sd < 1.2:
+        lo, hi, st = 70, 85, "共识偏高"
+    elif sd < 2.0:
+        lo, hi, st = 55, 70, "分歧中性"
+    else:
+        lo, hi, st = 40, 55, "分歧偏高"
+    return dict(low=lo, high=hi, stance=st,
+                why=(f"行业 Δ配置 横截面标准差 {sd:.2f}pp、中位 {med:+.2f}pp；"
+                     f"该值是代理指标，不是基金级加仓占比"))
+
+
+# ---------------------------------------------------------------------------
+# 反证清单
+# ---------------------------------------------------------------------------
+def counter_evidence(t: pd.DataFrame, checks: list[dict]) -> list[dict]:
+    """本期结论最可能错在哪、什么数据能推翻。"""
+    out = []
+    for c in checks:
+        if c["状态"] != "可用":
+            out.append(dict(点=f"{c['指标']} 未通过全部六项（{c['通过项']}/{c['总项']}）",
+                            推翻=f"若补齐基金级明细并做规模中性化后 IC 仍不显著，则该指标应彻底移出决策"))
+    out.append(dict(点="前十大口径只覆盖净值约 46–48.5%，一半仓位不可见",
+                    推翻="若全持仓校准显示某行业前十大/全持仓比值长期 <0.7，该行业的超配比例需下调"))
+    out.append(dict(点="主动加减仓样本仅 9 期（2024Q2–2026Q2）",
+                    推翻="若 2027 年前累计到 12 期后 t 值跌破 1.65，则主动项也应降级"))
+    out.append(dict(点="价格漂移分解依赖行业指数收益，个股组合偏离指数",
+                    推翻="若用基金实际净值反推的行业暴露与季报口径偏差 >3pp，分解需重做"))
+    out.append(dict(点="个股清单只覆盖每期前 50 只，跌出榜单被误判为退出",
+                    推翻="若取到全量持仓，退出名单会显著缩短，撤离榜的排序会变"))
+    return out
