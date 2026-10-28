@@ -190,7 +190,7 @@ def latest_fund_industry_period(path: str | None = None) -> tuple[str, str] | No
 
 
 def dispersion_real(q: str, q0: str, path: str | None = None,
-                    min_delta: float = 0.10) -> pd.DataFrame:
+                    min_delta: float = 0.10, normalize: bool = True) -> pd.DataFrame:
     """真实分歧度：每行业统计 加仓/减仓/不变 基金数。
 
     口径与边界
@@ -199,6 +199,15 @@ def dispersion_real(q: str, q0: str, path: str | None = None,
     · 只取接口返回的前 10 重仓行业，未出现视为 0——这会低估小比例持仓的变化，
       因此「不变」包含「两期都不在前十」，是本指标最大的已知偏差；
     · 金额比用「占净值比变化」的正负之和，不是真金额（缺基金资产净值绝对值）。
+
+    归一化（默认开启，必不可少）
+    ----------------------------
+    半年报/年报期的行业配置表是全持仓汇总（覆盖约 88% 净值），
+    季报期只能由前十大重仓股推导（覆盖约 60%）。若直接用原始占比做差，
+    Q2→Q3 会把「覆盖率从 88% 掉到 61%」误算成「全面减仓」。
+    因此统一除以每只基金每期的 coverage（该期行业占比合计），
+    得到「占已覆盖组合的比例」，再做差。归一化后水平可比，但仍是
+    「已披露部分」的结构，不是完整组合。
     """
     payload = load_fund_industry(path)
     funds = payload.get("funds", [])
@@ -206,6 +215,8 @@ def dispersion_real(q: str, q0: str, path: str | None = None,
     if not funds or not data:
         return pd.DataFrame()
     codes = [f["code"] for f in funds]
+    cov = payload.get("coverage", {}) if normalize else {}
+    spec = payload.get("period_spec", {})
     rows = []
     for ind in C.INDUSTRIES:
         up = dn = fl = n = 0
@@ -220,6 +231,11 @@ def dispersion_real(q: str, q0: str, path: str | None = None,
                 continue
             a = 0.0 if a is None else float(a)
             b = 0.0 if b is None else float(b)
+            if normalize:
+                ca_ = cov.get(c, {}).get(q) or 100.0
+                cb_ = cov.get(c, {}).get(q0) or 100.0
+                a = a / ca_ * 100 if ca_ > 0 else 0.0
+                b = b / cb_ * 100 if cb_ > 0 else 0.0
             # 清洗规则：该基金本期或上期在本行业配置 >80% → 行业主题基金，
             # 其变化主要反映主题基金自身申赎，计入会污染行业分歧度。
             if max(a, b) > 80.0:
@@ -261,8 +277,10 @@ def dispersion_real(q: str, q0: str, path: str | None = None,
     if not out.empty:
         out.attrs["q"], out.attrs["q0"] = q, q0
         out.attrs["n_funds"] = len(codes)
-        out.attrs["note"] = ("仅前 10 重仓行业，未出现视为 0；样本为 2026Q2 规模前 50 的偏股混合，"
+        out.attrs["note"] = ("仅前 10 行业，未出现视为 0；样本为 2026Q2 规模前 50 的偏股混合，"
                              "偏科技主题，不代表全市场")
+        out.attrs["period_spec"] = spec
+        out.attrs["normalized"] = bool(normalize)
     return out
 
 

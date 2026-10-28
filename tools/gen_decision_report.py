@@ -80,6 +80,13 @@ def main(quarter: str | None = None) -> str:
 
     out = os.path.join(ROOT, "报告", "机构持仓决策报告.xlsx")
     os.makedirs(os.path.dirname(out), exist_ok=True)
+    # 文件被 Excel 占用时自动降级文件名，避免整份报告生成失败
+    try:
+        _probe = open(out, "a")
+        _probe.close()
+    except PermissionError:
+        out = os.path.join(ROOT, "报告", "机构持仓决策报告_r19.4.xlsx")
+        print(f"原文件被占用，改写到：{os.path.basename(out)}")
 
     with pd.ExcelWriter(out, engine="openpyxl") as xw:
         # ---------- 0 决策摘要 ----------
@@ -96,7 +103,7 @@ def main(quarter: str | None = None) -> str:
                  f"{stock.shape[0]} 只（两期并集）") if not stock.empty else "未就绪：需先运行数据管道",
                 (f"真实口径：47 只偏股混合（规模前 50 中有两期数据者）；区间 "
                  f"{_dp[1] if _dp else '—'} → {_dp[0] if _dp else '—'}（跨两季）；"
-                 "仅前 10 重仓行业、剔除单行业>80% 主题基金，样本偏科技主题")
+                 "仅前 10 行业、剔除>80% 主题基金、按覆盖率归一化；样本偏科技主题")
                 if not disp_real.empty else "未就绪：需 fund_industry_50x4.json",
                 "本期不给「超配/回避」的可执行指令，只给参考清单；"
                 "原因是超配分位剔 Q4 后 p=0.110、2019–2022 段方向相反（IC −0.055）",
@@ -179,7 +186,7 @@ def main(quarter: str | None = None) -> str:
         # ---------- 6 口径说明 ----------
         spec = pd.DataFrame({
             "项": ["主动加减仓", "价格漂移", "主动（市值口径）", "超配分位", "分歧度",
-                   "个股 Δ 持股基金数", "仓位建议", "样本边界"],
+                   "个股 Δ 持股基金数", "仓位建议", "样本边界", "分歧度归一化"],
             "口径": [
                 "Δ配置pp − 被动漂移pp；被动 = 上季配置 ×(1+行业指数收益) 后按 31 行业归一",
                 "用申万一级行业指数季度收益近似个股组合收益",
@@ -189,6 +196,9 @@ def main(quarter: str | None = None) -> str:
                 "两期前 50 只并集，n1−n0；跌出前 50 会被误判为退出",
                 "按行业 Δ配置 横截面标准差分档，非基金级分歧度",
                 "基金×个股明细 0 期；全持仓 0；日度净值 0；季报文本 0（Wind MCP 仅单基金查询）",
+                "季报期由前十大推导（覆盖约 60%），半年报/年报用全持仓表（约 88%）："
+                "先除以每只基金每期覆盖率再比较；不归一化会把覆盖率下降误算成全面减仓"
+                "（电子原始 3 加/39 减，归一化后 19 加/19 减）",
             ],
         })
         spec.to_excel(xw, sheet_name="6 口径说明", index=False)
