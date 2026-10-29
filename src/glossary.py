@@ -277,7 +277,7 @@ _add("divergence",
 # 四、分位与拥挤度
 # ===========================================================================
 _add("pct_self",
-     name="自身历史分位", cat="分位与拥挤度", unit="分位",
+     name="配置分位（自身历史）", cat="分位与拥挤度", unit="分位",
      meaning="这个行业当前的配置，在它自己过去 31 个季度里排第几。",
      principle=("跨行业比较没有意义：银行配置 5% 是历史高位，电子配置 5% 是历史低位。"
                 "分位把每个行业放到自己的历史里，回答「它自己有没有这么重过」。"),
@@ -317,7 +317,7 @@ _add("pct_cross",
      misuse="只看横截面会把「一直很重」当成「现在才拥挤」——银行常年是第一大权重。")
 
 _add("pct_index",
-     name="指数分位（价格贵不贵）", cat="分位与拥挤度", unit="分位",
+     name="价格分位（指数点位）", cat="分位与拥挤度", unit="分位",
      meaning="这个行业的指数点位，在 2019 年以来所有交易日里排第几。",
      principle=("配置分位回答「机构押得多重」，指数分位回答「价格有多贵」。"
                 "两者是独立维度：机构重仓但价格在低位，可能是机会；"
@@ -566,18 +566,46 @@ _add("coverage",
 # ===========================================================================
 # 检索与渲染
 # ===========================================================================
+# 常见叫法别名：用户搜「价格分位」「估值」都应该命中价格分位那一条
+ALIASES = {
+    "pct_index": "价格分位 估值 贵不贵 指数点位",
+    "pct_self": "配置分位 自身分位 历史分位",
+    "pct_cross": "横截面分位 行业排名",
+    "csi": "拥挤度 拥挤 堵",
+    "breadth": "广度 加仓占比 多少基金在加",
+    "alloc_full": "仓位 配置 占净值",
+    "gk_active": "主动 加仓 GK 剥离价格",
+    "hhi": "集中度 赫芬达尔",
+    "stock_dn": "个股 加仓榜 基金数",
+}
+
+
 def search(q: str) -> list[str]:
-    """按关键词过滤指标，命中名称、含义、经济内容、投资含义任一即可。"""
+    """按关键词检索指标，**按相关度排序**：名称命中 > 含义命中 > 正文命中。
+
+    为什么必须排序：搜「价格分位」时，CSI 的公式里也含这四个字，
+    如果不排序，返回的第一条可能是 CSI，用户会以为「搜出来的不是我要的」。
+    """
     q = (q or "").strip()
     if not q:
         return list(ITEMS)
-    out = []
+    ql = q.lower()
+    hits = []
     for k, v in ITEMS.items():
+        name = str(v.get("name", "")) + " " + ALIASES.get(k, "")
+        meaning = str(v.get("meaning", ""))
         blob = " ".join(str(v.get(f, "")) for f in
-                        ("name", "meaning", "econ", "invest", "formula", "cat"))
-        if q in blob or q.lower() in blob.lower():
-            out.append(k)
-    return out
+                        ("name", "meaning", "econ", "invest", "formula", "cat", "principle"))
+        if ql in name.lower():
+            score = 0                     # 名称直接命中，排最前
+        elif ql in meaning.lower():
+            score = 1
+        elif ql in blob.lower():
+            score = 2
+        else:
+            continue
+        hits.append((score, len(name), k))
+    return [k for _, _, k in sorted(hits)]
 
 
 def get(key: str) -> dict:

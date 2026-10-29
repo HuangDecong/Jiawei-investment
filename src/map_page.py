@@ -244,6 +244,32 @@ def render(h) -> None:
     # =====================================================================
     # ④ 双分位
     # =====================================================================
+    # ---- 拥挤度变化：谁在变挤、谁在变松 ----
+    h('<div style="font-size:12px;font-weight:700;margin:12px 0 3px">'
+      '拥挤度变化：本期 CSI − 上期 CSI（红＝变挤，绿＝变松）</div>')
+    cc = cn.csi_change(q)
+    if not cc.empty:
+        st.plotly_chart(rc.fig_csi_change(cc), width="stretch",
+                        config={"displayModeBar": False})
+        _up = cc.nlargest(3, "ΔCSI")
+        _dn = cc.nsmallest(3, "ΔCSI")
+        _hi_up = cc[(cc["CSI"] >= 80) & (cc["ΔCSI"] > 0)]
+        h(f'<div class="cg-note">'
+          f'<b>怎么读</b>：横轴是「本期 CSI − 上期 CSI」，不是水位而是水流。'
+          f'右边越长＝这段时间挤得越快，左边越长＝在快速变松。悬停可看本期与上期的具体数值。<br>'
+          f'<b>变挤最多（{cc.attrs.get("q_prev", "")}→{cc.attrs.get("q", "")}）</b>：'
+          + "、".join(f'{i}（{r["上期CSI"]:.0f}→{r["CSI"]:.0f}，{r["ΔCSI"]:+.0f}）'
+                      for i, r in _up.iterrows())
+          + f'；<b>变松最多</b>：'
+          + "、".join(f'{i}（{r["上期CSI"]:.0f}→{r["CSI"]:.0f}，{r["ΔCSI"]:+.0f}）'
+                      for i, r in _dn.iterrows())
+          + f'。<br><b>要特别盯的是「水位已高且还在涨」的 {len(_hi_up)} 个</b>：'
+          + ("、".join(_hi_up.index) if len(_hi_up) else "无")
+          + f'——它们才是真正在往拥挤区走的；已经变松的高水位行业（如电子、通信）'
+            f'反而不用急着减，因为资金正在自己退潮。</div>')
+    else:
+        h('<div class="tiny">上期数据不足，无法计算变化。</div>')
+
     # =====================================================================
     # ④ 为什么用 CSI，不用 HHI
     # =====================================================================

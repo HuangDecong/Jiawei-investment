@@ -569,14 +569,16 @@ def crowding_score(q: str | None = None) -> pd.DataFrame:
         ≥80 极度拥挤｜65–80 拥挤｜45–65 中性｜25–45 偏冷｜<25 冷门
     这套阈值与页面上的红/橙/灰/浅蓝/深蓝五色一一对应。
     """
+    # 先把 q 解析成具体期次：_index_pct_at 需要期次字符串，
+    # 传 None 会拿到空序列，价格分位就全变 NaN（CSI 退化成两项平均）。
+    q = q or latest()
     comp = compare_periods(q)
     if comp.empty:
         return pd.DataFrame()
-    idx = index_stats()
     cs = cross_section_percentile(q)
     out = pd.DataFrame(index=comp.index)
     out["配置分位"] = comp["历史分位"]
-    out["价格分位"] = idx["指数分位"].reindex(out.index) if not idx.empty else np.nan
+    out["价格分位"] = _index_pct_at(q).reindex(out.index)
     out["资金分位"] = (comp["加仓占比"].rank(pct=True) * 100)
     out["横截面分位"] = cs.reindex(out.index)
     _parts = out[["配置分位", "价格分位", "资金分位"]]
@@ -596,6 +598,53 @@ def crowding_score(q: str | None = None) -> pd.DataFrame:
     out.attrs["weights"] = {"配置分位": 1 / 3, "价格分位": 1 / 3, "资金分位": 1 / 3}
     return out.sort_values("CSI", ascending=False)
 
+
+
+def _index_pct_at(q: str) -> pd.Series:
+    """某个季末的行业指数分位：只用该日之前的交易日排名（无前视）。
+
+    与 index_stats() 的区别：那个只算最新一天。要画「拥挤度变化」，
+    必须能算历史每一期的价格分位，否则 CSI 的时序无从比较。
+    """
+    lv = index_levels()
+    if lv.empty or not q:
+        return pd.Series(dtype=float)
+    y, k = int(q[:4]), int(q[-1])
+    end = pd.Timestamp(year=y, month=k * 3, day=1) + pd.offsets.MonthEnd(0)
+    sub = lv[lv.index <= end]
+    if sub.empty:
+        return pd.Series(dtype=float)
+    return sub.rank(pct=True).iloc[-1] * 100
+
+
+def csi_change(q: str | None = None) -> pd.DataFrame:
+    """拥挤度的变化：本期 CSI − 上期 CSI（逐行业）。
+
+    为什么单列：CSI 是「水位」，变化是「水流」。水位高的行业如果正在放水，
+    危险程度远低于「水位高且还在涨」的行业。这张表就是判断水流的。
+    """
+    qs = quarters()
+    q = q or (qs[-1] if qs else None)
+    if not q or q not in qs:
+        return pd.DataFrame()
+    i = qs.index(q)
+    cur = crowding_score(q)
+    if cur.empty:
+        return pd.DataFrame()
+    out = pd.DataFrame({"CSI": cur["CSI"], "等级": cur["等级"],
+                        "配置分位": cur["配置分位"], "价格分位": cur["价格分位"],
+                        "资金分位": cur["资金分位"]})
+    if i >= 1:
+        prev = crowding_score(qs[i - 1])
+        if not prev.empty:
+            out["上期CSI"] = prev["CSI"].reindex(out.index)
+            out["上期等级"] = prev["等级"].reindex(out.index)
+    out["ΔCSI"] = out["CSI"] - out.get("上期CSI", np.nan)
+    out["分位变化"] = out["配置分位"] - crowding_score(qs[i - 1])["配置分位"].reindex(out.index) \
+        if i >= 1 else np.nan
+    out.index.name = "行业"
+    out.attrs.update(q=q, q_prev=qs[i - 1] if i >= 1 else None)
+    return out.sort_values("ΔCSI", ascending=False)
 
 def _csi_level(v: float) -> str:
     if not np.isfinite(v):

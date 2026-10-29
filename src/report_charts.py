@@ -310,10 +310,44 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
                            borderpad=1.6, opacity=0.96)
     fig.update_yaxes(title_text="占前十大 %" if residual_label.startswith("其他")
                      else "占净值比 %", range=[0, 100])
+    # 悬停时一次显示该季度**全部行业**的数值：
+    # 默认 hovermode 只显示鼠标所在的那一层，读者要逐层扫，31 个行业根本看不过来。
+    fig.update_layout(hovermode="x unified",
+                      hoverlabel=dict(bgcolor="rgba(255,255,255,0.96)", font_size=9.5,
+                                      bordercolor=C.COLOR["line"]))
     fig.update_xaxes(tickangle=-45)
     fig = _base(fig, title, 430)
     # 末端标注需要右侧留白，否则会被裁掉
     fig.update_layout(margin=dict(l=6, r=14, t=40, b=8))
+    return fig
+
+
+def fig_csi_change(d: pd.DataFrame, top: int = 31) -> go.Figure:
+    """拥挤度变化：本期 CSI − 上期 CSI，红＝变挤、绿＝变松。
+
+    为什么单独画：水位（CSI）高不可怕，可怕的是「水位还在涨」。
+    把变化和水平放在一起看，才知道谁在往拥挤区走、谁在往外撤。
+    """
+    if d.empty or "ΔCSI" not in d.columns:
+        return _base(go.Figure(), "数据未就绪")
+    x = d.dropna(subset=["ΔCSI"]).sort_values("ΔCSI")
+    if len(x) > top:
+        x = pd.concat([x.head(top // 2), x.tail(top // 2)])
+    fig = go.Figure(go.Bar(
+        y=list(x.index), x=x["ΔCSI"], orientation="h",
+        marker_color=[C.COLOR["up"] if v > 0 else C.COLOR["down"] for v in x["ΔCSI"]],
+        text=[f"{v:+.0f}" for v in x["ΔCSI"]], textposition="outside",
+        textfont=dict(size=9),
+        customdata=np.stack([x["CSI"], x.get("上期CSI", pd.Series(np.nan, index=x.index)),
+                             x["等级"]], axis=-1),
+        hovertemplate=("<b>%{y}</b><br>ΔCSI %{x:+.1f}<br>"
+                       "本期 CSI %{customdata[0]:.0f}（%{customdata[2]}）<br>"
+                       "上期 CSI %{customdata[1]:.0f}<extra></extra>")))
+    fig.add_vline(x=0, line=dict(color=C.COLOR["line"], width=1))
+    fig.update_xaxes(title_text="ΔCSI（正＝变挤，负＝变松）")
+    fig.update_yaxes(tickfont=dict(size=9.5))
+    fig = _base(fig, "", 560)
+    fig.update_layout(margin=dict(l=6, r=46, t=16, b=34))
     return fig
 
 
@@ -399,8 +433,14 @@ def fig_breadth_vs_move(d: pd.DataFrame) -> go.Figure:
                            "价格中性净额 %{y:+.2f}pp<br>"
                            "加 %{customdata[0]:.0f} / 减 %{customdata[1]:.0f}<extra></extra>"),
         ))
-    fig.add_vline(x=50, line=dict(color=C.COLOR["text_dim"], width=1, dash="dot"))
-    fig.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1))
+    fig.add_vline(x=50, line=dict(color=C.COLOR["threshold"], width=1.4, dash="dash"),
+                  annotation_text="50% 分界：左边多数在减、右边多数在加",
+                  annotation_position="top", annotation_font=dict(size=9, color=C.COLOR["threshold"]),
+                  annotation_bgcolor="rgba(255,255,255,0.85)")
+    fig.add_hline(y=0, line=dict(color=C.COLOR["text_dim"], width=1, dash="dot"),
+                  annotation_text="净额 0：上方净买入、下方净卖出",
+                  annotation_position="right", annotation_font=dict(size=9, color=C.COLOR["text_dim"]),
+                  annotation_bgcolor="rgba(255,255,255,0.85)")
     fig.update_xaxes(title_text="加仓基金占比（%）　←少数在加　｜　多数在加→", range=[0, 100])
     fig.update_yaxes(title_text="价格中性净额（pp）")
     fig = _base(fig, "", 470, legend=True)

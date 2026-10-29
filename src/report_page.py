@@ -397,8 +397,21 @@ def render(h, B=None, IND=None) -> None:
             "Δ上季pp": f"环比pp({qp_}→{q_})", "Δ上年pp": f"同比pp({qy_}→{q_})",
             "平均主动pp": f"当期主动pp({qp_}→{q_})", "历史分位": "配置分位(31期)",
             "加仓占比": f"加仓占比%({q_})"})
+        # 判读/读数上色：31 行文字里找「真加仓」很费眼，颜色能一眼扫出来。
+        # 红＝资金在进（真加仓/共识），绿＝在撤（真撤退/系统性撤离），
+        # 橙＝少数大基金在撑，灰＝方向冲突。
+        _tint_map = {"真加仓": "#C62828", "共识形成": "#C62828",
+                     "少数大基金加": "#E8710A", "小基金接盘": "#E8710A",
+                     "真撤退": "#1A7F37", "系统性撤离": "#1A7F37",
+                     "方向冲突": "#6B7A8C", "多空对撞": "#6B7A8C"}
+
+        def _tint(v):
+            c = _tint_map.get(str(v))
+            return (f"background-color:{c}1F;color:{c};font-weight:600") if c else ""
+
+        _styled = show.style.map(_tint, subset=["判读", "读数"])
         st.dataframe(
-            show, width="stretch", hide_index=True, height=560,
+            _styled, width="stretch", hide_index=True, height=560,
             column_config={
                 f"配置%({qf_})": st.column_config.NumberColumn(
                     format="%.2f", help="全持仓口径，占净值比；之和＝股票仓位"),

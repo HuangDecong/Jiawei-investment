@@ -425,7 +425,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.29-r27.0"
+APP_VERSION = "2026.10.29-r28.0"
 
 
 def _fp_short() -> str:
@@ -501,6 +501,7 @@ with h3:
     # 指标速查弹窗：侧边栏收起后，这是随时查指标的入口
     if c_a.button("📖 指标速查", width="stretch", key="btn_glossary"):
         st.session_state["gl_show"] = True
+        st.session_state["_gl_page"] = st.session_state.get("page")
     if c_b.button("🔄 刷新", width="stretch", key="btn_reload"):
         st.cache_data.clear()
         st.rerun()
@@ -509,7 +510,17 @@ with h3:
            f'white-space:nowrap">{APP_VERSION.split("-")[-1]}<br>'
            f'{_fp_short()}</div>')
 
-# 弹窗要在页面路由之前调用：各页在渲染完会 st.stop()，放在后面就永远不执行
+# 弹窗要在页面路由之前调用：各页在渲染完会 st.stop()，放在后面就永远不执行。
+# 切换页面时必须自动关掉——否则每 rerun 一次它都会重新弹出，
+# 看起来像「自己冒出来的」。这里记下打开时所在的页，换页就关。
+if st.session_state.get("gl_show"):
+    _page_now = st.session_state.get("page")
+    _page_open = st.session_state.get("_gl_page")
+    if _page_open is None:
+        st.session_state["_gl_page"] = _page_now
+    elif _page_now != _page_open:
+        st.session_state["gl_show"] = False
+        st.session_state["_gl_page"] = None
 if st.session_state.get("gl_show"):
     try:
         import sidebar_panel as _sp

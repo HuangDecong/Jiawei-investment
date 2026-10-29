@@ -17,8 +17,15 @@ import glossary as g
 
 def _body(page: str = "") -> None:
     """侧边栏与弹窗共用的主体：搜索 + 指标卡 + 口径速查。"""
-    kw = st.text_input("搜索指标", value="", key=f"gl_kw_{_ctx()}",
+    _ctxkey = _ctx()
+    kw = st.text_input("搜索指标", value="", key=f"gl_kw_{_ctxkey}",
                        placeholder="如：拥挤 / 广度 / GK / 分位")
+    # 搜索词一变，就把选择重置到「第一条命中」。
+    # 不重置的话，selectbox 会保留上一次的选项（比如搜「价格分位」还停在 CSI），
+    # 看起来像「搜了但没搜到」。
+    if st.session_state.get(f"_gl_lastkw_{_ctxkey}") != kw:
+        st.session_state[f"_gl_lastkw_{_ctxkey}"] = kw
+        st.session_state.pop(f"gl_pick_{_ctxkey}", None)
     keys = g.search(kw)
     if not keys:
         st.caption("没有匹配的指标，试试「分位」「广度」「主动」。")
@@ -28,7 +35,7 @@ def _body(page: str = "") -> None:
         v = g.ITEMS[k]
         return f"{v['cat']} · {v['name']}"
 
-    pick = st.selectbox("选择指标", keys, format_func=_lab, key=f"gl_pick_{_ctx()}")
+    pick = st.selectbox("选择指标", keys, format_func=_lab, key=f"gl_pick_{_ctxkey}")
     st.markdown(g.card_html(pick, C.COLOR), unsafe_allow_html=True)
 
     st.markdown(
