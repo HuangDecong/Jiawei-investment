@@ -122,6 +122,21 @@ def run(q: str | None = None) -> pd.DataFrame:
                      len(u) > 3000,
                      "样本骤降通常意味着筛选规则被改坏"))
 
+    # 11) 期次连续：从 2019Q1 到最新，无断档
+    qs = cn.quarters()
+    _expect = (int(qs[-1][:4]) - int(qs[0][:4])) * 4 + int(qs[-1][-1]) - int(qs[0][-1]) + 1
+    rows.append(_row("期次连续", "季度序列无断档（应有期数 = 实际期数）",
+                     f"{_expect}/{len(qs)}", _expect == len(qs),
+                     "断档会让环比/同比对不上期次"))
+
+    # 12) 价格分位一致：CSI 的价格分位必须等于表格里的指数分位
+    if not cs.empty:
+        _ix = cn.index_stats(q)["指数分位"]
+        _diff = float((cs["价格分位"] - _ix.reindex(cs.index)).abs().max())
+        rows.append(_row("价格分位", "CSI 的价格分位 = 指数分位（最大差）",
+                         f"{_diff:.2e}", _diff < 1e-6,
+                         "两个数不一致说明持仓与价格不同期"))
+
     t = pd.DataFrame(rows)
     t.attrs["n_pass"] = int((t["结果"] == "通过").sum())
     t.attrs["n_all"] = len(t)

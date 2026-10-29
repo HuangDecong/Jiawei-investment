@@ -407,31 +407,45 @@ def index_levels(start: str = "2019-01-01") -> pd.DataFrame:
 
 
 @lru_cache(maxsize=8)
-def index_stats() -> pd.DataFrame:
-    """行业指数：当前点位在自身历史的分位 + 近 1 年/近 3 月涨幅。
+def index_stats(q: str | None = None) -> pd.DataFrame:
+    """行业指数：**季末**点位在自身历史的分位 + 近 1 年/近 3 月涨幅。
 
-    分位＝当前累计点位在「2019-01 至今每一个交易日」中的排名（0–100）。
-    它回答的是「贵不贵」，与「配置分位」回答的「机构重不重」是两个维度：
-    两者都高才是真拥挤；配置高但指数分位低，说明机构抱团却没赚到钱。
+    为什么用季末而不是「今天」：持仓是季末快照，如果价格用最新交易日，
+    就会出现「9 月 30 日的仓位 × 10 月 27 日的价格」这种跨期拼接——
+    同一页面上 CSI 的价格分位与表格的指数分位会对不上（差 1 个月）。
+    统一到季末之后，两个数必然相等。
+
+    分位＝季末累计点位在「2019-01 至该季末每一个交易日」中的排名（0–100）。
+    它回答「贵不贵」，与「配置分位」回答的「机构重不重」是两个维度。
     """
     lv = index_levels()
     if lv.empty:
         return pd.DataFrame()
-    last = lv.index[-1]
-    cur = lv.iloc[-1]
-    pct = lv.rank(pct=True).iloc[-1] * 100
+    qs = quarters()
+    q = q or (qs[-1] if qs else None)
+    if q:
+        y, k = int(q[:4]), int(q[-1])
+        end = pd.Timestamp(year=y, month=k * 3, day=1) + pd.offsets.MonthEnd(0)
+        sub = lv[lv.index <= end]
+        if sub.empty:
+            sub = lv
+    else:
+        sub = lv
+    last = sub.index[-1]
+    cur = sub.iloc[-1]
+    pct = sub.rank(pct=True).iloc[-1] * 100
 
     def _ret(days_back: int) -> pd.Series:
-        i = max(0, len(lv) - 1 - days_back)
-        base = lv.iloc[i]
+        i2 = max(0, len(sub) - 1 - days_back)
+        base = sub.iloc[i2]
         return (cur / base - 1) * 100
 
     def _by_date(years: float) -> pd.Series:
         cut = last - pd.DateOffset(days=int(365 * years))
-        sub = lv[lv.index <= cut]
-        if sub.empty:
-            return pd.Series(np.nan, index=lv.columns)
-        return (cur / sub.iloc[-1] - 1) * 100
+        s2 = sub[sub.index <= cut]
+        if s2.empty:
+            return pd.Series(np.nan, index=sub.columns)
+        return (cur / s2.iloc[-1] - 1) * 100
 
     out = pd.DataFrame({
         "指数分位": pct.round(1),
@@ -442,7 +456,8 @@ def index_stats() -> pd.DataFrame:
     out.index.name = "行业"
     out.attrs["start"] = str(lv.index[0].date())
     out.attrs["end"] = str(last.date())
-    out.attrs["n_days"] = len(lv)
+    out.attrs["n_days"] = len(sub)      # 只数到季末，不是到今天
+    out.attrs["q"] = q
     return out
 
 
@@ -601,20 +616,9 @@ def crowding_score(q: str | None = None) -> pd.DataFrame:
 
 
 def _index_pct_at(q: str) -> pd.Series:
-    """某个季末的行业指数分位：只用该日之前的交易日排名（无前视）。
-
-    与 index_stats() 的区别：那个只算最新一天。要画「拥挤度变化」，
-    必须能算历史每一期的价格分位，否则 CSI 的时序无从比较。
-    """
-    lv = index_levels()
-    if lv.empty or not q:
-        return pd.Series(dtype=float)
-    y, k = int(q[:4]), int(q[-1])
-    end = pd.Timestamp(year=y, month=k * 3, day=1) + pd.offsets.MonthEnd(0)
-    sub = lv[lv.index <= end]
-    if sub.empty:
-        return pd.Series(dtype=float)
-    return sub.rank(pct=True).iloc[-1] * 100
+    """某个季末的行业指数分位。直接复用 index_stats(q)，保证同一个期次只有一个数。"""
+    d = index_stats(q)
+    return d["指数分位"] if not d.empty else pd.Series(dtype=float)
 
 
 def csi_change(q: str | None = None) -> pd.DataFrame:

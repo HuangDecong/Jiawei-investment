@@ -425,7 +425,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.29-r28.0"
+APP_VERSION = "2026.10.29-r29.0"
 
 
 def _fp_short() -> str:
@@ -1515,7 +1515,7 @@ if _P == "⑥ 方法与口径":
 </div>""")
 
     # ---- 自检：口径恒等式（现场跑，不写死结果） ----
-    _h('<div class="sec">自检：10 条口径恒等式，跑一遍就知道有没有被改坏</div>')
+    _h('<div class="sec">自检：12 条口径恒等式，跑一遍就知道有没有被改坏</div>')
     try:
         import selfcheck as _sc
         _t = _sc.run()

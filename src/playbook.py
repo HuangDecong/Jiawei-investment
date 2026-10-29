@@ -140,6 +140,45 @@ def _reason(r) -> str:
     return f"{mid}；{tail}"
 
 
+def sensitivity(q: str | None = None) -> pd.DataFrame:
+    """阈值稳健性：把四个关键阈值各扰动 ±20%，看「可以跟 / 要回避」名单变不变。
+
+    为什么必须做：如果名单对阈值极度敏感（动一点就换人），那它就不是结论，
+    是参数。稳健的规则应该在合理区间内给出同一批名字。
+    """
+    base = action_table(q)
+    if base.empty:
+        return pd.DataFrame()
+    b_follow = set(base.index[base["动作"] == "可以跟"])
+    b_avoid = set(base.index[base["动作"] == "要回避"])
+    scen = [
+        ("基准", {}),
+        ("跟入门槛 −20%（更宽松）", {"follow_active": 0.24, "follow_breadth": 48.0}),
+        ("跟入门槛 +20%（更严格）", {"follow_active": 0.36, "follow_breadth": 72.0}),
+        ("回避门槛 −20%（更敏感）", {"avoid_active": -0.32, "avoid_breadth": 60.0}),
+        ("回避门槛 +20%（更迟钝）", {"avoid_active": -0.48, "avoid_breadth": 40.0}),
+    ]
+    rows = []
+    saved = dict(TH)
+    try:
+        for name, patch in scen:
+            TH.update(saved)
+            TH.update(patch)
+            t = action_table(q)
+            f = set(t.index[t["动作"] == "可以跟"])
+            a = set(t.index[t["动作"] == "要回避"])
+            inter = len(f & b_follow) + len(a & b_avoid)
+            union = len(f | b_follow) + len(a | b_avoid)
+            rows.append(dict(情景=name, 可以跟=len(f), 要回避=len(a),
+                             与基准重合=f"{inter}/{union}",
+                             重合率=round(inter / union * 100, 0) if union else np.nan,
+                             名单="、".join(sorted(f)) or "无"))
+    finally:
+        TH.clear()
+        TH.update(saved)
+    return pd.DataFrame(rows)
+
+
 def summary(q: str | None = None) -> dict:
     """把动作表汇总成页头要用的几个数，避免各页面各算一遍。"""
     t = action_table(q)

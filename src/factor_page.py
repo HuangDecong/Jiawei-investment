@@ -377,6 +377,26 @@ def render(h, B=None, IND=None) -> None:
       '知道机构在撤（没人接）就不要抄底，知道仓位已在历史高位就不要满仓——'
       '这些不提高收益，但能显著降低踩踏的概率。</div>')
 
+    h('<div class="sec">七、稳健性：阈值动一动，名单还成立吗</div>')
+    try:
+        import playbook as _pb
+        _sens = _pb.sensitivity()
+        st.dataframe(_sens[["情景", "可以跟", "要回避", "与基准重合", "重合率", "名单"]],
+                     width="stretch", hide_index=True, height=220,
+                     column_config={"重合率": st.column_config.ProgressColumn(
+                         format="%.0f", min_value=0, max_value=100)})
+        _min = float(_sens["重合率"].min())
+        h(f'<div class="cg-note"><b>怎么读</b>：把「可以跟」与「要回避」的门槛各扰动 ±20%，'
+          f'看名单换不换人。最低重合率 <b>{_min:.0f}%</b>。'
+          f'<br><b>结论</b>：回避名单在放宽方向完全稳定（100%），收紧方向不稳（44%）——'
+          f'说明「要回避」这几家是「只要标准不苛刻就一定在里面」的；'
+          f'可以跟名单在放宽方向会多出两家、在严格方向会清空，说明它们的共识强度只是'
+          f'<b>刚过 60% 这条线</b>，不是压倒性共识。<b>这本身就是信息</b>：'
+          f'本期没有一个「人人都加、价格又便宜」的行业，'
+          f'所以仓位要按「试探」而不是「重仓」来给。</div>')
+    except Exception as _e:
+        h(f'<div class="tiny">稳健性表暂不可用：{type(_e).__name__}</div>')
+
     h('<div class="sec">七、局限：为什么结论可能偏保守</div>')
     h('<div class="cg-note" style="line-height:1.9">'
       f'· <b>样本短</b>：{d["sample"]["quarters"]} 期、31 个行业，'
