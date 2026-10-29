@@ -67,6 +67,20 @@ def _verdict(r) -> str:
     return "分位偏低且变动温和：没有明显的拥挤或抛弃信号，按个股逻辑处理即可。"
 
 
+def _rank_sort(df: pd.DataFrame, level_col: str = "等级") -> pd.DataFrame:
+    """正常样本按 CSI 降序在前，小样本（不评级）统一排到最后。
+
+    为什么不能纯按 CSI 排：综合 83 分，会插在石油石化 85 与银行 78 之间，
+    灰色块夹在红色块中间，读者第一眼就会问「这个灰的为什么排这么前」。
+    「不评级」不是一个等级，它不该参与排名。
+    """
+    d = df.copy()
+    sm = (d[level_col].astype(str) == "小样本").astype(int) \
+        if level_col in d.columns else 0
+    d["_sm"] = sm
+    return d.sort_values(["_sm", "CSI"], ascending=[True, False]).drop(columns="_sm")
+
+
 def _chips(cs: pd.DataFrame, comp: pd.DataFrame) -> str:
     """31 个行业的色块总览：颜色＝拥挤等级，点一下上方的下拉即可看详情。
 
@@ -74,6 +88,7 @@ def _chips(cs: pd.DataFrame, comp: pd.DataFrame) -> str:
     它们既不是拥挤也不是冷门，是「样本不够，判不了」。
     """
     out = []
+    _sep_done = False
     for i, r in cs.iterrows():
         _is_small = r.get("可靠") == "小样本"
         c = rc.CSI_COLORS.get(r["等级"], "#C3CBD4")
@@ -83,6 +98,15 @@ def _chips(cs: pd.DataFrame, comp: pd.DataFrame) -> str:
                 f'按三分位本应判为「{r.get("原等级", "—")}」，'
                 f'但样本不足，不评级' if _is_small else f'CSI {r["CSI"]:.0f}（{r["等级"]}）')
         _lvl = "小样本·不评级" if _is_small else r["等级"]
+        # 小样本整段排在最后，中间插一条分隔说明：
+        # 否则读者会疑惑「为什么 83 分的灰色排在一堆 20 分后面」。
+        if _is_small and not _sep_done:
+            out.append(
+                '<div style="flex:1 1 100%;font-size:9px;color:#6B7A8C;'
+                'border-top:1px dashed #D6DEE7;padding:4px 0 1px;margin-top:2px">'
+                '以下行业<b>不评级</b>（全市场持有基金数 &lt;150 只，或前十配置 &lt;0.5%），'
+                '不参与拥挤度排名，只列出数值供参考</div>')
+            _sep_done = True
         out.append(
             f'<div title="{_tip}" style="flex:1 1 88px;min-width:82px;background:{c};color:#fff;'
             f'border-radius:6px;padding:6px 7px;line-height:1.35">'
@@ -182,7 +206,7 @@ def render(h) -> None:
         if not _cand:
             _cand = list(comp.index)
             st.caption("没有匹配的行业，已显示全部。")
-        _rank = comp.loc[_cand].sort_values("CSI", ascending=False) if "CSI" in comp else comp.loc[_cand]
+        _rank = _rank_sort(comp.loc[_cand]) if "CSI" in comp else comp.loc[_cand]
         _opts = list(_rank.index)
         _labels = [f'{k}. {i}　CSI {comp.loc[i, "CSI"]:.0f}　{comp.loc[i, "等级"]}'
                    + ("　†小样本" if comp.loc[i].get("可靠") == "小样本" else "")
@@ -205,7 +229,7 @@ def render(h) -> None:
           '数字是 CSI（0–100），下方小字是本期环比变化（单位：百分点）。'
           '鼠标悬停任一色块可看它的三个分位是怎么算出 CSI 的；要点开某个行业，'
           '用左侧下拉框搜索。</div>')
-        h(_chips(comp.dropna(subset=["CSI"]).sort_values("CSI", ascending=False), comp))
+        h(_chips(_rank_sort(comp.dropna(subset=["CSI"])), comp))
 
     # =====================================================================
     # ② 单行业详情
@@ -485,7 +509,7 @@ def render(h) -> None:
             out[row.index.get_loc("判读")] = f"color:{jd};font-weight:600"
         return out
 
-    _st = _show.sort_values("CSI", ascending=False).style.apply(_row_style, axis=1)
+    _st = _rank_sort(_show, "拥挤等级").style.apply(_row_style, axis=1)
     st.dataframe(
         _st,
         width="stretch", hide_index=True, height=540,

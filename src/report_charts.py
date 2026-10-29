@@ -408,7 +408,12 @@ def fig_csi_bar(cs: pd.DataFrame) -> go.Figure:
     """
     if cs.empty:
         return _base(go.Figure(), "数据未就绪")
-    d = cs.dropna(subset=["CSI"]).sort_values("CSI")
+    # 排序：正常样本按 CSI 升序（最拥挤画在最上面），不评级的小样本统一压在底部。
+    # 纯按 CSI 排会让综合 83 插在石油石化 85 与银行 78 之间，灰色条夹在红条里，
+    # 读者会以为「这个灰的也算拥挤」。
+    d = cs.dropna(subset=["CSI"]).copy()
+    d["_sm"] = (d["等级"].astype(str) == "小样本").astype(int)
+    d = d.sort_values(["_sm", "CSI"], ascending=[False, True])
     cols = [CSI_COLORS.get(l, "#C3CBD4") for l in d["等级"]]
     # 把悬浮文本**预先拼成字符串**，而不是用 hovertemplate 的格式符：
     # 小样本行要说的话（「按三分位本来是 83 分，但只有 58 只基金持有」）

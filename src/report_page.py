@@ -126,17 +126,22 @@ def render(h, B=None, IND=None) -> None:
                 _a3 = _sf.nlargest(3, "d_n")
                 _c3 = _sf.nsmallest(3, "d_n")
                 _ind_n = _a3["industry"].value_counts()
+                _top_ind, _top_cnt = _ind_n.index[0], int(_ind_n.iloc[0])
                 _concl.append(
-                    f'<b>个股层（{pq[0]}→{pq[1]}，环比）：加仓集中在 {_ind_n.index[0]}</b>——'
-                    f'被最多基金加进来的三只是 '
-                    + "、".join(f'{r["stock_name"]}（{r["d_n"]:+.0f} 家）'
+                    f'<b>个股层（{pq[0]}→{pq[1]}，环比）</b>：被最多基金加进来的是 '
+                    + "、".join(f'{r["stock_name"]}（{r["d_n"]:+.0f} 家，{r["industry"]}）'
                                for _, r in _a3.iterrows())
                     + '；被减最多的是 '
-                    + "、".join(f'{r["stock_name"]}（{r["d_n"]:+.0f} 家）'
+                    + "、".join(f'{r["stock_name"]}（{r["d_n"]:+.0f} 家，{r["industry"]}）'
                                for _, r in _c3.iterrows())
-                    + f'。<b>前十大口径下环比与同比都能比</b>（两期披露范围一致），'
-                    f'两者经常相反：环比在减、同比在加的，是「这一年被加过、现在开始撤」，'
-                    f'最需要警惕。')
+                    # 只有「前三里同一个行业占 2 只及以上」才能说行业性配置。
+                    # 三只各属三个行业时说「集中在电子」，是拿排序第一的行业名硬套，
+                    # 读者一看名单就知道不对（电子、医药、有色各一只）。
+                    + (f'。<b>加仓前三里 {_top_ind} 占 {_top_cnt} 只，是行业性加仓</b>，'
+                       f'跟行业方向做即可，不必逐只研究。'
+                       if _top_cnt >= 2 else
+                       f'。<b>这三只分属 {len(_ind_n)} 个行业，不属于行业性配置，而是选股</b>，'
+                       f'必须逐只判断基本面——买行业 ETF 替代不了。'))
         except Exception:
             pass
 
@@ -313,10 +318,14 @@ def render(h, B=None, IND=None) -> None:
                                 config={"displayModeBar": False})
                 _a, _c = sf_f.nlargest(3, "d_n"), sf_f.nsmallest(3, "d_n")
                 _ind_a = _a["industry"].value_counts()
-                h(f'<div class="tiny">口径：<b>前十大</b>（两期都只取每只基金最重的 10 只，'
-                  f'披露范围一致才可比），只含主动权益样本 '
-                  f'{sf.attrs["n_funds"][1]:,} 只；已剔除两期持有基金数都不到 10 家的小样本。'
-                  f'「−100」不等于清仓，也可能是掉出前十。</div>')
+                h(f'<div class="tiny">口径：<b>前十大</b>。'
+                  f'季报（Q1/Q3）法定只披露<b>前十大重仓股</b>；半年报/年报（Q2/Q4）披露'
+                  f'<b>全部持仓</b>。这里对四个季度统一只取「每只基金最重的 10 只」，'
+                  f'所以披露范围一致，<b>环比与同比都能算</b>——这不是跨口径拼接，'
+                  f'而是把全持仓也截到前十大，与季报对齐。'
+                  f'只含主动权益样本 {sf.attrs["n_funds"][1]:,} 只；'
+                  f'已剔除两期持有基金数都不到 10 家的小样本。'
+                  f'注意「−100」不等于清仓，也可能是掉出前十。</div>')
                 # 两个基准的对照表：同一只股票，环比与同比可能完全相反
                 _cmp = pd.DataFrame({
                     "本期基金数": sf["n_funds"],
