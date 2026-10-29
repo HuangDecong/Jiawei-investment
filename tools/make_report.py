@@ -54,7 +54,13 @@ I = QS.index(Q)
 QP = QS[I - 1] if I else None
 QY = f"{int(Q[:4]) - 1}{Q[4:]}"
 PF = cn.pair_full()
-QF, QF0 = PF if PF else (None, None)
+# pair_full 返回 (上期, 本期)，即 (q0, q)：第一个是旧期、第二个才是最新全持仓期。
+# 这里写反过一次，报告里出现过「最新全持仓期（2025Q4）」这种明显错误——
+# 加断言锁死，避免再靠肉眼发现。
+QF0, QF = PF if PF else (None, None)
+_assert_q = cn.position_change()
+assert QF == _assert_q.get("q") and QF0 == _assert_q.get("q0"), \
+    f"全持仓期次解包错误：{QF0}->{QF}，应为 {_assert_q.get('q0')}->{_assert_q.get('q')}"
 N_FUND = len(cn.universe(Q))
 POS = cn.position_change()
 HIST = cn.position_series()
@@ -310,6 +316,21 @@ def page_break(doc):
 # ---------------------------------------------------------------------------
 # 正文
 # ---------------------------------------------------------------------------
+def _safe_save(doc) -> str:
+    """保存到 OUT；若文件被 Word/预览占用，退到带时间戳的文件名。
+
+    报告常在预览面板里开着，Windows 下会锁文件，直接 save 会 PermissionError。
+    """
+    try:
+        doc.save(OUT)
+        return OUT
+    except PermissionError:
+        import time
+        alt = OUT.replace(".docx", f"_{time.strftime('%H%M%S')}.docx")
+        doc.save(alt)
+        return alt
+
+
 def build() -> str:
     p_csi, p_dcsi, p_quad, p_pos = chart_csi(), chart_delta(), chart_scatter(), chart_pos()
 
@@ -464,6 +485,11 @@ def build() -> str:
            f"较 {POS['q0']} 的 {POS['仓位0']:.2f}% 变化 {POS['中位变化pp']:+.2f}pp，"
            f"位于 {len(HIST)} 个半年报期的第 {PCT:.0f} 分位。"
            f"{POS['加仓基金占比']:.0f}% 的基金加仓、{100 - POS['加仓基金占比']:.0f}% 减仓。")
+    P(doc, f"需要说明期次：最新季报是 {Q}，但季报只披露前十大（覆盖净值约 20%–50%），"
+           f"无法据此还原股票仓位；完整仓位只在半年报（Q2/Q4）可见。"
+           f"因此本节用的是最近一个全持仓期 {QF}，与最新季报 {Q} 相差一个季度——"
+           f"这不是数据滞后，而是披露制度决定的：季报没有全量持仓，就不存在「Q3 的股票仓位」这个数。"
+           f"后文的行业配置、广度、拥挤度均已更新到 {Q}。")
     P(doc, f"这条数据决定了全篇的读法：既然总仓位没有变化，行业配置的此消彼长就只能来自"
            f"内部换仓。因此看到某行业占比上升，可以读成「机构更看好它」，"
            f"而不必担心是「大盘上涨、水涨船高」。反过来，仓位已在 {PCT:.0f} 分位的高位，"
@@ -656,8 +682,7 @@ def build() -> str:
               f"口径：前十大归一化（{QP}→{Q}）；价格分位为季末指数点位在 2019 年以来交易日中的排名；"
               "CSI＝(配置分位+价格分位+资金分位)/3。")
 
-    doc.save(OUT)
-    return OUT
+    return _safe_save(doc)
 
 
 if __name__ == "__main__":

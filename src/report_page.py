@@ -168,7 +168,9 @@ def render(h, B=None, IND=None) -> None:
         st.plotly_chart(rc.fig_position(pos_hist, _c.loc[_idx].dropna(), pos["q"]),
                         width="stretch", config={"displayModeBar": False})
         h(f'<div class="tiny">口径：全持仓半年报（{pos["q0"]}→{pos["q"]}），'
-          f'占净值比；只含股票，不含债券与现金。样本 {pos["n"]:,} 只。</div>')
+          f'占净值比；只含股票，不含债券与现金。样本 {pos["n"]:,} 只。'
+          f'<b>期次说明</b>：最新季报是 {q}，但季报只披露前十大、算不出股票仓位，'
+          f'所以仓位只能用最近的全持仓期 {pos["q"]}；后文行业与广度已更新到 {q}。</div>')
         _read(h,
               f'左图是 {len(pos_hist)} 个半年报期的仓位中位数（阴影是 25–75 分位带），'
               f'右图是本期 {len(_idx):,} 只基金的仓位分布。'
