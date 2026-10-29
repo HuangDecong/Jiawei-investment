@@ -425,7 +425,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.29-r31.3"
+APP_VERSION = "2026.10.29-r31.4"
 
 
 def _fp_short() -> str:
@@ -1925,6 +1925,69 @@ t <b>−0.83</b>、p <b>0.42</b>（26 期），五分层从 Q1 <b>+2.39%</b> 降
           <div class="kpi"><div class="k">可建模区间</div><div class="v" style="font-size:15px">{QUARTERS[0]}</div>
             <div class="s">~ {LATEST} · {len(QUARTERS)} 期</div></div>
         </div>""")
+
+    # ---------------------------------------------------------------- 样本漏斗
+    _h('<div class="sec">零、我们统计的是谁：从 1.5 万只到 4,270 只</div>')
+    try:
+        import canon as _cn2
+        _mk = _cn2.market_fund_counts()
+        _pool = _cn2.profiles()
+        _qq = _cn2.latest()
+        _cov = _cn2.coverage(_qq)
+        _eq = _cn2.equity_codes()
+        _keep = _cov.index.intersection(list(_eq)) if _eq else _cov.index
+        _good = _cov.loc[_keep]
+        _good = _good[(_good >= _cn2.COV_MIN) & (_good <= _cn2.COV_MAX)]
+        _uni = _cn2.universe(_qq)
+        _n_pool, _n_cov, _n_good, _n_uni = len(_pool), len(_cov), len(_good), len(_uni)
+        _tot = _mk.get("主动权益基金") or 0
+        _rows = [
+            ("全市场公募基金", _mk.get("全市场基金"), 0,
+             f"东财名录 {_mk.get('全市场份额', 0):,} 条份额，按名称合并 A/C/后端；"
+             f"含债、货币、指数、QDII、FOF、REITs、商品"),
+            ("其中主动权益", _tot, 1,
+             "普通股票 + 偏股混合 + 灵活配置 + 平衡混合；其余类型要么不投 A 股，"
+             "要么是复制指数（被动资金不算「机构观点」）"),
+            ("本库抓取", _n_pool, 1,
+             f"覆盖主动权益的 {_n_pool / _tot * 100:.1f}%；缺口主要是「后端」收费模式"
+             f"（与 A 类同一只基金）与新发未建仓"),
+            ("当期有持仓", _n_cov, 2,
+             f"{_qq} 无披露的 {_n_pool - _n_cov} 只：新发未建仓、已清盘、停牌"),
+            ("主动权益且覆盖率合规", _n_good, 3,
+             f"再剔 {_n_cov - _n_good} 只：非权益类型、持仓市值÷净值 &gt;105% 或 &lt;1%"),
+            ("最终样本", _n_uni, 4,
+             f"再剔 {_n_good - _n_uni} 只主题基金（单行业占前十大 &gt;80%，"
+             f"仓位变动反映申赎而非行业判断）"),
+        ]
+        def _row_html(idx, nm, n, lv, note):
+            # 不能用生成器 + f-string 直接拼：f-string 里的循环变量在
+            # 某些 Python 版本下取不到（NameError: name 'i' is not defined），
+            # 拆成普通函数、把 i 当参数传入最稳。
+            _bg = ' style="background:#FAFBFC"' if idx % 2 else ""
+            _ind = "　" * lv + ("└ " if lv else "")
+            return (f"<tr{_bg}>"
+                    f'<td style="padding:5px 8px;font-size:11.5px">{_ind}{nm}</td>'
+                    f'<td style="padding:5px 8px;font-size:12px;font-weight:700;'
+                    f'text-align:right;font-variant-numeric:tabular-nums">{n:,}</td>'
+                    f'<td style="padding:5px 8px;font-size:10.5px;color:#5A6B7D">{note}</td>'
+                    f'</tr>')
+        _body = "".join(_row_html(i, nm, n, lv, note)
+                        for i, (nm, n, lv, note) in enumerate(_rows) if n)
+        _h(f'<div style="border:1px solid {C.COLOR["line"]};border-radius:6px;'
+           f'overflow:hidden;margin:4px 0 8px">'
+           f'<table style="width:100%;border-collapse:collapse">'
+           f'<tr style="background:{C.COLOR["panel"]}">'
+           f'<th align="left" style="padding:5px 8px;font-size:11px">层级</th>'
+           f'<th align="right" style="padding:5px 8px;font-size:11px">只数</th>'
+           f'<th align="left" style="padding:5px 8px;font-size:11px">为什么少了</th></tr>'
+           f'{_body}</table></div>')
+        _h(f'<div class="tiny">名录口径：东财基金列表，截至 {_mk.get("截至", "—")}'
+           f'（新发与清盘会让这个数每季变动几十只）；'
+           f'「只数」是<b>基金</b>不是<b>份额</b>——同一只基金的 A/C/后端份额持仓完全相同，'
+           f'若按份额统计，广度会被同一只基金重复计数。'
+           f'本库已按代码去重，4,941 个代码里只有 26 组是 A/H 双份额。</div>')
+    except Exception as _e:
+        _h(f'<div class="tiny">样本漏斗暂不可用：{type(_e).__name__}</div>')
 
     # ---------------------------------------------------------------- 口径定义
     _h('<div class="sec">① 口径定义（决定一切结论）</div>')

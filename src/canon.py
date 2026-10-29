@@ -310,6 +310,45 @@ def _fb_all() -> pd.DataFrame:
     return pd.read_csv(p, compression="gzip", usecols=["quarter"])
 
 
+FUND_LIST = os.path.join(DERIVED, "fund_list.csv.gz")
+_ACTIVE_TYPES = ("股票型", "混合型-偏股", "混合型-灵活", "混合型-平衡")
+
+
+@lru_cache(maxsize=1)
+def market_fund_counts() -> dict:
+    """全市场基金数（东财名录口径），用来回答「为什么样本只有 4,270 只」。
+
+    名录按「份额」列示：同一只基金的 A 类、C 类、后端收费各占一行，
+    所以 2.8 万条记录对应约 1.5 万只基金。这里按「去掉末尾份额字母与
+    (后端)/(前端) 后缀」后的名称去重，才是「基金数」。
+
+    主动权益只取四类：普通股票型、偏股混合、灵活配置、平衡混合。
+    债券型、货币型、指数型、QDII、FOF、REITs、商品都不算——它们的持仓
+    要么是复制指数（被动资金），要么根本不投 A 股，混进来会把「机构观点」
+    稀释成「全市场仓位」。
+    """
+    if not os.path.exists(FUND_LIST):
+        return {}
+    try:
+        d = pd.read_csv(FUND_LIST, compression="gzip", dtype={"code": str})
+    except Exception:
+        return {}
+    if d.empty:
+        return {}
+    base = (d["name"].astype(str)
+            .str.replace(r"[A-Z]$", "", regex=True)
+            .str.replace(r"\((后端|前端)\)$", "", regex=True))
+    d = d.assign(base=base)
+    act = d[d["ftype"].isin(_ACTIVE_TYPES)]
+    return dict(
+        全市场份额=int(len(d)),
+        全市场基金=int(d["base"].nunique()),
+        主动权益份额=int(len(act)),
+        主动权益基金=int(act["base"].nunique()),
+        截至=pd.Timestamp(os.path.getmtime(FUND_LIST), unit="s").strftime("%Y-%m-%d"),
+    )
+
+
 def fallback_available() -> bool:
     return all(os.path.exists(os.path.join(DERIVED, f)) for f in _FB_FILES.values())
 
