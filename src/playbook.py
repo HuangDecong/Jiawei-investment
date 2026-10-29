@@ -237,9 +237,9 @@ def conclusions(q: str | None = None) -> list[dict]:
         dn = dd.nsmallest(3, "Δ上季pp")
         out.append(dict(
             tag="换仓主线",
-            claim=(f"钱从「涨得多的科技」流向「没涨的价值与医药」："
-                   f"{up.index[0]} 加 {up.iloc[0]['Δ上季pp']:+.2f}pp 最多，"
-                   f"{dn.index[0]} 减 {dn.iloc[0]['Δ上季pp']:+.2f}pp 最多。"),
+            claim=(f"钱在换手：{up.index[0]} 加 {up.iloc[0]['Δ上季pp']:+.2f}pp 最多，"
+                   f"{dn.index[0]} 减 {dn.iloc[0]['Δ上季pp']:+.2f}pp 最多——"
+                   f"减仓集中在当期跌得最狠的科技硬件，加仓流向医药与防御。"),
             evidence=("加仓前三：" + "、".join(
                 f"{i} {r['Δ上季pp']:+.2f}pp" for i, r in up.iterrows())
                 + "；减仓前三：" + "、".join(
