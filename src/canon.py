@@ -540,12 +540,75 @@ def compare_periods(q: str | None = None) -> pd.DataFrame:
         b = breadth(q_prev, q)
         if not b.empty:
             out["加仓占比"] = b.set_index("行业")["加仓占比"].reindex(out.index)
+            out["加仓占比_持有"] = b.set_index("行业")["加仓占比_持有"].reindex(out.index)
+            out["平均主动pp"] = b.set_index("行业")["平均主动pp"].reindex(out.index)
+            out["持有基金数"] = b.set_index("行业")["持有基金数"].reindex(out.index)
             out["判读"] = b.set_index("行业")["判读"].reindex(out.index)
 
     out.index.name = "行业"
     out.attrs.update(q=q, q_prev=q_prev, q_year=q_year,
                      q_full=(pf[1] if pf else None), q_full0=(pf[0] if pf else None))
     return out.round(3)
+
+
+def crowding_score(q: str | None = None) -> pd.DataFrame:
+    """行业拥挤度指数 CSI：三个独立维度的等权平均（0–100）。
+
+        CSI = (配置分位 + 价格分位 + 资金分位) / 3
+
+        配置分位：该行业前十大配置在自身 31 期中的排名     —— 机构押得多重
+        价格分位：行业指数点位在 2019 年以来交易日中的排名   —— 价格有多贵
+        资金分位：当期加仓占比在 31 个行业之间的排名         —— 钱还在不在进
+
+    为什么等权：三个维度量纲已统一为分位，等权是最朴素、不需要拟合的做法；
+    任何加权都需要样本外验证，而 31 个行业 × 31 期不足以稳定估计权重。
+    因此本指标只做「排序 + 分级」，不做「预测收益」——它回答「挤不挤」，
+    不回答「会不会跌」（后者已被证伪，见因子检验页）。
+
+    分级阈值（事前固定）：
+        ≥80 极度拥挤｜65–80 拥挤｜45–65 中性｜25–45 偏冷｜<25 冷门
+    这套阈值与页面上的红/橙/灰/浅蓝/深蓝五色一一对应。
+    """
+    comp = compare_periods(q)
+    if comp.empty:
+        return pd.DataFrame()
+    idx = index_stats()
+    cs = cross_section_percentile(q)
+    out = pd.DataFrame(index=comp.index)
+    out["配置分位"] = comp["历史分位"]
+    out["价格分位"] = idx["指数分位"].reindex(out.index) if not idx.empty else np.nan
+    out["资金分位"] = (comp["加仓占比"].rank(pct=True) * 100)
+    out["横截面分位"] = cs.reindex(out.index)
+    _parts = out[["配置分位", "价格分位", "资金分位"]]
+    out["CSI"] = _parts.mean(axis=1, skipna=True).round(1)
+    out["数据完整"] = _parts.notna().sum(axis=1)
+    # 小行业标记：综合、美容护理这类行业全市场只有几十只基金持有，
+    # 分位与 CSI 的噪音极大。不标出来，读者会看到「综合 极度拥挤 81」
+    # 这种明显不靠谱的结论（它的前十配置只有 0.1%）。
+    out["持有基金数"] = comp["持有基金数"].reindex(out.index) \
+        if "持有基金数" in comp.columns else np.nan
+    out["配置"] = comp["配置_前十"].reindex(out.index)
+    out["可靠"] = np.where(
+        (out["持有基金数"].fillna(0) < 150) | (out["配置"].fillna(0) < 0.5),
+        "小样本", "正常")
+    out["等级"] = [_csi_level(v) if n >= 2 else "数据不足"
+                  for v, n in zip(out["CSI"], out["数据完整"])]
+    out.attrs["weights"] = {"配置分位": 1 / 3, "价格分位": 1 / 3, "资金分位": 1 / 3}
+    return out.sort_values("CSI", ascending=False)
+
+
+def _csi_level(v: float) -> str:
+    if not np.isfinite(v):
+        return "数据不足"
+    if v >= 80:
+        return "极度拥挤"
+    if v >= 65:
+        return "拥挤"
+    if v >= 45:
+        return "中性"
+    if v >= 25:
+        return "偏冷"
+    return "冷门"
 
 
 def cross_section_percentile(q: str | None = None) -> pd.Series:
@@ -605,47 +668,101 @@ def pair_same(q: str | None = None) -> tuple[str, str] | None:
 # ---------------------------------------------------------------------------
 # 广度与分歧：前十大口径
 # ---------------------------------------------------------------------------
-@lru_cache(maxsize=16)
-def breadth(q0: str, q: str, min_move: float = 0.10) -> pd.DataFrame:
-    """行业层面的「加仓广度」与「分歧度」，前十大口径。
+def price_neutral_delta(q0: str, q: str) -> pd.DataFrame:
+    """价格中性的「逐基金行业权重变化」：Δ = 本季实际 − 什么都不做的反事实。
 
-    定义（事前固定，不看结果调参）：
-        加仓基金数 = Δ行业占比 > +min_move pp 的基金数
-        减仓基金数 = Δ行业占比 < −min_move pp 的基金数
-        加仓占比   = 加仓 / (加仓 + 减仓)
-        分歧度     = 1 − |2×加仓占比 − 1|，取值 [0,1]
-                     0＝所有基金同向；1＝多空各半
+    为什么必须做这一步
+    ------------------
+    直接相减（w1 − w0）在暴跌季会把「没交易」误判成「减仓」：
+    电子单季 −32.6%，所有持有人的权重都自动缩水，原始口径算出的
+    「加仓占比 34%」里有一大半只是价格跌出来的。实测三个季度：
 
-    注意：分歧度与加仓占比不是两个独立指标（分歧度由占比完全决定），
-    所以任何图都不能把两者当两个轴画散点——那是一根线。
+        原始 Δ 与当期行业收益的 Spearman ρ = 0.73 / 0.69 / 0.51
+        本函数 Δ 与当期行业收益的 Spearman ρ = 0.18 / 0.09 / 0.24
+
+    即原始口径一半以上是价格，价格中性后基本与涨跌无关，剩下的才是交易行为。
+
+    反事实怎么算
+    ------------
+    设基金 i 上期行业权重 w0_ik（前十大归一化，Σ=100），行业 k 本期收益 r_k，
+    基金自身组合收益近似 r_i = Σ_k w0_ik·r_k（用它的前十大篮子当组合代理）：
+
+        cf_ik = w0_ik·(1+r_k) / (1+r_i)        ← 完全不交易时本期应有的权重
+        Δ_ik  = w1_ik − cf_ik                  ← 交易带来的偏离
+
+    Σ_k cf_ik = 100，与 w1 同尺度。局限：① 用前十大篮子代理全部持仓，
+    实际组合的其它 90% 未观测；② 个股因上涨挤进前十大会被算成「买入」，
+    在行业层面被相互抵消，但单只基金层面会有误差。所以本函数只用于
+    **行业层面的广度统计**，不用于单只基金的择时评价。
     """
     p0, p1 = panel_top10(q0), panel_top10(q)
     if p0.empty or p1.empty:
+        return pd.DataFrame()
+    r_all = industry_returns()
+    if q not in r_all.index:
         return pd.DataFrame()
     common = p0.index.intersection(p1.index)
     u = universe(q) & universe(q0)
     common = common.intersection(list(u)) if u else common
     if len(common) < 30:
         return pd.DataFrame()
-    d = p1.loc[common] - p0.loc[common]
+    p0, p1 = p0.loc[common], p1.loc[common]
+    r = (r_all.loc[q].reindex(p0.columns).astype(float) / 100.0).fillna(0.0)
+    ri = (p0 / 100.0 * r).sum(axis=1)            # 每只基金自己的篮子收益
+    cf = p0.mul(1 + r, axis=1).div(1 + ri, axis=0)
+    return (p1 - cf).reindex(columns=list(C.INDUSTRIES))
+
+
+@lru_cache(maxsize=64)
+def breadth(q0: str, q: str, min_move: float = 0.10) -> pd.DataFrame:
+    """行业层面的「加仓广度」与「分歧」，前十大口径 + 价格中性。
+
+    定义（事前固定，不看结果调参）：
+        Δ_ik       = 本季权重 − 价格反事实权重（价格中性，见 price_neutral_delta）
+        加仓基金数 = Δ > +min_move pp 的基金数
+        减仓基金数 = Δ < −min_move pp 的基金数
+        加仓占比   = 加仓 / (加仓 + 减仓)     ← 分母是「有实质变动的基金」
+        分歧度     = 1 − |2×加仓占比 − 1|，取值 [0,1]
+                     0＝所有基金同向；1＝多空各半
+
+    两个分母必须分清（旧版页面写错过）：
+        · 样本基金数 = 该期有前十大披露的全部基金（含未持有该行业的）；
+        · 变动基金数 = 加仓 + 减仓；加仓占比的分母是它，不是样本数。
+        · 另给「加仓占比_持有」＝加仓 ÷ 持有该行业的基金数，用于回答
+          「持有人里有多少在加」，两者含义不同，不要混用。
+
+    注意：分歧度与加仓占比不是两个独立指标（分歧度由占比完全决定），
+    所以任何图都不能把两者当两个轴画散点——那是一根线。
+    """
+    d_adj = price_neutral_delta(q0, q)
+    p0, p1 = panel_top10(q0), panel_top10(q)
+    if d_adj.empty or p0.empty:
+        return pd.DataFrame()
+    common = d_adj.index
+    p0, p1 = p0.loc[common], p1.loc[common]
+    d_raw = p1 - p0
     rows = []
     for k in C.INDUSTRIES:
-        if k not in d.columns:
+        if k not in d_adj.columns:
             continue
-        v = d[k].dropna()
+        v = d_adj[k].dropna()
         if len(v) < 30:
             continue
+        raw = d_raw[k].reindex(v.index)
+        hold = int(((p0[k].reindex(v.index) > 0) | (p1[k].reindex(v.index) > 0)).sum())
         up = int((v > min_move).sum())
         dn = int((v < -min_move).sum())
         tot = up + dn
         share = up / tot * 100 if tot else 50.0
         rows.append(dict(
-            行业=k, 样本基金数=int(len(v)), 加仓基金数=up, 减仓基金数=dn,
-            不变基金数=int(len(v) - tot),
-            平均变化pp=round(float(v.mean()), 3),
+            行业=k, 样本基金数=int(len(v)), 持有基金数=hold, 变动基金数=tot,
+            加仓基金数=up, 减仓基金数=dn, 不变基金数=int(len(v) - tot),
+            平均变化pp=round(float(raw.mean()), 3),        # 含价格漂移
+            平均主动pp=round(float(v.mean()), 3),          # 价格中性
             中位变化pp=round(float(v.median()), 3),
             加仓占比=round(share, 1),
-            # 离散度 = Δ 的标准差，衡量「基金之间差多少」，与广度相互独立。
+            加仓占比_持有=round(up / hold * 100, 1) if hold else np.nan,
+            # 离散度 = 价格中性 Δ 的标准差，衡量「基金之间差多少」，与广度相互独立。
             # 老版本用「分歧度 = 1−|2×占比−1|」，它完全由加仓占比决定，
             # 与广度是一根线上的两个刻度，不能当第二个指标用。
             离散度pp=round(float(v.std(ddof=0)), 3),
@@ -655,7 +772,8 @@ def breadth(q0: str, q: str, min_move: float = 0.10) -> pd.DataFrame:
     if t.empty:
         return t
     t["判读"] = t.apply(_label, axis=1)
-    t.attrs.update(q0=q0, q=q, n_funds=len(common), kind="top10")
+    t.attrs.update(q0=q0, q=q, n_funds=len(common), kind="top10",
+                   price_neutral=True)
     return t.sort_values("加仓占比", ascending=False).reset_index(drop=True)
 
 
@@ -870,6 +988,57 @@ def fund_holdings(code: str, q: str, limit: int = 12) -> pd.DataFrame:
         return pd.DataFrame()
     d = d[(d["code"] == code) & (d["quarter"] == q)]
     return d.sort_values("weight_pct", ascending=False).head(limit).reset_index(drop=True)
+
+
+@lru_cache(maxsize=64)
+def fund_structure(code: str, basis: str = "top10") -> pd.DataFrame:
+    """单只基金的行业结构时间序列（行＝期，列＝31 个行业，单位 %）。
+
+    basis="top10"：31 期全有，每期取该基金前十大并归一化到 100%（结构占比）；
+    basis="full" ：15 个半年报期，占净值比（之和＝该基金股票仓位）。
+    两者的差别不是精度，而是**分母**：前者回答「股票里怎么分」，
+    后者回答「净值里放了多少股票、行业各占多少」。页面必须标清楚。
+    """
+    rows = {}
+    qs = quarters() if basis == "top10" else full_quarters()
+    for q in qs:
+        p = panel_top10(q) if basis == "top10" else panel_full(q, normalize=False)
+        if p.empty or code not in p.index:
+            continue
+        rows[q] = p.loc[code].reindex(list(C.INDUSTRIES))
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows).T.sort_index()
+
+
+@lru_cache(maxsize=16)
+def fund_period_table(code: str, q: str | None = None) -> pd.DataFrame:
+    """单只基金的行业台账：本期 / 上期 / 上年同期 + 变化（前十大口径）。"""
+    q = q or latest()
+    qs = quarters()
+    if q not in qs:
+        return pd.DataFrame()
+    i = qs.index(q)
+    qp = qs[i - 1] if i else None
+    qy = f"{int(q[:4]) - 1}{q[4:]}"
+    qy = qy if qy in qs else None
+    M = fund_structure(code, "top10")
+    if M.empty or q not in M.index:
+        return pd.DataFrame()
+    out = pd.DataFrame({"本期": M.loc[q]})
+    out["上期"] = M.loc[qp] if qp in M.index else np.nan
+    out["上年同期"] = M.loc[qy] if qy in M.index else np.nan
+    out["环比pp"] = out["本期"] - out["上期"]
+    out["同比pp"] = out["本期"] - out["上年同期"]
+    # 同行（样本基金中位数）同期变化，用来区分「它自己的选择」与「全行业都在做」
+    peer = level_matrix("top10")
+    out["同行本期"] = peer.loc[q].reindex(out.index) if q in peer.index else np.nan
+    out["同行环比pp"] = (peer.loc[q] - peer.loc[qp]).reindex(out.index) \
+        if (q in peer.index and qp in peer.index) else np.nan
+    out["相对同行pp"] = out["本期"] - out["同行本期"]
+    out.index.name = "行业"
+    out.attrs.update(q=q, q_prev=qp, q_year=qy, code=code)
+    return out
 
 
 # ---------------------------------------------------------------------------
