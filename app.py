@@ -425,7 +425,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.29-r29.0"
+APP_VERSION = "2026.10.29-r30.0"
 
 
 def _fp_short() -> str:
@@ -455,9 +455,21 @@ B, V, FACT = load_bundle(FP)
 IND, MKT = FACT["ind"], FACT["mkt"]
 QUARTERS = list(B.quarters)
 LATEST = B.latest
-MS = sg.market_signals(IND, MKT, B)
-M_SUM = fe.market_summary(IND, MKT, B)
-PAY = sg.dashboard_payload(IND, MKT, B)
+@st.cache_data(show_spinner=False)
+def _derived(fp: str):
+    """市场信号 / 市场摘要 / 仪表盘 payload：缓存起来，避免每次点击都重算。
+
+    这三项原来写在模块级，Streamlit 每次交互都会重跑一遍——点「指标速查」
+    要等 4 秒，主要就耗在这里（它们与页面无关，但每次都要算）。
+    """
+    _B, _V, _F = load_bundle(fp)
+    _ind, _mkt = _F["ind"], _F["mkt"]
+    return (sg.market_signals(_ind, _mkt, _B),
+            fe.market_summary(_ind, _mkt, _B),
+            sg.dashboard_payload(_ind, _mkt, _B))
+
+
+MS, M_SUM, PAY = _derived(FP)
 DETAIL_ALL = PAY["industry_history"]
 RECORDS = PAY["records"]
 LEVEL_MAP = {q: IND["拥挤等级"].loc[q].to_dict() for q in QUARTERS}

@@ -69,7 +69,7 @@ def render(page: str = "") -> None:
         st.markdown(
             f'<div style="font-size:15px;font-weight:700;margin:2px 0 2px">指标速查</div>'
             f'<div style="font-size:10.5px;color:{C.COLOR["text_dim"]};line-height:1.6;'
-            f'margin-bottom:6px">26 个指标的含义、原理、公式、计算过程、阈值、'
+            f'margin-bottom:6px">{len(g.ITEMS)} 个指标的含义、原理、公式、计算过程、阈值、'
             f'标准来源、经济内容、投资含义与常见误用。可直接输入关键词搜索。</div>',
             unsafe_allow_html=True)
         _body(page)

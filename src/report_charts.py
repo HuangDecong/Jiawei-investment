@@ -274,11 +274,12 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
     fig = go.Figure()
     for ind in order:
         s = d[ind]
+        # hoverinfo="skip"：逐层悬停只会弹出一条，31 层要扫 31 次；
+        # 全部数值改由下面那条透明轨迹一次性给出。
         fig.add_trace(go.Scatter(
             x=list(d.index), y=s.values, mode="lines", name=ind,
             stackgroup="one", line=dict(width=0.5, color="#FFFFFF"),
-            fillcolor=ind_color(ind),
-            hovertemplate=f"<b>{ind}</b><br>%{{x}}：%{{y:.2f}}%<extra></extra>"))
+            fillcolor=ind_color(ind), hoverinfo="skip", showlegend=False))
     _resid = (100 - d.sum(axis=1)).clip(lower=0)
     if float(_resid.max()) > 0.5:
         fig.add_trace(go.Scatter(
@@ -312,9 +313,27 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
                      else "占净值比 %", range=[0, 100])
     # 悬停时一次显示该季度**全部行业**的数值：
     # 默认 hovermode 只显示鼠标所在的那一层，读者要逐层扫，31 个行业根本看不过来。
-    fig.update_layout(hovermode="x unified",
-                      hoverlabel=dict(bgcolor="rgba(255,255,255,0.96)", font_size=9.5,
-                                      bordercolor=C.COLOR["line"]))
+    # 一条透明轨迹承载「该季度全部行业」的悬浮文本：
+    # 按占比从大到小排，一次看全，不会被 plotly 的默认框裁掉。
+    _txt = []
+    for q in d.index:
+        row = d.loc[q].sort_values(ascending=False)
+        if float(_resid.get(q, 0) or 0) > 0.02:
+            row = pd.concat([row, pd.Series({residual_label: float(_resid[q])})])
+        head = f"<b>{q}</b>　单位 %"
+        lines = [f"{k} {v:.2f}" for k, v in row.items() if v >= 0.02]
+        more = len(row) - len(lines)
+        _txt.append(head + "<br>" + "　".join(lines[:16])
+                    + (f"<br>…另有 {more} 个行业 <0.02%" if more > 0 else ""))
+    fig.add_trace(go.Scatter(
+        x=list(d.index), y=[50] * len(d), mode="markers",
+        marker=dict(size=1, color="rgba(0,0,0,0)"), showlegend=False,
+        customdata=_txt, hovertemplate="%{customdata}<extra></extra>",
+        name="全部行业"))
+    fig.update_layout(hovermode="closest",
+                      hoverlabel=dict(bgcolor="rgba(255,255,255,0.97)", font_size=9.5,
+                                      bordercolor=C.COLOR["line"], align="left",
+                                      namelength=0))
     fig.update_xaxes(tickangle=-45)
     fig = _base(fig, title, 430)
     # 末端标注需要右侧留白，否则会被裁掉

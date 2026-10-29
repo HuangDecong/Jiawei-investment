@@ -386,8 +386,25 @@ def render(h) -> None:
         "主动pp": f"半年主动pp({qf0}→{qf})", "历史分位": "配置分位(31期)",
         "横截面分位": "横截面分位", "指数分位": "价格分位(2019起)",
         "近3月涨幅%": "指数近3月%", "CSI": "CSI", "等级": "拥挤等级"})
+    # 给「拥挤等级」与「判读」上色：一屏 31 行，纯文字很难扫出谁最挤
+    _LV = {"极度拥挤": "#C62828", "拥挤": "#E8710A", "中性": "#8A97A5",
+           "偏冷": "#4C8DDF", "冷门": "#1F4E9C", "数据不足": "#C3CBD4"}
+    _JD = {"共识形成": "#C62828", "多空对撞": "#8A97A5",
+           "系统性撤离": "#1A7F37", "数据不足": "#C3CBD4"}
+
+    def _tint_lv(v):
+        c = _LV.get(str(v))
+        return f"background-color:{c}22;color:{c};font-weight:700" if c else ""
+
+    def _tint_jd(v):
+        c = _JD.get(str(v))
+        return f"color:{c};font-weight:600" if c else ""
+
+    _st = (_show.sort_values("CSI", ascending=False).style
+           .map(_tint_lv, subset=["拥挤等级", "CSI"])
+           .map(_tint_jd, subset=["判读"]))
     st.dataframe(
-        _show.sort_values("CSI", ascending=False),
+        _st,
         width="stretch", hide_index=True, height=540,
         column_config={
             f"前十配置%({q})": st.column_config.NumberColumn(format="%.2f"),
