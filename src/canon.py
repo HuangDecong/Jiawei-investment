@@ -385,6 +385,187 @@ def panel_top10(q: str, normalize: bool = True) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# 行业指数：价格分位与涨跌幅（与基金持仓同期）
+# ---------------------------------------------------------------------------
+IDX_PATH = os.path.join(ROOT, "data", "cache", "sw_index_daily_ret.csv")
+
+
+@lru_cache(maxsize=1)
+def index_levels(start: str = "2019-01-01") -> pd.DataFrame:
+    """31 个申万一级指数的累计点位（以 start 为 1 重新起算）。
+
+    缓存文件是日收益矩阵（2000 年起），这里只取 2019 年以后：
+    基金持仓数据也是 2019Q1 起，两条序列必须同窗口，否则「分位」不可比。
+    """
+    if not os.path.exists(IDX_PATH):
+        return pd.DataFrame()
+    d = pd.read_csv(IDX_PATH, index_col=0, parse_dates=True)
+    d = d[d.index >= pd.Timestamp(start)]
+    if d.empty:
+        return pd.DataFrame()
+    return (1 + d.fillna(0)).cumprod()
+
+
+@lru_cache(maxsize=8)
+def index_stats() -> pd.DataFrame:
+    """行业指数：当前点位在自身历史的分位 + 近 1 年/近 3 月涨幅。
+
+    分位＝当前累计点位在「2019-01 至今每一个交易日」中的排名（0–100）。
+    它回答的是「贵不贵」，与「配置分位」回答的「机构重不重」是两个维度：
+    两者都高才是真拥挤；配置高但指数分位低，说明机构抱团却没赚到钱。
+    """
+    lv = index_levels()
+    if lv.empty:
+        return pd.DataFrame()
+    last = lv.index[-1]
+    cur = lv.iloc[-1]
+    pct = lv.rank(pct=True).iloc[-1] * 100
+
+    def _ret(days_back: int) -> pd.Series:
+        i = max(0, len(lv) - 1 - days_back)
+        base = lv.iloc[i]
+        return (cur / base - 1) * 100
+
+    def _by_date(years: float) -> pd.Series:
+        cut = last - pd.DateOffset(days=int(365 * years))
+        sub = lv[lv.index <= cut]
+        if sub.empty:
+            return pd.Series(np.nan, index=lv.columns)
+        return (cur / sub.iloc[-1] - 1) * 100
+
+    out = pd.DataFrame({
+        "指数分位": pct.round(1),
+        "近1年涨幅%": _by_date(1.0).round(1),
+        "近3月涨幅%": _ret(63).round(1),
+        "近1月涨幅%": _ret(21).round(1),
+    })
+    out.index.name = "行业"
+    out.attrs["start"] = str(lv.index[0].date())
+    out.attrs["end"] = str(last.date())
+    out.attrs["n_days"] = len(lv)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 行业配置水平与多周期对比
+# ---------------------------------------------------------------------------
+@lru_cache(maxsize=32)
+def industry_level(q: str, basis: str = "top10") -> pd.Series:
+    """该期样本基金的等权平均行业配置（%）。
+
+    basis="top10"：前十大口径，31 期全有 → 用于季度/年度对比；
+    basis="full" ：全持仓口径，只有半年报 → 用于水平与主动/被动。
+    两者不能混算：前十大只覆盖组合的一小部分，数值天然低于全持仓。
+    """
+    p = panel_top10(q) if basis == "top10" else panel_full(q, normalize=False)
+    if p.empty:
+        return pd.Series(dtype=float)
+    u = universe(q)
+    idx = p.index.intersection(list(u)) if u else p.index
+    if len(idx) < 30:
+        return pd.Series(dtype=float)
+    return p.loc[idx].mean().reindex(list(C.INDUSTRIES))
+
+
+@lru_cache(maxsize=4)
+def level_matrix(basis: str = "top10") -> pd.DataFrame:
+    """行业 × 期次 的配置矩阵（行=期，列=行业），用于画时间序列与热力图。"""
+    rows = {}
+    for q in quarters():
+        s = industry_level(q, basis)
+        if not s.empty:
+            rows[q] = s
+    return pd.DataFrame(rows).T.sort_index()
+
+
+@lru_cache(maxsize=8)
+def position_series() -> pd.DataFrame:
+    """每个全持仓期的股票仓位分布（中位/25%/75%），用于画仓位趋势。"""
+    rows = {}
+    for q in full_quarters():
+        c = coverage(q)
+        u = universe(q)
+        idx = c.index.intersection(list(u)) if u else c.index
+        if len(idx) < 50:
+            continue
+        v = c.loc[idx].dropna()
+        rows[q] = dict(中位=v.median(), q1=v.quantile(0.25),
+                       q3=v.quantile(0.75), 基金数=len(v))
+    return pd.DataFrame(rows).T.sort_index()
+
+
+def compare_periods(q: str | None = None) -> pd.DataFrame:
+    """行业台账：水平（全持仓）+ 与上一季、上年同期对比（前十大口径）。
+
+    三列口径不同、期次也不同，列名必须写清楚，否则读者会把
+    「半年主动 +0.8pp」与「本季 +0.3pp」当成同一件事。
+    """
+    qs = quarters()
+    q = q or (qs[-1] if qs else None)
+    if not q or q not in qs:
+        return pd.DataFrame()
+    i = qs.index(q)
+    q_prev = qs[i - 1] if i >= 1 else None
+    q_year = f"{int(q[:4]) - 1}{q[4:]}"
+    q_year = q_year if q_year in qs else None
+
+    cur = industry_level(q, "top10")
+    prv = industry_level(q_prev, "top10") if q_prev else pd.Series(dtype=float)
+    ly = industry_level(q_year, "top10") if q_year else pd.Series(dtype=float)
+
+    out = pd.DataFrame({"配置_前十": cur})
+    out["上季_前十"] = prv.reindex(out.index)
+    out["上年同期_前十"] = ly.reindex(out.index)
+    out["Δ上季pp"] = out["配置_前十"] - out["上季_前十"]
+    out["Δ上年pp"] = out["配置_前十"] - out["上年同期_前十"]
+
+    # 水平与主动/被动只能来自全持仓（半年频）：
+    # 注意这里不能传 q——若 q 是 Q1/Q3，pair_full(q) 会把季报期当成全持仓期，
+    # 算出来的「主动贡献」实际是前十大口径的差异，是假的。
+    pf = pair_full(None)
+    if pf:
+        d = decomp(*pf)
+        if not d.empty:
+            out["配置_全持仓"] = d["本期配置"].reindex(out.index)
+            out["主动pp"] = d["主动贡献"].reindex(out.index)
+            out["被动pp"] = d["被动贡献"].reindex(out.index)
+
+    # 历史分位（前十大口径，自身历史）
+    M = level_matrix("top10")
+    if not M.empty and q in M.index:
+        out["历史分位"] = (M.rank(pct=True).loc[q] * 100).reindex(out.index)
+
+    # 加仓广度（前十大口径，与 Δ上季 同期）
+    if q_prev:
+        b = breadth(q_prev, q)
+        if not b.empty:
+            out["加仓占比"] = b.set_index("行业")["加仓占比"].reindex(out.index)
+            out["判读"] = b.set_index("行业")["判读"].reindex(out.index)
+
+    out.index.name = "行业"
+    out.attrs.update(q=q, q_prev=q_prev, q_year=q_year,
+                     q_full=(pf[1] if pf else None), q_full0=(pf[0] if pf else None))
+    return out.round(3)
+
+
+def cross_section_percentile(q: str | None = None) -> pd.Series:
+    """当期 31 个行业之间的**横截面分位**（0–100）。
+
+    与「自身历史分位」是两个完全不同的尺子：
+    · 自身分位：这个行业的配置，在**它自己**过去 31 期里排第几；
+    · 横截面分位：这个行业的配置，在**当期 31 个行业之间**排第几。
+    银行配置 1.3% 在自身历史里可能只有 6 分位（历史最低），
+    但在 31 个行业里能排到中游——两者一起看才不会误判。
+    """
+    qs = quarters()
+    q = q or (qs[-1] if qs else None)
+    s = industry_level(q, "top10")
+    if s.empty:
+        return pd.Series(dtype=float)
+    return (s.rank(pct=True) * 100).round(1)
+
+
+# ---------------------------------------------------------------------------
 # 相邻期对
 # ---------------------------------------------------------------------------
 def pair_quarter(q: str | None = None) -> tuple[str, str] | None:

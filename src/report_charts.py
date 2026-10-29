@@ -35,38 +35,46 @@ def _base(fig: go.Figure, title: str, h: int = 420, legend: bool = False) -> go.
 # ---------------------------------------------------------------------------
 # 1. 仓位：先看总开关，再看行业
 # ---------------------------------------------------------------------------
-def fig_position(c0: pd.Series, c1: pd.Series, q0: str, q1: str) -> go.Figure:
-    """左：两期股票仓位分布；右：逐基金仓位变化分布。
+def fig_position(P: pd.DataFrame, cur: pd.Series, q_cur: str) -> go.Figure:
+    """左：15 个全持仓期的仓位中位数走势（带 25–75 分位带）；右：最新一期分布。
 
-    仓位是季报里最被忽略的一行。行业占比上升可能只是「整体加了仓」，
-    不看仓位就把「加仓」误读成「看好这个行业」。
+    早期只画「上期 vs 本期」两个箱线，看上去像只有两季数据；
+    改成全历史趋势后，才能判断当前仓位在历史上是高是低。
     """
-    idx = c0.index.intersection(c1.index)
-    a, b = c0.loc[idx].dropna(), c1.loc[idx].dropna()
-    idx2 = a.index.intersection(b.index)
-    a, b = a.loc[idx2], b.loc[idx2]
-    d = (b - a).clip(-30, 30)
-
-    fig = make_subplots(rows=1, cols=2, horizontal_spacing=0.14,
-                        subplot_titles=(f"股票仓位分布（{len(idx2):,} 只）",
-                                        "逐基金仓位变化（pp）"))
-    # 用箱线而不是小提琴：仓位分布高度集中（多数基金 85–95%），
-    # 小提琴会画成一个「蝴蝶结」，箱体反而看不清；箱线 + 离群点更直观。
-    for s, name, col in ((a, q0, "#9AA7B4"), (b, q1, C.COLOR["price"])):
-        fig.add_trace(go.Box(y=s, name=name, marker_color=col, line_color=col,
-                             boxpoints="outliers", marker=dict(size=3, opacity=0.5),
-                             width=0.45, whiskerwidth=0.4,
-                             hovertemplate=f"{name}<br>%{{y:.1f}}%<extra></extra>"),
-                      row=1, col=1)
-    fig.add_trace(go.Histogram(x=d, nbinsx=46, marker_color=C.COLOR["price"],
-                               opacity=0.8, name="仓位变化",
-                               hovertemplate="%{x:.1f}pp：%{y} 只<extra></extra>"),
-                  row=1, col=2)
-    fig.add_vline(x=0, line=dict(color=C.COLOR["line"], width=1), row=1, col=2)
+    fig = make_subplots(rows=1, cols=2, column_widths=[0.62, 0.38],
+                        horizontal_spacing=0.08,
+                        subplot_titles=(f"股票仓位趋势（{len(P)} 个半年报期）",
+                                        f"{q_cur} 仓位分布（{len(cur):,} 只）"))
+    x = list(P.index)
+    # 25–75 分位带
+    fig.add_trace(go.Scatter(x=x + x[::-1], y=list(P["q3"]) + list(P["q1"])[::-1],
+                             fill="toself", fillcolor="rgba(31,111,235,0.13)",
+                             line=dict(width=0), hoverinfo="skip",
+                             showlegend=False), row=1, col=1)
+    fig.add_trace(go.Scatter(x=x, y=P["中位"], mode="lines+markers", name="仓位中位",
+                             line=dict(color=C.COLOR["price"], width=2),
+                             marker=dict(size=6),
+                             hovertemplate="%{x}　中位 %{y:.1f}%<extra></extra>",
+                             showlegend=False), row=1, col=1)
+    _last = P.index[-1]
+    fig.add_annotation(x=_last, y=float(P["中位"].iloc[-1]),
+                       text=f"{float(P['中位'].iloc[-1]):.1f}%", showarrow=True,
+                       arrowhead=0, ax=0, ay=-26, font=dict(size=10, color=C.COLOR["price"]),
+                       row=1, col=1)
     fig.update_yaxes(title_text="占净值比 %", row=1, col=1)
-    fig.update_xaxes(title_text="仓位变化（pp）　←减仓　｜　加仓→", row=1, col=2)
+    fig.update_xaxes(tickangle=-45, row=1, col=1)
+
+    fig.add_trace(go.Histogram(x=cur, nbinsx=40, marker_color=C.COLOR["price"],
+                               opacity=0.8, showlegend=False,
+                               hovertemplate="%{x:.0f}%：%{y} 只<extra></extra>"),
+                  row=1, col=2)
+    _m = float(cur.median())
+    fig.add_vline(x=_m, line=dict(color=C.COLOR["up"], width=1.5, dash="dash"),
+                  annotation_text=f"中位 {_m:.1f}%", annotation_position="top",
+                  annotation_font=dict(size=9, color=C.COLOR["up"]), row=1, col=2)
+    fig.update_xaxes(title_text="仓位 %", row=1, col=2)
     fig.update_yaxes(title_text="基金数", row=1, col=2)
-    return _base(fig, "先看总开关：股票仓位变了没有", 330)
+    return _base(fig, "", 330)
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +100,7 @@ def fig_active_passive(d: pd.DataFrame, top: int = 11) -> go.Figure:
     fig.add_vline(x=0, line=dict(color=C.COLOR["line"], width=1))
     fig.update_layout(barmode="relative", bargap=0.3)
     fig.update_xaxes(title_text="对行业配置比例的影响（pp）　灰＋彩＝合计")
-    return _base(fig, "配置变化拆开看：灰的是价格，彩的才是机构", 430, legend=True)
+    return _base(fig, "", 430, legend=True)
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +129,7 @@ def fig_breadth(d: pd.DataFrame, top: int = 14) -> go.Figure:
     fig.update_xaxes(title_text="加仓基金占比（%）　←多数在减　｜　多数在加→",
                      range=[0, 108])
     fig.update_yaxes(title_text="")
-    return _base(fig, "谁在动：加仓基金占比最偏离 50% 的行业", 430)
+    return _base(fig, "", 430)
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +184,7 @@ def fig_stock_flow(d: pd.DataFrame, top: int = 10) -> go.Figure:
     fig.add_vline(x=0, line=dict(color=C.COLOR["line"], width=1), row=1, col=1)
     fig.add_vline(x=0, line=dict(color=C.COLOR["line"], width=1), row=1, col=2)
     fig.update_yaxes(tickfont=dict(size=9))
-    return _base(fig, "个股层面：谁被机构加进来，谁被移出去", 430)
+    return _base(fig, "", 430)
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +220,7 @@ def fig_breadth_vs_move(d: pd.DataFrame) -> go.Figure:
     fig.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1))
     fig.update_xaxes(title_text="加仓基金占比（%）　←少数在加　｜　多数在加→", range=[0, 100])
     fig.update_yaxes(title_text="平均变化（pp）　含价格漂移")
-    return _base(fig, "广度 × 幅度：四个象限对应四种完全不同的资金行为", 470, legend=True)
+    return _base(fig, "", 470, legend=True)
 
 
 if __name__ == "__main__":
@@ -230,3 +238,167 @@ if __name__ == "__main__":
     if pq:
         b = cn.breadth(*pq)
         print("广度", b.shape, b["判读"].value_counts().to_dict())
+
+
+# ---------------------------------------------------------------------------
+# 7. 双周期对比：与上一季、与上年同期
+# ---------------------------------------------------------------------------
+def fig_compare_two(comp: pd.DataFrame, top: int = 16) -> go.Figure:
+    """左右两栏：左边 Δ上一季，右边 Δ上年同期，行顺序一致，直接对着看。
+
+    为什么不做成一张表：31 行 × 4 列的数字表看不出形状；
+    两根条一组，谁在加速、谁在掉头，一眼就能分出来。
+    """
+    d = comp.dropna(subset=["Δ上季pp", "Δ上年pp"]).copy()
+    d = d.reindex(d["Δ上季pp"].abs().sort_values(ascending=False).index).head(top)
+    d = d.iloc[::-1]
+    fig = make_subplots(rows=1, cols=2, horizontal_spacing=0.12,
+                        subplot_titles=(f"与上一季比（{comp.attrs.get('q_prev', '')}→"
+                                        f"{comp.attrs.get('q', '')}）",
+                                        f"与上年同期比（{comp.attrs.get('q_year', '')}→"
+                                        f"{comp.attrs.get('q', '')}）"))
+    for col, (name, c) in enumerate([("Δ上季pp", C.COLOR["price"]),
+                                     ("Δ上年pp", C.COLOR["accent"])]):
+        fig.add_trace(go.Bar(
+            y=d.index, x=d[name], orientation="h", showlegend=False,
+            marker_color=[C.COLOR["up"] if v > 0 else C.COLOR["down"] for v in d[name]],
+            text=[f"{v:+.2f}" for v in d[name]], textposition="outside",
+            textfont=dict(size=9),
+            hovertemplate=f"%{{y}}<br>{name} %{{x:+.2f}}pp<extra></extra>"),
+            row=1, col=col + 1)
+        fig.add_vline(x=0, line=dict(color=C.COLOR["line"], width=1), row=1, col=col + 1)
+        fig.update_xaxes(title_text="pp", row=1, col=col + 1)
+    # 不再放总标题：两个子图标题本身已经说清「与谁比」，
+    # 再加一行总标题必然和子图标题重叠（调 margin 也压不住）。
+    fig.update_layout(margin=dict(l=6, r=16, t=52, b=10))
+    return _base(fig, "", 640)
+
+
+# ---------------------------------------------------------------------------
+# 8. 单行业全历史配置序列（拥挤度页）
+# ---------------------------------------------------------------------------
+def fig_level_history(M: pd.DataFrame, industry: str,
+                      title_extra: str = "") -> go.Figure:
+    """某个行业在 31 个报告期的配置比例走势（前十大口径，等权平均）。"""
+    if M.empty or industry not in M.columns:
+        return _base(go.Figure(), "数据未就绪")
+    s = M[industry].dropna()
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=list(s.index), y=s.values, mode="lines+markers",
+                             line=dict(color=C.COLOR["price"], width=2),
+                             marker=dict(size=5),
+                             hovertemplate="%{x}　%{y:.2f}%<extra></extra>",
+                             showlegend=False))
+    _mean = float(s.mean())
+    fig.add_hline(y=_mean, line=dict(color=C.COLOR["text_dim"], width=1, dash="dot"),
+                  annotation_text=f"历史均值 {_mean:.2f}%", annotation_position="right",
+                  annotation_font=dict(size=9, color=C.COLOR["text_dim"]))
+    _hi, _lo = float(s.max()), float(s.min())
+    fig.add_annotation(x=s.idxmax(), y=_hi, text=f"最高 {_hi:.1f}%", showarrow=True,
+                       arrowhead=0, ay=-22, font=dict(size=9, color=C.COLOR["up"]))
+    fig.add_annotation(x=s.idxmin(), y=_lo, text=f"最低 {_lo:.1f}%", showarrow=True,
+                       arrowhead=0, ay=22, font=dict(size=9, color=C.COLOR["down"]))
+    fig.update_yaxes(title_text="占前十大组合 %")
+    fig.update_xaxes(tickangle=-45)
+    return _base(fig, f"{industry} 配置比例的历史位置{title_extra}", 360)
+
+
+# ---------------------------------------------------------------------------
+# 9. 分位双轴：相对自己 vs 相对同行
+# ---------------------------------------------------------------------------
+def fig_dual_percentile(comp: pd.DataFrame, cs: pd.Series) -> go.Figure:
+    """横条＝自身历史分位（左轴），折线＝当期横截面分位（右轴）。
+
+    两把尺子量的是不同的事：
+    · 自身分位高＝「它自己历史上从没这么重过」；
+    · 横截面分位高＝「在 31 个行业里它也是最大的那几个」。
+    只有两者都高，才是「又重又在历史极值」的真拥挤；
+    自身高、横截面低（如石油石化），是「小行业里的相对极端」，
+    对组合的影响远小于电子这种大行业。
+    """
+    d = comp.copy()
+    d["横截面"] = cs.reindex(d.index)
+    d = d.dropna(subset=["历史分位"]).sort_values("历史分位")
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Bar(
+        y=d.index, x=d["历史分位"], orientation="h", name="自身历史分位（左轴）",
+        marker_color=[C.COLOR["up"] if v >= 80 else
+                      "#E8A33D" if v >= 60 else
+                      "#B7C1CC" if v >= 40 else
+                      "#7FA8DC" if v >= 20 else C.COLOR["down"]
+                      for v in d["历史分位"]],
+        hovertemplate="<b>%{y}</b><br>自身历史分位 %{x:.0f}<extra></extra>"),
+        secondary_y=False)
+    fig.add_trace(go.Scatter(
+        y=d.index, x=d["横截面"], mode="markers", name="全市场横截面分位（右轴）",
+        marker=dict(symbol="diamond", size=8, color=C.COLOR["accent"],
+                    line=dict(width=0.8, color="#FFFFFF")),
+        hovertemplate="<b>%{y}</b><br>横截面分位 %{x:.0f}<extra></extra>"),
+        secondary_y=True)
+    for v in (20, 80):
+        fig.add_vline(x=v, line=dict(color=C.COLOR["line"], width=1, dash="dot"))
+    fig.update_xaxes(title_text="分位（0＝历史最低，100＝历史最高）", range=[0, 104])
+    fig.update_yaxes(title_text="", secondary_y=False)
+    fig.update_yaxes(title_text="横截面分位", range=[0, 104], secondary_y=True)
+    return _base(fig, "", 720, legend=True)
+
+
+# ---------------------------------------------------------------------------
+# 9. 拥挤度双轴：配置分位（机构有多重）× 指数分位（价格有多贵）
+# ---------------------------------------------------------------------------
+def fig_crowding_map(comp: pd.DataFrame, idx: pd.DataFrame) -> go.Figure:
+    """横轴＝配置分位（31 期），纵轴＝指数点位分位（2019 年以来）。
+
+    两个分位回答不同问题：
+      横轴：机构在这个行业上押得比过去重还是轻；
+      纵轴：这个行业的价格相对自己过去贵不贵。
+    只有两者都高，才是「拥挤」——机构重仓且已经涨到历史高位。
+    """
+    if comp.empty or idx.empty:
+        return _base(go.Figure(), "指数数据未就绪")
+    # 调用方可能已经把这些列 join 进 comp，只补缺的，避免 columns overlap
+    _need = [c for c in ("指数分位", "近3月涨幅%", "近1年涨幅%")
+             if c not in comp.columns]
+    d = comp.join(idx[_need], how="inner") if _need else comp.copy()
+    d = d.dropna(subset=["历史分位", "指数分位"])
+    if d.empty:
+        return _base(go.Figure(), "指数数据未就绪")
+
+    def _q(r):
+        hi_c, hi_p = r["历史分位"] >= 50, r["指数分位"] >= 50
+        if hi_c and hi_p:
+            return "真拥挤（配置高+价格高）"
+        if hi_c and not hi_p:
+            return "抱团没赚（配置高+价格低）"
+        if not hi_c and hi_p:
+            return "机构踏空（配置低+价格高）"
+        return "冷门（配置低+价格低）"
+
+    d["象限"] = d.apply(_q, axis=1)
+    cmap = {"真拥挤（配置高+价格高）": C.COLOR["up"],
+            "抱团没赚（配置高+价格低）": "#E8710A",
+            "机构踏空（配置低+价格高）": C.COLOR["price"],
+            "冷门（配置低+价格低）": C.COLOR["down"]}
+    fig = go.Figure()
+    for tag, g in d.groupby("象限"):
+        fig.add_trace(go.Scatter(
+            x=g["历史分位"], y=g["指数分位"], mode="markers+text", name=f"{tag}：{len(g)}",
+            marker=dict(size=9 + g["配置_前十"].clip(0, 20) * 1.3,
+                        color=cmap.get(tag, C.COLOR["text_dim"]), opacity=0.75,
+                        line=dict(width=0.7, color="#FFFFFF")),
+            text=g.index, textposition="top center",
+            textfont=dict(size=9, color=C.COLOR["text_dim"]),
+            customdata=np.stack([g["配置_前十"], g["近3月涨幅%"], g["Δ上季pp"]], axis=-1),
+            hovertemplate=("<b>%{text}</b><br>配置分位 %{x:.0f}（31 期）<br>"
+                           "指数分位 %{y:.0f}<br>前十配置 %{customdata[0]:.2f}%<br>"
+                           "近 3 月 %{customdata[1]:+.1f}%<br>"
+                           "环比 %{customdata[2]:+.2f}pp<extra></extra>"),
+        ))
+    fig.add_vline(x=50, line=dict(color=C.COLOR["line"], width=1, dash="dot"))
+    fig.add_hline(y=50, line=dict(color=C.COLOR["line"], width=1, dash="dot"))
+    # 不再画四角文字：图例已经写明四个象限，角标还会压住落在角落的点
+    fig.update_xaxes(title_text="配置分位（机构押得多重，31 期）", range=[-6, 108])
+    fig.update_yaxes(title_text="指数分位（价格相对自己多贵）", range=[-6, 108])
+    # 坐标轴标题要留出边距，否则左侧竖排标题会被裁掉
+    fig.update_layout(margin=dict(l=64, r=16, t=52, b=54))
+    return _base(fig, "两个分位一起看：只有右上角才是真拥挤", 520, legend=True)
