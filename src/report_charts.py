@@ -352,16 +352,23 @@ def fig_csi_change(d: pd.DataFrame, top: int = 31) -> go.Figure:
     x = d.dropna(subset=["ΔCSI"]).sort_values("ΔCSI")
     if len(x) > top:
         x = pd.concat([x.head(top // 2), x.tail(top // 2)])
+    _lv = x["等级"] if "等级" in x else pd.Series("", index=x.index)
     fig = go.Figure(go.Bar(
         y=list(x.index), x=x["ΔCSI"], orientation="h",
-        marker_color=[C.COLOR["up"] if v > 0 else C.COLOR["down"] for v in x["ΔCSI"]],
-        text=[f"{v:+.0f}" for v in x["ΔCSI"]], textposition="outside",
+        # 小样本用灰色：它的 ΔCSI 是「小样本里的排名变动」，不是资金方向，
+        # 涂成红/绿会让人以为有资金在大举进出。
+        marker_color=[CSI_COLORS["小样本"] if lv == "小样本"
+                      else (C.COLOR["up"] if v > 0 else C.COLOR["down"])
+                      for v, lv in zip(x["ΔCSI"], _lv)],
+        text=[f"{v:+.0f}" + ("†" if lv == "小样本" else "")
+              for v, lv in zip(x["ΔCSI"], _lv)], textposition="outside",
         textfont=dict(size=9),
         customdata=np.stack([x["CSI"], x.get("上期CSI", pd.Series(np.nan, index=x.index)),
-                             x["等级"]], axis=-1),
+                             _lv], axis=-1),
         hovertemplate=("<b>%{y}</b><br>ΔCSI %{x:+.1f}<br>"
                        "本期 CSI %{customdata[0]:.0f}（%{customdata[2]}）<br>"
-                       "上期 CSI %{customdata[1]:.0f}<extra></extra>")))
+                       "上期 CSI %{customdata[1]:.0f}"
+                       "<extra></extra>")))
     fig.add_vline(x=0, line=dict(color=C.COLOR["line"], width=1))
     fig.update_xaxes(title_text="ΔCSI（正＝变挤，负＝变松）")
     fig.update_yaxes(tickfont=dict(size=9.5))
@@ -387,6 +394,9 @@ def ind_legend_html(names: list[str]) -> str:
 CSI_COLORS = {
     "极度拥挤": "#C62828", "拥挤": "#E8710A", "中性": "#8A97A5",
     "偏冷": "#4C8DDF", "冷门": "#1F4E9C", "数据不足": "#C3CBD4",
+    # 小样本：持有基金数 <150 或前十配置 <0.5%。用灰色而不是任何暖色，
+    # 因为它既不该被读成「拥挤」，也不该被读成「冷门」——它是不评级。
+    "小样本": "#9AA6B2",
 }
 
 
@@ -400,15 +410,32 @@ def fig_csi_bar(cs: pd.DataFrame) -> go.Figure:
         return _base(go.Figure(), "数据未就绪")
     d = cs.dropna(subset=["CSI"]).sort_values("CSI")
     cols = [CSI_COLORS.get(l, "#C3CBD4") for l in d["等级"]]
+    # 把悬浮文本**预先拼成字符串**，而不是用 hovertemplate 的格式符：
+    # 小样本行要说的话（「按三分位本来是 83 分，但只有 58 只基金持有」）
+    # 是条件分支，模板语法表达不了。
+    _hv = []
+    for i, r in d.iterrows():
+        _base_txt = (f"<b>{i}</b><br>CSI {r['CSI']:.1f} = "
+                     f"({r['配置分位']:.0f} + {r['价格分位']:.0f} + {r['资金分位']:.0f}) / 3<br>"
+                     f"配置分位 {r['配置分位']:.0f}｜价格分位 {r['价格分位']:.0f}｜"
+                     f"资金分位 {r['资金分位']:.0f}")
+        if r.get("可靠") == "小样本":
+            _base_txt += (f"<br><span style='color:#C62828'>⚠ 小样本，不评级</span>"
+                          f"<br>全市场仅 {r.get('持有基金数', float('nan')):.0f} 只基金持有，"
+                          f"前十配置 {r.get('配置', float('nan')):.2f}%"
+                          f"<br>按三分位本应判为「{r.get('原等级', '—')}」，"
+                          f"但这个体量对组合影响不足 0.2pp，"
+                          f"分位噪声远大于信息")
+        else:
+            _base_txt += f"<br>等级 {r['等级']}"
+        _hv.append(_base_txt)
     fig = go.Figure(go.Bar(
         y=list(d.index), x=d["CSI"], orientation="h", marker_color=cols,
         text=[f'{v:.0f}　{l}' + ("†" if rel == "小样本" else "")
               for v, l, rel in zip(d["CSI"], d["等级"], d.get("可靠", [""] * len(d)))],
         textposition="outside", textfont=dict(size=9),
-        customdata=np.stack([d["配置分位"], d["价格分位"], d["资金分位"]], axis=-1),
-        hovertemplate=("<b>%{y}</b><br>CSI %{x:.0f}<br>"
-                       "配置分位 %{customdata[0]:.0f}｜价格分位 %{customdata[1]:.0f}｜"
-                       "资金分位 %{customdata[2]:.0f}<extra></extra>")))
+        customdata=np.array(_hv).reshape(-1, 1),
+        hovertemplate="%{customdata[0]}<extra></extra>"))
     for v in (25, 45, 65, 80):
         fig.add_vline(x=v, line=dict(color=C.COLOR["line"], width=1, dash="dot"))
     fig.update_xaxes(title_text="拥挤度指数 CSI（0＝最冷，100＝最挤）　†＝小样本", range=[0, 126])

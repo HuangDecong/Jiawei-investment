@@ -150,7 +150,7 @@ def render(h, B=None, IND=None) -> None:
         ("股票仓位", _fmt(pos.get("仓位1"), 1, "%"), f"15 期第 {pct:.0f} 分位"),
         ("可以跟", f"{len(_hi)} 个", "、".join(_hi.index[:3]) or "无"),
         ("要回避", f"{len(_av)} 个", "、".join(_av.index[:3]) or "无"),
-        ("极度拥挤", f"{_n_ext} 个", "CSI≥80，见拥挤度页"),
+        ("极度拥挤", f"{_n_ext} 个", "CSI≥80 且样本充足"),
         ("样本基金", f"{n_funds:,}", f"截至 {q}"),
     ]))
     h('<div class="tiny" style="margin-top:4px">'

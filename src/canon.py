@@ -228,7 +228,7 @@ def theme_codes(q: str) -> frozenset[str]:
     return frozenset(p.index[p.max(axis=1) > THEME_MAX])
 
 
-@lru_cache(maxsize=16)
+@lru_cache(maxsize=64)
 def universe(q: str) -> frozenset[str]:
     """该季的样本基金：主动权益 + 数据可用 + 非主题基金。"""
     cov = coverage(q)
@@ -245,7 +245,7 @@ def universe(q: str) -> frozenset[str]:
 # ---------------------------------------------------------------------------
 # 覆盖率 = 股票仓位（仅全持仓期可解释为仓位）
 # ---------------------------------------------------------------------------
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=64)
 def coverage(q: str) -> pd.Series:
     """每只基金该期「占净值比」合计。
 
@@ -284,8 +284,13 @@ _FB_FILES = {
 
 
 @lru_cache(maxsize=8)
+@lru_cache(maxsize=8)
 def _fb(name: str) -> pd.DataFrame:
-    """读压缩快照（由 tools/export_canon.py 生成）。"""
+    """读压缩快照（由 tools/export_canon.py 生成）。
+
+    必须缓存：canon_top10.csv.gz 有 53 万行，解压+解析约 1.5 秒。
+    线上（无数据库）每期都要读一次，不缓存的话切一页要几十秒。
+    """
     p = os.path.join(DERIVED, _FB_FILES[name])
     if not os.path.exists(p):
         return pd.DataFrame()
@@ -350,7 +355,7 @@ def panel_full(q: str, normalize: bool = True) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # B. 前十大口径
 # ---------------------------------------------------------------------------
-@lru_cache(maxsize=16)
+@lru_cache(maxsize=64)
 def panel_top10(q: str, normalize: bool = True) -> pd.DataFrame:
     """基金 × 行业，只取每只基金权重最大的 10 只股票，再按行业加总。
 
@@ -482,9 +487,49 @@ def industry_level(q: str, basis: str = "top10") -> pd.Series:
     return p.loc[idx].mean().reindex(list(C.INDUSTRIES))
 
 
+LEVEL_CSV = os.path.join(DERIVED, "canon_level_top10.csv.gz")
+DB_PATH = os.path.join(ROOT, "data", "db", "fund_ak.db")
+
+
+@lru_cache(maxsize=2)
+def _level_matrix_csv() -> pd.DataFrame:
+    """预计算好的「行业 × 期次」矩阵（tools/export_matrix.py 生成）。
+
+    运行时直接读，约 0.05s；现场计算要遍历 31 个季度、每期一次 SQL，约 22s。
+    这是首页与拥挤度页共用的底层数据，不预计算的话服务重启后第一次访问会白屏。
+    """
+    if not os.path.exists(LEVEL_CSV):
+        return pd.DataFrame()
+    try:
+        d = pd.read_csv(LEVEL_CSV, index_col=0)
+    except Exception:
+        return pd.DataFrame()
+    if d.empty:
+        return pd.DataFrame()
+    d.index = d.index.astype(str)
+    return d.reindex(columns=list(C.INDUSTRIES))
+
+
+def _level_csv_ok() -> bool:
+    """预计算矩阵是否可信任：期次必须与当前库完全一致，且不早于数据库文件。"""
+    c = _level_matrix_csv()
+    if c.empty:
+        return False
+    qs = quarters()
+    if not qs or list(c.index) != list(qs):
+        return False
+    # 重新抓过数（DB 更新）但没重新导出矩阵时，宁可慢一点也不能用旧数。
+    if os.path.exists(DB_PATH) and os.path.exists(LEVEL_CSV):
+        if os.path.getmtime(LEVEL_CSV) < os.path.getmtime(DB_PATH):
+            return False
+    return True
+
+
 @lru_cache(maxsize=4)
 def level_matrix(basis: str = "top10") -> pd.DataFrame:
     """行业 × 期次 的配置矩阵（行=期，列=行业），用于画时间序列与热力图。"""
+    if basis == "top10" and _level_csv_ok():
+        return _level_matrix_csv().copy()
     rows = {}
     for q in quarters():
         s = industry_level(q, basis)
@@ -493,9 +538,46 @@ def level_matrix(basis: str = "top10") -> pd.DataFrame:
     return pd.DataFrame(rows).T.sort_index()
 
 
+POS_CSV = os.path.join(DERIVED, "canon_position.csv.gz")
+
+
+@lru_cache(maxsize=2)
+def _position_csv() -> pd.DataFrame:
+    """预计算好的仓位分布（15 个全持仓期 × 4 列），tools/export_matrix.py 生成。
+
+    现场算要遍历 15 个全持仓期、每期一次 `coverage()` 全表聚合（约 0.6 秒），
+    合计 12 秒多——首页第一屏就卡在这里。它只有 15 行，存成 CSV 不到 1KB。
+    """
+    if not os.path.exists(POS_CSV):
+        return pd.DataFrame()
+    try:
+        d = pd.read_csv(POS_CSV, index_col=0)
+    except Exception:
+        return pd.DataFrame()
+    if d.empty:
+        return pd.DataFrame()
+    d.index = d.index.astype(str)
+    return d
+
+
+def _position_csv_ok() -> bool:
+    c = _position_csv()
+    if c.empty:
+        return False
+    fq = full_quarters()
+    if not fq or list(c.index) != list(fq):
+        return False
+    if os.path.exists(DB_PATH) and os.path.exists(POS_CSV):
+        if os.path.getmtime(POS_CSV) < os.path.getmtime(DB_PATH):
+            return False
+    return True
+
+
 @lru_cache(maxsize=8)
 def position_series() -> pd.DataFrame:
     """每个全持仓期的股票仓位分布（中位/25%/75%），用于画仓位趋势。"""
+    if _position_csv_ok():
+        return _position_csv().copy()
     rows = {}
     for q in full_quarters():
         c = coverage(q)
@@ -509,7 +591,8 @@ def position_series() -> pd.DataFrame:
     return pd.DataFrame(rows).T.sort_index()
 
 
-def compare_periods(q: str | None = None) -> pd.DataFrame:
+@lru_cache(maxsize=32)
+def _compare_periods_impl(q: str | None = None) -> pd.DataFrame:
     """行业台账：水平（全持仓）+ 与上一季、上年同期对比（前十大口径）。
 
     三列口径不同、期次也不同，列名必须写清楚，否则读者会把
@@ -566,7 +649,17 @@ def compare_periods(q: str | None = None) -> pd.DataFrame:
     return out.round(3)
 
 
-def crowding_score(q: str | None = None) -> pd.DataFrame:
+def compare_periods(q: str | None = None) -> pd.DataFrame:
+    """compare_periods 的对外入口：返回副本，避免调用方 inplace 改动污染缓存。
+
+    这一层缓存对本库影响很大：拥挤度页每渲染一次要调 compare_periods 十几次
+    （CSI、ΔCSI、双分位、四象限、全行业表），不缓存时切页要等好几秒。
+    """
+    return _compare_periods_impl(q).copy()
+
+
+@lru_cache(maxsize=32)
+def _crowding_score_impl(q: str | None = None) -> pd.DataFrame:
     """行业拥挤度指数 CSI：三个独立维度的等权平均（0–100）。
 
         CSI = (配置分位 + 价格分位 + 资金分位) / 3
@@ -608,8 +701,16 @@ def crowding_score(q: str | None = None) -> pd.DataFrame:
     out["可靠"] = np.where(
         (out["持有基金数"].fillna(0) < 150) | (out["配置"].fillna(0) < 0.5),
         "小样本", "正常")
-    out["等级"] = [_csi_level(v) if n >= 2 else "数据不足"
-                  for v, n in zip(out["CSI"], out["数据完整"])]
+    # 「原等级」= 只看 CSI 数值得到的三分位档位，仅用于向读者解释
+    # 「这个数字本来会被判成什么」；「等级」才是全站展示与统计用的那一列。
+    out["原等级"] = [_csi_level(v) if n >= 2 else "数据不足"
+                    for v, n in zip(out["CSI"], out["数据完整"])]
+    # 小样本行业不评级：58 只基金里 3 只加仓，就能把「资金分位」推到 80；
+    # 指数从低位反弹 20%，就能把「价格分位」推到 91。三个分位平均出来 83，
+    # 但这个行业在整个组合里只占 0.12%——把它标成「极度拥挤」是错的。
+    # 全站（色块、条形图、表格、结论计数、报告）统一读「等级」，
+    # 所以在这里降级一次，比在每个展示层各写一遍可靠。
+    out["等级"] = np.where(out["可靠"] == "小样本", "小样本", out["原等级"])
     out.attrs["weights"] = {"配置分位": 1 / 3, "价格分位": 1 / 3, "资金分位": 1 / 3}
     return out.sort_values("CSI", ascending=False)
 
@@ -621,7 +722,13 @@ def _index_pct_at(q: str) -> pd.Series:
     return d["指数分位"] if not d.empty else pd.Series(dtype=float)
 
 
-def csi_change(q: str | None = None) -> pd.DataFrame:
+def crowding_score(q: str | None = None) -> pd.DataFrame:
+    """crowding_score 的对外入口：返回副本。"""
+    return _crowding_score_impl(q).copy()
+
+
+@lru_cache(maxsize=32)
+def _csi_change_impl(q: str | None = None) -> pd.DataFrame:
     """拥挤度的变化：本期 CSI − 上期 CSI（逐行业）。
 
     为什么单列：CSI 是「水位」，变化是「水流」。水位高的行业如果正在放水，
@@ -664,7 +771,13 @@ def _csi_level(v: float) -> str:
     return "冷门"
 
 
-def cross_section_percentile(q: str | None = None) -> pd.Series:
+def csi_change(q: str | None = None) -> pd.DataFrame:
+    """csi_change 的对外入口：返回副本。"""
+    return _csi_change_impl(q).copy()
+
+
+@lru_cache(maxsize=32)
+def _cross_section_percentile_impl(q: str | None = None) -> pd.Series:
     """当期 31 个行业之间的**横截面分位**（0–100）。
 
     与「自身历史分位」是两个完全不同的尺子：
@@ -679,6 +792,11 @@ def cross_section_percentile(q: str | None = None) -> pd.Series:
     if s.empty:
         return pd.Series(dtype=float)
     return (s.rank(pct=True) * 100).round(1)
+
+
+def cross_section_percentile(q: str | None = None) -> pd.Series:
+    """cross_section_percentile 的对外入口：返回副本。"""
+    return _cross_section_percentile_impl(q).copy()
 
 
 # ---------------------------------------------------------------------------
@@ -1123,6 +1241,45 @@ def fund_holdings(code: str, q: str, limit: int = 12) -> pd.DataFrame:
 
 
 @lru_cache(maxsize=64)
+@lru_cache(maxsize=1)
+def _top10_snapshot_ok() -> bool:
+    """快照是否可当主口径用：期次与库一致，且导出后没有重新抓数。
+
+    单只基金要看 31 期的行业结构，走数据库要 31 次 SQL（约 14 秒）；
+    走快照只读一个 53 万行的文件（约 0.12 秒），过滤出一行再归一化。
+    两者结果必须完全一致，否则会出现「页面与台账对不上」。
+    """
+    d = _fb("top10")
+    if d.empty:
+        return False
+    snap = sorted(str(x) for x in d["quarter"].unique())
+    if snap != list(quarters()):
+        return False
+    p = os.path.join(DERIVED, _FB_FILES["top10"])
+    if os.path.exists(DB_PATH) and os.path.exists(p):
+        if os.path.getmtime(p) < os.path.getmtime(DB_PATH):
+            return False
+    return True
+
+
+@lru_cache(maxsize=32)
+def _fund_struct_snapshot(code: str) -> pd.DataFrame:
+    """"从快照拼单只基金的结构：与 panel_top10(q).loc[code] 完全同口径。"""
+    d = _fb("top10")
+    if d.empty:
+        return pd.DataFrame()
+    sub = d[(d["code"] == str(code).zfill(6))
+            & (d["industry"].isin(list(C.INDUSTRIES)))]
+    if sub.empty:
+        return pd.DataFrame()
+    g = (sub.groupby(["quarter", "industry"])["w"].sum()
+         .unstack("industry")
+         .reindex(columns=list(C.INDUSTRIES))
+         .fillna(0.0))
+    s = g.sum(axis=1)
+    return (g.div(s.where(s > 0), axis=0) * 100.0).sort_index()
+
+
 def fund_structure(code: str, basis: str = "top10") -> pd.DataFrame:
     """单只基金的行业结构时间序列（行＝期，列＝31 个行业，单位 %）。
 
@@ -1131,6 +1288,10 @@ def fund_structure(code: str, basis: str = "top10") -> pd.DataFrame:
     两者的差别不是精度，而是**分母**：前者回答「股票里怎么分」，
     后者回答「净值里放了多少股票、行业各占多少」。页面必须标清楚。
     """
+    if basis == "top10" and _top10_snapshot_ok():
+        t = _fund_struct_snapshot(code)
+        if not t.empty:
+            return t
     rows = {}
     qs = quarters() if basis == "top10" else full_quarters()
     for q in qs:

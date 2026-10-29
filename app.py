@@ -425,7 +425,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.29-r31.1"
+APP_VERSION = "2026.10.29-r31.2"
 
 
 def _fp_short() -> str:
@@ -450,7 +450,11 @@ def _fp_short() -> str:
             items.append(f"{name}:{os.path.getsize(p)}")
     return hashlib.md5("|".join(items).encode("utf-8")).hexdigest()[:8]
 
-# 数据先加载：顶栏需要显示「截至哪个季度」，因此必须排在顶栏之前
+# 数据先加载：顶栏需要显示「截至哪个季度」，因此必须排在顶栏之前。
+# 注：这一套是 Wind 口径，仅「⑥ 方法与口径」页的覆盖/体检段落还在用，
+# 其他 5 页全部走 canon（东方财富持仓）。试过按页跳过，但那几段旧代码
+# 分散在方法页中后部，条件化后会在多处 AttributeError，风险大于 4 秒收益，
+# 因此保留无条件加载。
 B, V, FACT = load_bundle(FP)
 IND, MKT = FACT["ind"], FACT["mkt"]
 QUARTERS = list(B.quarters)
@@ -570,6 +574,8 @@ except Exception as _e:      # 侧边栏失败不能拖垮正文
         st.caption(f"指标速查暂不可用：{type(_e).__name__}")
 
 _PROV = B.provenance if getattr(B, "provenance", None) is not None else None
+# 新 6 页不加载 Wind，_PROV 恒为 None，_prov_line() 会退化成「未接入」文案；
+# 这几个页面本来也不用它。
 _palette = ["#1F6FEB", "#2EA043", "#D1242F", "#E8710A", "#6E4AB8", "#0F8B8D",
             "#B3651A", "#8A97A5", "#C62828", "#2C7FB8", "#1170AA", "#5FA2CE",
             "#FC7D0B", "#A3ACB9", "#57606C", "#C85200"]
@@ -2019,7 +2025,7 @@ t <b>−0.83</b>、p <b>0.42</b>（26 期），五分层从 Q1 <b>+2.39%</b> 降
              期数=str(_c_s[2]), 状态="✅ 逐期加总 100.00% ± 0.02（自由流通市值加权）"),
         dict(数据项="行业季度涨跌幅（returns）", 覆盖区间=f"{_c_r[0]} ~ {_c_r[1]}",
              期数=str(_c_r[2]),
-             状态=f"✅ {len(B.quarters)} 期 × 31 行业全齐（2026-10-22 修复前值填充，486 格重抓，见 D8）"),
+             状态=f"✅ {len(QUARTERS)} 期 × 31 行业全齐（2026-10-22 修复前值填充，486 格重抓，见 D8）"),
         dict(数据项="行业季度成交额（turnover）", 覆盖区间=f"{_c_t[0]} ~ {_c_t[1]}",
              期数=str(_c_t[2]), 状态=f"⚠️ 仅覆盖可建模区间的后 {_c_t[2]} 期，"
                                      "更早季度交易拥挤度不可算（不插补）"),

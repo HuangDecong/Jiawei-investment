@@ -68,18 +68,28 @@ def _verdict(r) -> str:
 
 
 def _chips(cs: pd.DataFrame, comp: pd.DataFrame) -> str:
-    """31 个行业的色块总览：颜色＝拥挤等级，点一下上方的下拉即可看详情。"""
+    """31 个行业的色块总览：颜色＝拥挤等级，点一下上方的下拉即可看详情。
+
+    小样本行业（持有基金数 <150 或前十配置 <0.5%）用灰色、写「小样本·不评级」：
+    它们既不是拥挤也不是冷门，是「样本不够，判不了」。
+    """
     out = []
     for i, r in cs.iterrows():
+        _is_small = r.get("可靠") == "小样本"
         c = rc.CSI_COLORS.get(r["等级"], "#C3CBD4")
         _aq = comp.loc[i, "Δ上季pp"] if i in comp.index else np.nan
+        _tip = (f'全市场仅 {r.get("持有基金数", float("nan")):.0f} 只基金持有，'
+                f'前十配置 {r.get("配置_前十", r.get("配置", float("nan"))):.2f}%；'
+                f'按三分位本应判为「{r.get("原等级", "—")}」，'
+                f'但样本不足，不评级' if _is_small else f'CSI {r["CSI"]:.0f}（{r["等级"]}）')
+        _lvl = "小样本·不评级" if _is_small else r["等级"]
         out.append(
-            f'<div style="flex:1 1 88px;min-width:82px;background:{c};color:#fff;'
+            f'<div title="{_tip}" style="flex:1 1 88px;min-width:82px;background:{c};color:#fff;'
             f'border-radius:6px;padding:6px 7px;line-height:1.35">'
             f'<div style="font-size:11px;font-weight:700">{i}'
-            f'{"†" if r.get("可靠") == "小样本" else ""}</div>'
+            f'{"†" if _is_small else ""}</div>'
             f'<div style="font-size:15px;font-weight:700">{r["CSI"]:.0f}</div>'
-            f'<div style="font-size:9px;opacity:.92">{r["等级"]}　'
+            f'<div style="font-size:9px;opacity:.92">{_lvl}　'
             f'{_aq:+.2f}pp</div></div>')
     return ('<div style="display:flex;gap:5px;flex-wrap:wrap;margin:4px 0 6px">'
             + "".join(out) + '</div>')
@@ -102,7 +112,8 @@ def render(h) -> None:
     comp = comp.copy()
     comp["横截面分位"] = cs.reindex(comp.index)
     if not csi.empty:
-        comp = comp.join(csi[["CSI", "等级", "配置分位", "价格分位", "资金分位"]], how="left")
+        comp = comp.join(csi[["CSI", "等级", "原等级", "可靠", "配置分位", "价格分位", "资金分位"]],
+                         how="left")
     q, qp, qy = A["q"], A["q_prev"], A["q_year"]
     qf, qf0 = A["q_full"], A["q_full0"]
     idx = cn.index_stats()
@@ -112,8 +123,13 @@ def render(h) -> None:
     # =====================================================================
     # 本页结论
     # =====================================================================
-    _top = comp.nlargest(3, "CSI") if "CSI" in comp else pd.DataFrame()
-    _bot = comp.nsmallest(3, "CSI") if "CSI" in comp else pd.DataFrame()
+    # 「最拥挤」必须排除小样本：综合全市场只有 58 只基金持有、前十配置 0.12%，
+    # 它的 CSI 83 是「几十只基金的分位平均」，跟煤炭（434 只、1.5%）不是一个量级。
+    # 把它排进最拥挤，老板第一眼就会问「综合为什么会拥挤」——因为它其实不挤。
+    _ok = comp[comp["可靠"] == "正常"] if "可靠" in comp else comp
+    _top = _ok.nlargest(3, "CSI") if "CSI" in _ok else pd.DataFrame()
+    _bot = _ok.nsmallest(3, "CSI") if "CSI" in _ok else pd.DataFrame()
+    _small = comp[comp["可靠"] == "小样本"] if "可靠" in comp else pd.DataFrame()
     _hi_chg = comp[(comp["历史分位"] >= 80) & (comp["平均主动pp"] < 0)] if "平均主动pp" in comp else pd.DataFrame()
     _lo_chg = comp[(comp["历史分位"] <= 30) & (comp["平均主动pp"] > 0.2) &
                    (comp["加仓占比"] >= 60)] if "平均主动pp" in comp else pd.DataFrame()
@@ -137,6 +153,17 @@ def render(h) -> None:
                    + "、".join(f'{i}（配置{r["历史分位"]:.0f}、当期{r["平均主动pp"]:+.2f}pp、'
                               f'{r["加仓占比"]:.0f}%在加）' for i, r in _lo_chg.iterrows())
                    + '。这类是<b>预期差</b>的来源，可以小仓位试。')
+    if len(_small):
+        _s0 = _small.sort_values("CSI", ascending=False).iloc[0]
+        _bl.append(
+            f'<b>有 {len(_small)} 个行业不评级</b>（'
+            + "、".join(_small.sort_values("CSI", ascending=False).index)
+            + f'）：它们的 CSI 看起来可能很高——比如 {_small.sort_values("CSI", ascending=False).index[0]} '
+              f'算出来 {_s0["CSI"]:.0f} 分，按三分位本该是「{_s0["原等级"]}」——'
+              f'但全市场只有 <b>{_s0["持有基金数"]:.0f}</b> 只基金把它放进前十大、'
+              f'前十配置仅 <b>{_s0["配置_前十"]:.2f}%</b>。'
+              f'几十只基金里少数几只调仓，就足以把三个分位同时推到高位，'
+              f'所以本页把它标成灰色「小样本」、不算进拥挤个数、也不给买卖动作。')
     _bl.append('<b>怎么用</b>：拥挤度只决定「给多大仓位」，不决定「买不买」。'
                '本库数据已证伪「高拥挤必然下跌」，所以看到红色不要条件反射地卖，'
                '而是把它的仓位上限压下来；看到深蓝也不要马上买，先等资金转向。')
@@ -172,10 +199,12 @@ def render(h) -> None:
           f'环比 {comp.loc[sel, "Δ上季pp"]:+.2f}pp</div></div>')
     with c2:
         h('<div class="tiny" style="margin-bottom:2px">'
-          '31 个行业总览：<b>红＝极度拥挤、橙＝拥挤、灰＝中性、浅蓝＝偏冷、深蓝＝冷门</b>。'
-          '数字是 CSI（0–100），下方小字是本期环比变化。要点开某个行业，'
-          '用左侧下拉框搜索。<b>†</b>＝该行业全市场只有不到 150 只基金持有'
-          '（前十配置 &lt;0.5%），分位噪音大，等级仅供参考。</div>')
+          '31 个行业总览：<b>红＝极度拥挤、橙＝拥挤、灰＝中性、浅蓝＝偏冷、深蓝＝冷门</b>；'
+          '<b>灰底「小样本·不评级」</b>＝全市场持有基金数不足 150 只或前十配置 &lt;0.5%，'
+          '分位噪音大于信息，不给等级。<br>'
+          '数字是 CSI（0–100），下方小字是本期环比变化（单位：百分点）。'
+          '鼠标悬停任一色块可看它的三个分位是怎么算出 CSI 的；要点开某个行业，'
+          '用左侧下拉框搜索。</div>')
         h(_chips(comp.dropna(subset=["CSI"]).sort_values("CSI", ascending=False), comp))
 
     # =====================================================================
@@ -183,19 +212,52 @@ def render(h) -> None:
     # =====================================================================
     r = comp.loc[sel]
     h(f'<div class="sec">② {sel}：六个指标 + 历史位置</div>')
+
+    # 小样本行业先说清楚「为什么这个数不能当拥挤度用」，
+    # 否则读者看到「综合 CSI 83」会以为综合真的挤了——它只占组合 0.12%。
+    if r.get("可靠") == "小样本":
+        _mn = float(M[sel].min()) if sel in M.columns else np.nan
+        _mx = float(M[sel].max()) if sel in M.columns else np.nan
+        h(f'<div style="background:#FFF8E6;border:1px solid #E8C36A;border-left:4px solid #D9A21B;'
+          f'border-radius:7px;padding:9px 12px;margin:2px 0 8px;font-size:11.5px;line-height:1.9">'
+          f'<b>⚠ {sel}不评级：下面这个 CSI {r["CSI"]:.0f} 不能当拥挤度用。</b><br>'
+          f'<b>为什么</b>：全市场只有 <b>{r["持有基金数"]:.0f}</b> 只样本基金把它放进前十大，'
+          f'前十配置合计 <b>{r["配置_前十"]:.2f}%</b>（{len(M)} 期区间 {_mn:.2f}%–{_mx:.2f}%）。'
+          f'三个分位都是在这个极小的样本上排出来的：<br>'
+          f'· <b>配置分位 {r["配置分位"]:.0f}</b>——它的历史配置只在 {_mn:.2f}% 到 {_mx:.2f}% 之间摆动，'
+          f'差 0.05pp 就能从第 20 分位跳到第 80 分位，排名没有经济含义；<br>'
+          f'· <b>价格分位 {r["价格分位"]:.0f}</b>——小盘股指数从低位反弹一段，就能把分位推到 90 以上，'
+          f'但这不代表机构在往里挤；<br>'
+          f'· <b>资金分位 {r["资金分位"]:.0f}</b>——{r["持有基金数"]:.0f} 只基金里只要有 3–5 只加仓，'
+          f'广度就会跳到前 20%。<br>'
+          f'三者平均出 <b>{r["CSI"]:.0f}</b>，按三分位本来会被判为「{r["原等级"]}」，'
+          f'但这个体量对组合的影响不到 0.2pp——它就算仓位全部清零，对净值的影响也小于一个'
+          f'正常行业 1pp 的调仓。<b>所以本页把它标成灰色「小样本」，不计入拥挤个数，也不给买卖动作。</b>'
+          f'<br>要判断它到底挤不挤，至少需要「持有基金数 ≥150 只、前十配置 ≥0.5%」才够看。'
+          f'</div>')
+
     _d = st.columns(6)
     _d[0].metric(f"前十配置 {q}", f"{r['配置_前十']:.2f}%",
                  help="前十大归一化口径：组合里最重要的 10 只股票，该行业占多少")
     _d[1].metric("配置分位", f"{r['历史分位']:.0f}",
-                 help=f"在自身 {len(M)} 期历史中的排名（0＝最低，100＝最高）")
+                 help=f"在自身 {len(M)} 期历史中的排名（0＝最低，100＝最高），满分 100")
     _d[2].metric("价格分位",
                  f"{r['指数分位']:.0f}" if np.isfinite(r.get("指数分位", np.nan)) else "—",
-                 help="行业指数点位在 2019 年以来每个交易日中的排名，回答「贵不贵」")
+                 help="行业指数季末点位在 2019 年以来每个交易日中的排名（0–100），回答「贵不贵」")
     _d[3].metric("CSI 拥挤度", f"{r.get('CSI', float('nan')):.0f}",
-                 help="(配置分位+价格分位+资金分位)/3，等权；≥80 极度拥挤")
-    _d[4].metric(f"环比 {qp}", f"{r['Δ上季pp']:+.2f}pp", delta_color="off",
-                 help="含价格漂移；价格中性后的净额见下方")
-    _d[5].metric(f"同比 {qy}", f"{r['Δ上年pp']:+.2f}pp", delta_color="off")
+                 help="(配置分位+价格分位+资金分位)/3，等权，0–100 分；"
+                      "≥80 极度拥挤、65–80 拥挤、45–65 中性、25–45 偏冷、<25 冷门")
+    # 环比/同比的 value 只放数字，单位写在 label 与下方说明里：
+    # 之前 value 里拼 "pp"，在部分字体/缩放下两个 p 会被看成「页」，
+    # 读者会问「+0.47 页是什么单位」。数字与单位分开就不会有歧义。
+    _d[4].metric(f"环比 {qp}", f"{r['Δ上季pp']:+.2f}", delta_color="off",
+                 help="单位：百分点（pp）。含价格漂移（行业涨跌本身会改变权重）；"
+                      "价格中性后的净额见下方")
+    _d[5].metric(f"同比 {qy}", f"{r['Δ上年pp']:+.2f}", delta_color="off",
+                 help="单位：百分点（pp）。与去年同季比，可剔除季节性")
+    h('<div class="tiny" style="margin:-2px 0 4px">'
+      '单位说明：前十配置＝%（占前十大归一化后的比重）；配置分位、价格分位、CSI＝0–100 的排名分；'
+      '环比、同比＝<b>百分点（pp）</b>，即两个百分比相减的差值，1pp＝1 个百分点。</div>')
 
     st.plotly_chart(rc.fig_level_history(M, sel, f"（{len(M)} 期，前十大口径）"),
                     width="stretch", config={"displayModeBar": False})
@@ -211,7 +273,10 @@ def render(h) -> None:
       + (f' 全持仓口径（{qf0}→{qf}）配置 {r["配置_全持仓"]:.2f}%，'
          f'其中机构主动 {r["主动pp"]:+.2f}pp、价格 {r["被动pp"]:+.2f}pp。'
          if np.isfinite(r.get("主动pp", np.nan)) else '')
-      + f'<br><b>怎么用</b>：{_verdict(r)}</div>')
+      + (f'<br><b>怎么用</b>：本行业为小样本，本页<b>不给买卖判断</b>——'
+         f'上面对分位的所有解读都不适用于它，请只当作「它在自己的历史里排在什么位置」来看，'
+         f'不要据此加减仓。'
+         if r.get("可靠") == "小样本" else f'<br><b>怎么用</b>：{_verdict(r)}') + '</div>')
 
     _hist = pd.DataFrame({"配置%": M[sel]}).dropna().tail(8)
     _hist["环比pp"] = _hist["配置%"].diff().round(2)
@@ -251,12 +316,18 @@ def render(h) -> None:
     if not cc.empty:
         st.plotly_chart(rc.fig_csi_change(cc), width="stretch",
                         config={"displayModeBar": False})
-        _up = cc.nlargest(3, "ΔCSI")
-        _dn = cc.nsmallest(3, "ΔCSI")
-        _hi_up = cc[(cc["CSI"] >= 80) & (cc["ΔCSI"] > 0)]
+        # 变化榜同样排除小样本：综合的 ΔCSI +30 是几十只基金调仓的结果，
+        # 放进「变挤最多」会让读者以为有资金在大举进入。
+        _cco = cc[cc["等级"] != "小样本"] if "等级" in cc else cc
+        _up = _cco.nlargest(3, "ΔCSI")
+        _dn = _cco.nsmallest(3, "ΔCSI")
+        _hi_up = _cco[(_cco["CSI"] >= 80) & (_cco["ΔCSI"] > 0)]
+        _n_sm = len(cc) - len(_cco)
         h(f'<div class="cg-note">'
           f'<b>怎么读</b>：横轴是「本期 CSI − 上期 CSI」，不是水位而是水流。'
-          f'右边越长＝这段时间挤得越快，左边越长＝在快速变松。悬停可看本期与上期的具体数值。<br>'
+          f'右边越长＝这段时间挤得越快，左边越长＝在快速变松。悬停可看本期与上期的具体数值。'
+          f'为免误读，变化榜已剔除 {_n_sm} 个小样本行业（灰色显示），'
+          f'它们的 CSI 波动主要来自样本太小，不代表资金方向。<br>'
           f'<b>变挤最多（{cc.attrs.get("q_prev", "")}→{cc.attrs.get("q", "")}）</b>：'
           + "、".join(f'{i}（{r["上期CSI"]:.0f}→{r["CSI"]:.0f}，{r["ΔCSI"]:+.0f}）'
                       for i, r in _up.iterrows())
@@ -386,23 +457,35 @@ def render(h) -> None:
         "主动pp": f"半年主动pp({qf0}→{qf})", "历史分位": "配置分位(31期)",
         "横截面分位": "横截面分位", "指数分位": "价格分位(2019起)",
         "近3月涨幅%": "指数近3月%", "CSI": "CSI", "等级": "拥挤等级"})
-    # 给「拥挤等级」与「判读」上色：一屏 31 行，纯文字很难扫出谁最挤
+    # 给「拥挤等级」与「判读」上色：一屏 31 行，纯文字很难扫出谁最挤。
+    # 小样本用灰色——它既不是拥挤也不是冷门，是「样本不够，判不了」。
     _LV = {"极度拥挤": "#C62828", "拥挤": "#E8710A", "中性": "#8A97A5",
-           "偏冷": "#4C8DDF", "冷门": "#1F4E9C", "数据不足": "#C3CBD4"}
+           "偏冷": "#4C8DDF", "冷门": "#1F4E9C", "数据不足": "#C3CBD4",
+           "小样本": "#9AA6B2"}
     _JD = {"共识形成": "#C62828", "多空对撞": "#8A97A5",
            "系统性撤离": "#1A7F37", "数据不足": "#C3CBD4"}
 
-    def _tint_lv(v):
-        c = _LV.get(str(v))
-        return f"background-color:{c}22;color:{c};font-weight:700" if c else ""
+    def _row_style(row):
+        """按行上色：等级列底色 + CSI 数字同色 + 判读列文字色。
 
-    def _tint_jd(v):
-        c = _JD.get(str(v))
-        return f"color:{c};font-weight:600" if c else ""
+        原来用 map(subset=["拥挤等级","CSI"]) 给 CSI 上色是无效的——
+        CSI 列的值是 83.0 这样的数字，查不到颜色字典的键，整列等于没上色。
+        改成按行取「该行的等级」再回填，CSI 才会跟等级同色。
+        """
+        out = [""] * len(row)
+        c = _LV.get(str(row.get("拥挤等级")))
+        if c:
+            if "拥挤等级" in row.index:
+                out[row.index.get_loc("拥挤等级")] = (
+                    f"background-color:{c}22;color:{c};font-weight:700")
+            if "CSI" in row.index:
+                out[row.index.get_loc("CSI")] = f"color:{c};font-weight:700"
+        jd = _JD.get(str(row.get("判读")))
+        if jd and "判读" in row.index:
+            out[row.index.get_loc("判读")] = f"color:{jd};font-weight:600"
+        return out
 
-    _st = (_show.sort_values("CSI", ascending=False).style
-           .map(_tint_lv, subset=["拥挤等级", "CSI"])
-           .map(_tint_jd, subset=["判读"]))
+    _st = _show.sort_values("CSI", ascending=False).style.apply(_row_style, axis=1)
     st.dataframe(
         _st,
         width="stretch", hide_index=True, height=540,
