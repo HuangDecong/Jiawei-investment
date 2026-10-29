@@ -197,6 +197,13 @@ st.markdown(f"""
   section[data-testid="stSidebar"] .block-container {{ padding:.4rem .7rem; }}
   section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {{
       font-size:11px; }}
+  /* 收起按钮必须常显：顶栏被隐藏后，它容易被一起盖掉，
+     读者就再也拉不出侧边栏了。 */
+  [data-testid="stSidebarCollapseButton"] {{
+      display:block !important; visibility:visible !important; opacity:1 !important; }}
+  [data-testid="stSidebarCollapsedControl"] {{
+      display:block !important; visibility:visible !important; z-index:1000;
+      background:#FFFFFF; border:1px solid {C.COLOR['line']}; border-radius:0 6px 6px 0; }}
 
   .hdr {{ display:flex; align-items:center; gap:12px; flex-wrap:wrap;
           border-bottom:1px solid {C.COLOR['line']}; padding-bottom:8px; margin-bottom:8px; }}
@@ -418,7 +425,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.10.29-r26.0"
+APP_VERSION = "2026.10.29-r27.0"
 
 
 def _fp_short() -> str:
@@ -477,7 +484,7 @@ def _hdr_tags() -> str:
 
 
 # ---------------- 顶栏 ----------------
-h1, h2, h3 = st.columns([0.52, 0.26, 0.22])
+h1, h2, h3 = st.columns([0.50, 0.22, 0.28])
 with h1:
     _h('<div class="hdr">'
                 '<span class="ttl">公募基金交易拥挤度与集中度仪表盘</span>'
@@ -490,12 +497,25 @@ with h2:
                          help="扩窗：当期分位只用当期之前的历史（无未来信息）；"
                               "全样本：用全部可用历史（含前视，仅供对照）。")
 with h3:
-    c_a, c_b = st.columns([0.5, 0.5])
-    if c_a.button("🔄 重新读取数据", width="stretch"):
+    c_a, c_b, c_c = st.columns([0.42, 0.32, 0.26])
+    # 指标速查弹窗：侧边栏收起后，这是随时查指标的入口
+    if c_a.button("📖 指标速查", width="stretch", key="btn_glossary"):
+        st.session_state["gl_show"] = True
+    if c_b.button("🔄 刷新", width="stretch", key="btn_reload"):
         st.cache_data.clear()
         st.rerun()
-    _h(f'<div class="tiny" style="padding-top:6px">版本 {APP_VERSION}　'
-       f'数据指纹 <b>{_fp_short()}</b></div>')
+    with c_c:
+        _h(f'<div class="tiny" style="padding-top:2px;line-height:1.45;'
+           f'white-space:nowrap">{APP_VERSION.split("-")[-1]}<br>'
+           f'{_fp_short()}</div>')
+
+# 弹窗要在页面路由之前调用：各页在渲染完会 st.stop()，放在后面就永远不执行
+if st.session_state.get("gl_show"):
+    try:
+        import sidebar_panel as _sp
+        _sp.glossary_dialog()
+    except Exception:
+        st.session_state["gl_show"] = False
 
 # ============================================================================
 # 三栏
@@ -1482,6 +1502,18 @@ if _P == "⑥ 方法与口径":
 （见「⑤ 因子检验」）。所以本系统的价值是：读懂机构在做什么、避免在拥挤处接棒、
 避免在撤离处抄底——<b>不承诺选出会涨的行业</b>。
 </div>""")
+
+    # ---- 自检：口径恒等式（现场跑，不写死结果） ----
+    _h('<div class="sec">自检：10 条口径恒等式，跑一遍就知道有没有被改坏</div>')
+    try:
+        import selfcheck as _sc
+        _t = _sc.run()
+        _h(_sc.html(_t, C.COLOR))
+        _h('<div class="tiny">这些检查全部是<b>恒等式</b>（左边必须等于右边），'
+           '不是「看起来差不多」。改任何一处口径，这里会立刻变红——'
+           '比人工对表可靠。</div>')
+    except Exception as _e:
+        _h(f'<div class="cg-note">自检脚本未通过：{type(_e).__name__}: {_e}</div>')
 
     # ---- 口径总表：先讲清「同一句话在不同口径下不是一个数」 ----
     _h('<div class="sec">零、三套口径 · 每套只回答一个问题</div>')

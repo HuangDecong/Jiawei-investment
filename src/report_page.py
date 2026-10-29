@@ -118,21 +118,25 @@ def render(h, B=None, IND=None) -> None:
             f'最低 <b>{_gd["行业"]} {_gd["加仓占比"]:.0f}%</b>。'
             f'<b>只有「多数在加 + 净额为正」才叫共识</b>，加仓不到一半却净额为正的，'
             f'是少数大基金在撑，最容易反转。')
-    if ps:
+    if pq:
         try:
-            _sf = cn.stock_flow(*ps)
+            _sf = cn.stock_flow_top10(*pq)          # 相邻季，前十大口径
             _sf = _sf[(_sf["n_funds"] >= 10) | (_sf["n_funds_0"] >= 10)]
             if not _sf.empty:
                 _a3 = _sf.nlargest(3, "d_n")
+                _c3 = _sf.nsmallest(3, "d_n")
                 _ind_n = _a3["industry"].value_counts()
                 _concl.append(
-                    f'<b>个股层：加仓集中在 {_ind_n.index[0]}</b>——'
-                    f'{ps[0]}→{ps[1]} 被最多基金加进来的三只是 '
+                    f'<b>个股层（{pq[0]}→{pq[1]}，环比）：加仓集中在 {_ind_n.index[0]}</b>——'
+                    f'被最多基金加进来的三只是 '
                     + "、".join(f'{r["stock_name"]}（{r["d_n"]:+.0f} 家）'
                                for _, r in _a3.iterrows())
-                    + f'，其中 {_ind_n.iloc[0]} 占 {_ind_n.iloc[0]} 只。'
-                    f'<b>说明这批买入更像行业性配置</b>，跟着行业方向做即可；'
-                    f'如果散在不同行业，才需要逐只研究基本面。')
+                    + '；被减最多的是 '
+                    + "、".join(f'{r["stock_name"]}（{r["d_n"]:+.0f} 家）'
+                               for _, r in _c3.iterrows())
+                    + f'。<b>前十大口径下环比与同比都能比</b>（两期披露范围一致），'
+                    f'两者经常相反：环比在减、同比在加的，是「这一年被加过、现在开始撤」，'
+                    f'最需要警惕。')
         except Exception:
             pass
 
@@ -285,24 +289,51 @@ def render(h, B=None, IND=None) -> None:
               f'大资金已经在撤，小基金还在接。')
 
     # =====================================================================
-    # 图5 个股
+    # 图5 个股（相邻季 + 上年同季，两把尺子都给）
     # =====================================================================
-    if ps:
-        h('<div style="font-size:12px;font-weight:700;margin:10px 0 4px">'
-          f'图 5　落到个股：{ps[0]} → {ps[1]}，谁被加进来、谁被移出去</div>')
-        try:
-            sf = cn.stock_flow(*ps)
+    try:
+        _qoq = cn.pair_quarter()          # 2026Q2 → 2026Q3
+        _yoy = cn.pair_same()             # 2025Q3 → 2026Q3
+        _basis = st.radio(
+            "个股榜的对比基准",
+            [f"环比：{_qoq[0]} → {_qoq[1]}（看这一季谁在动）" if _qoq else "环比",
+             f"同比：{_yoy[0]} → {_yoy[1]}（看这一年谁被换掉）" if _yoy else "同比"],
+            horizontal=True, key="stock_basis", index=0)
+        _pair = _qoq if _qoq and _basis.startswith("环比") else _yoy
+        if _pair:
+            sf = cn.stock_flow_top10(*_pair)
+            _sf_other = cn.stock_flow_top10(*(_yoy if _basis.startswith("环比") else _qoq))
+            h('<div style="font-size:12px;font-weight:700;margin:10px 0 4px">'
+              f'图 5　落到个股：{_pair[0]} → {_pair[1]}，谁被加进来、谁被移出去</div>')
             if not sf.empty:
-                sf = sf[(sf["n_funds"] >= 10) | (sf["n_funds_0"] >= 10)]
-                st.plotly_chart(rc.fig_stock_flow(sf, 10, *ps), width="stretch",
+                sf_f = sf[(sf["n_funds"] >= 10) | (sf["n_funds_0"] >= 10)]
+                st.plotly_chart(rc.fig_stock_flow(sf_f, 10, *_pair), width="stretch",
                                 config={"displayModeBar": False})
-                _a, _c = sf.nlargest(3, "d_n"), sf.nsmallest(3, "d_n")
+                _a, _c = sf_f.nlargest(3, "d_n"), sf_f.nsmallest(3, "d_n")
                 _ind_a = _a["industry"].value_counts()
-                h(f'<div class="tiny">口径：<b>{ps[0]}（上年同季）→ {ps[1]}（本期）</b>，'
-                  f'同披露类型两期对比，已剔除持有基金数不足 10 家的小样本；'
-                  f'样本 {sf.attrs["n_funds"][1]:,} 只基金。'
-                  f'只统计进入前十大重仓的股票，所以「−100」不等于清仓，'
-                  f'也可能是掉出前十。</div>')
+                h(f'<div class="tiny">口径：<b>前十大</b>（两期都只取每只基金最重的 10 只，'
+                  f'披露范围一致才可比），只含主动权益样本 '
+                  f'{sf.attrs["n_funds"][1]:,} 只；已剔除两期持有基金数都不到 10 家的小样本。'
+                  f'「−100」不等于清仓，也可能是掉出前十。</div>')
+                # 两个基准的对照表：同一只股票，环比与同比可能完全相反
+                _cmp = pd.DataFrame({
+                    "本期基金数": sf["n_funds"],
+                    "环比Δ": sf["d_n"],
+                    "同比Δ": _sf_other["d_n"].reindex(sf.index) if not _sf_other.empty else np.nan,
+                    "行业": sf["industry"],
+                })
+                _show = _cmp.reindex(
+                    list(_a.index) + list(_c.index)).drop_duplicates()
+                _show = _show.rename(columns={"index": "代码"})
+                _show.index.name = "代码"
+                st.dataframe(_show.reset_index(), width="stretch", hide_index=True,
+                             height=250,
+                             column_config={
+                                 "本期基金数": st.column_config.NumberColumn(format="%.0f"),
+                                 "环比Δ": st.column_config.NumberColumn(format="%+.0f"),
+                                 "同比Δ": st.column_config.NumberColumn(
+                                     format="%+.0f", help="与上年同季比，正数＝这一年被更多基金持有"),
+                             })
                 _read(h,
                       f'被最多基金新买入：' + "、".join(
                           f'{r["stock_name"]}（{r["n_funds_0"]:.0f}→{r["n_funds"]:.0f} 家，'
@@ -311,27 +342,24 @@ def render(h, B=None, IND=None) -> None:
                       + f'；被最多基金卖出：' + "、".join(
                           f'{r["stock_name"]}（{r["n_funds_0"]:.0f}→{r["n_funds"]:.0f} 家，'
                           f'Δ{r["d_n"]:+.0f}，{r["industry"]}）'
-                          for _, r in _c.iterrows())
-                      + f'。一年时间里，加仓榜首的基金数翻了 '
-                        f'{_a.iloc[0]["n_funds"] / max(_a.iloc[0]["n_funds_0"], 1):.1f} 倍。',
-                      f'个股榜要配着行业看：<b>如果加仓的个股集中在同一个行业，'
-                      f'说明是行业配置行为；散在不同行业，才是真正的选股行为。</b>'
-                      f'本期加仓前三里 {len(_ind_a)} 个行业、'
-                      f'最大占比是 {_ind_a.index[0] if len(_ind_a) else "—"}'
-                      f'（{_ind_a.iloc[0] if len(_ind_a) else 0} 只），'
-                      + ("说明这批买入更像<b>行业性加仓</b>，跟行业方向即可，"
-                         "不必逐只研究。"
-                         if len(_ind_a) <= 2 else
-                         "说明更偏<b>个股选择</b>，需要逐只判断基本面。")
-                      + '另外，个股层不能用相邻季对比——「从第 11 名掉出前十大」'
-                        '会被误判成清仓，所以这里用「上年同季」而不是「上一季」。')
+                          for _, r in _c.iterrows()) + '。',
+                      f'<b>环比看「这一季谁在动」，同比看「这一年谁被换掉」，两者经常相反。</b>'
+                      f'上表同时给了两个 Δ：环比大正、同比大负的，是「刚被买进来的新宠」；'
+                      f'环比负、同比正的，是「这一年被加过、现在开始撤」——后者最危险，'
+                      f'因为浮盈盘还没走完。'
+                      + (f' 本期加仓前三集中在 {_ind_a.index[0]}'
+                         f'（{_ind_a.iloc[0]} 只），说明更像<b>行业性配置</b>，'
+                         f'跟着行业方向做即可。'
+                         if len(_ind_a) <= 1 else
+                         f' 本期加仓前三分散在 {len(_ind_a)} 个行业，'
+                         f'说明更偏<b>个股选择</b>，需要逐只判断。'))
                 # 行业构成
                 h('<div style="font-size:12px;font-weight:700;margin:8px 0 3px">'
-                  f'图 6　加仓/减仓前 50 只的行业构成：是行业性还是个股性</div>')
-                st.plotly_chart(rc.fig_stock_industry(sf, 50, *ps), width="stretch",
+                  f'图 6　{_pair[0]}→{_pair[1]} 加仓/减仓前 50 只的行业构成</div>')
+                st.plotly_chart(rc.fig_stock_industry(sf_f, 50, *_pair), width="stretch",
                                 config={"displayModeBar": False})
-                _top50a = sf.nlargest(50, "d_n")["industry"].value_counts()
-                _top50c = sf.nsmallest(50, "d_n")["industry"].value_counts()
+                _top50a = sf_f.nlargest(50, "d_n")["industry"].value_counts()
+                _top50c = sf_f.nsmallest(50, "d_n")["industry"].value_counts()
                 _read(h,
                       f'把加仓前 50 只按行业归类：<b>{_top50a.index[0]}</b> 占 '
                       f'{_top50a.iloc[0]} 只（{_top50a.iloc[0] / 50 * 100:.0f}%），'
@@ -348,8 +376,8 @@ def render(h, B=None, IND=None) -> None:
                          '这时个股榜才有独立价值，需要逐只判断。')
                       + f'减仓端同理：如果减仓集中在某个行业，那是行业性撤退，'
                         f'不要在这个行业里挑「被错杀」的个股。')
-        except Exception as _e:
-            h(f'<div class="tiny">个股榜暂不可用：{type(_e).__name__}</div>')
+    except Exception as _e:
+        h(f'<div class="tiny">个股榜暂不可用：{type(_e).__name__}</div>')
 
     # =====================================================================
     # C. 行业台账

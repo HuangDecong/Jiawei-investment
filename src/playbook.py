@@ -325,34 +325,44 @@ def conclusions(q: str | None = None) -> list[dict]:
             fail="下一季方向重新一致（两期同向）即可升级或降级。",
         ))
 
-    # ---- 7. 个股层 ----
+    # ---- 7. 个股层（前十大口径：环比与同比都能算） ----
+    pq = cn.pair_quarter(q)
     ps = cn.pair_same(q)
-    if ps:
+    if pq:
         try:
-            sf = cn.stock_flow(*ps)
+            sf = cn.stock_flow_top10(*pq)
             sf = sf[(sf["n_funds"] >= 10) | (sf["n_funds_0"] >= 10)]
+            sy = cn.stock_flow_top10(*ps) if ps else pd.DataFrame()
             if not sf.empty:
                 a3, c3 = sf.nlargest(3, "d_n"), sf.nsmallest(3, "d_n")
                 ind_a = a3["industry"].value_counts()
+                _yoy = sy["d_n"].reindex(a3.index) if not sy.empty else pd.Series(dtype=float)
                 out.append(dict(
                     tag="个股层",
-                    claim=("被最多基金加进来的是 " + "、".join(a3["stock_name"])
-                           + "；被最多基金移出去的是 " + "、".join(c3["stock_name"]) + "。"),
+                    claim=("环比（" + pq[0] + "→" + pq[1] + "）被最多基金加进来的是 "
+                           + "、".join(a3["stock_name"])
+                           + "；被最多基金减掉的是 " + "、".join(c3["stock_name"]) + "。"),
                     evidence=("加仓：" + "、".join(
                         f"{r['stock_name']}（{r['d_n']:+.0f} 家，{r['industry']}）"
                         for _, r in a3.iterrows())
                         + "；减仓：" + "、".join(
                         f"{r['stock_name']}（{r['d_n']:+.0f} 家，{r['industry']}）"
                         for _, r in c3.iterrows())
-                        + f"。口径：{ps[0]}→{ps[1]} 同披露类型两期，样本 "
-                          f"{sf.attrs['n_funds'][1]:,} 只基金。"),
+                        + f"。口径：前十大（两期都只取每只基金最重的 10 只），"
+                          f"样本 {sf.attrs['n_funds'][1]:,} 只基金；"
+                          + ("同比 " + "、".join(
+                              f"{i} {v:+.0f}" for i, v in _yoy.items()) + "。"
+                             if len(_yoy) else "")),
                     meaning=(f"加仓前三集中在 {len(ind_a)} 个行业"
                              f"（{ind_a.index[0]} 占 {ind_a.iloc[0]} 只），"
                              + ("说明这是**行业性加仓**，跟着行业方向做即可，不必逐只研究。"
                                 if len(ind_a) <= 2 else
-                                "说明更偏**个股选择**，需要逐只判断基本面。")),
-                    action="行业性加仓跟行业；个股性加仓只买自己能讲清逻辑的那几只。",
-                    fail="个股层不能用相邻季对比：从第 11 名掉出前十大会被误判成清仓。",
+                                "说明更偏**个股选择**，需要逐只判断基本面。")
+                             + " 环比与同比经常相反：同比大幅加过、环比开始减的，"
+                               "是浮盈盘在撤，最需要警惕。"),
+                    action="行业性加仓跟行业；个股性加仓只买自己能讲清逻辑的那几只；"
+                           "同比加、环比减的优先减。",
+                    fail="前十大口径只能看「有没有进前十」，跌出前十不等于清仓。",
                 ))
         except Exception:
             pass

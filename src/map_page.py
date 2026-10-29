@@ -244,7 +244,53 @@ def render(h) -> None:
     # =====================================================================
     # ④ 双分位
     # =====================================================================
-    h('<div class="sec">④ 两把尺子：相对自己历史 vs 相对全市场同行</div>')
+    # =====================================================================
+    # ④ 为什么用 CSI，不用 HHI
+    # =====================================================================
+    h('<div class="sec">④ 为什么拥挤度用 CSI，不用 HHI？</div>')
+    _hhi_now = float(((comp["配置_前十"] / 100) ** 2).sum())
+    _hhi_M = cn.level_matrix("top10")
+    _hhi_hist = ((_hhi_M / 100) ** 2).sum(axis=1)
+    _hhi_pct = float((_hhi_hist <= _hhi_now).mean() * 100) if len(_hhi_hist) else np.nan
+    h('<div style="display:flex;gap:7px;flex-wrap:wrap">'
+      '<div style="flex:1 1 320px;background:#FFFFFF;border:1px solid ' + C.COLOR["line"] +
+      ';border-top:3px solid ' + C.COLOR["text_dim"] + ';border-radius:7px;padding:9px 11px">'
+      '<div style="font-size:12px;font-weight:700">HHI（赫芬达尔指数）</div>'
+      '<div style="font-size:11px;line-height:1.85;margin-top:4px">'
+      '<b>公式</b>：HHI = Σ(w<sub>k</sub>/100)²，w 是 31 个行业的配置比例<br>'
+      '<b>它是什么</b>：<b>一个组合</b>的集中度——把各行业权重平方后加总，'
+      '权重越集中，HHI 越大。<br>'
+      '<b>它回答</b>：「这个组合分散不分散？押注少数行业还是撒得很开？」<br>'
+      '<b>它不回答</b>：「<b>哪个</b>行业挤？」——HHI 是一个标量，'
+      '31 个行业最后只剩一个数，无法排序、无法定位。<br>'
+      '<b>当前值</b>：全市场前十大口径 HHI <b>' + f'{_hhi_now:.4f}' + '</b>，'
+      '处在 31 期的第 <b>' + f'{_hhi_pct:.0f}' + '</b> 分位（越高质量越集中）。'
+      '</div></div>'
+      '<div style="flex:1 1 320px;background:#FFFFFF;border:1px solid ' + C.COLOR["line"] +
+      ';border-top:3px solid ' + C.COLOR["threshold"] + ';border-radius:7px;padding:9px 11px">'
+      '<div style="font-size:12px;font-weight:700">CSI（拥挤度指数）</div>'
+      '<div style="font-size:11px;line-height:1.85;margin-top:4px">'
+      '<b>公式</b>：CSI = (配置分位 + 价格分位 + 资金分位) ÷ 3<br>'
+      '<b>它是什么</b>：<b>单个行业</b>在市场里的拥挤程度，三个维度各自换算成 '
+      '0–100 的分位后等权平均。<br>'
+      '<b>它回答</b>：「这个行业被多少人在什么价位上挤着买？现在是不是人人都上车了？」<br>'
+      '<b>它不回答</b>：「整个组合分散不分散」——那是 HHI 的事。<br>'
+      '<b>为什么等权</b>：三维已统一为分位，量纲一致；31 个行业 × 31 期不足以'
+      '稳定估计权重，任何加权都是过拟合。'
+      '</div></div></div>')
+    h('<div class="cg-note" style="margin-top:6px"><b>一句话区别</b>：'
+      'HHI 是「<b>组合</b>的体温计」，只能告诉你发不发烧；'
+      'CSI 是「<b>行业</b>的拥堵指数」，能告诉你哪条路堵、堵到什么程度。'
+      '本页要回答的是「31 个行业里谁最挤」，所以主指标必须是 CSI；'
+      'HHI 作为辅助，放在页头告诉你「整体是不是越来越集中」。'
+      '<br><b>为什么不用换手率、成交额占比这类经典拥挤度指标</b>：'
+      '① 本库的季报数据不含交易明细，成交额只能外接行情，会引入第二套口径；'
+      '② 成交额占比在 A 股受涨跌停、次新股、指数调整影响极大，'
+      '与「基金持仓拥挤」不是同一件事。本页衡量的是<b>持仓拥挤</b>，'
+      '所以三个维度全部来自同一套持仓与指数数据，保证可复算。</div>')
+
+
+    h('<div class="sec">⑤ 两把尺子：相对自己历史 vs 相对全市场同行</div>')
     st.plotly_chart(rc.fig_dual_percentile(comp, comp["横截面分位"]),
                     width="stretch", config={"displayModeBar": False})
     _both_high = comp[(comp["历史分位"] >= 80) & (comp["横截面分位"] >= 80)]
@@ -272,7 +318,7 @@ def render(h) -> None:
     # ⑤ 四象限
     # =====================================================================
     if not idx.empty:
-        h('<div class="sec">⑤ 第三把尺子：价格贵不贵——配置分位 × 指数分位</div>')
+        h('<div class="sec">⑥ 第三把尺子：价格贵不贵——配置分位 × 指数分位</div>')
         st.plotly_chart(rc.fig_crowding_map(comp, idx), width="stretch",
                         config={"displayModeBar": False})
         _d = comp.dropna(subset=["历史分位", "指数分位"])
@@ -302,7 +348,7 @@ def render(h) -> None:
     # =====================================================================
     # ⑥ 全行业表
     # =====================================================================
-    h('<div class="sec">⑥ 全行业一览：把 31 个行业放在一张表里</div>')
+    h('<div class="sec">⑦ 全行业一览：把 31 个行业放在一张表里</div>')
     _show = comp.reset_index()[[
         "行业", "配置_前十", "Δ上季pp", "Δ上年pp", "平均主动pp", "加仓占比",
         "配置_全持仓", "主动pp", "历史分位", "横截面分位", "指数分位",

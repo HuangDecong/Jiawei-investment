@@ -934,9 +934,88 @@ def stock_snapshot(q: str) -> pd.DataFrame:
     return d.set_index("stock_code")
 
 
+@lru_cache(maxsize=16)
+def stock_snapshot_top10(q: str) -> pd.DataFrame:
+    """单季个股快照（**前十大口径**，只含样本基金）。
+
+    为什么单列一套
+    --------------
+    半年报披露全部持仓、季报只披露前十大。用「全部持仓」做相邻季对比，
+    Q2 的持股基金数天然比 Q3 多，所有股票都会被算成「被卖出」——这是
+    本库早期最严重的一个假信号。把两期都截断到「每只基金前 10 只」之后，
+    披露范围一致，相邻季与上年同季都能比。
+
+    样本：只统计 `universe(q)` 里的主动权益基金；指数基金、ETF 联接
+    会把「持有该股的基金数」抬高，与「机构观点」无关。
+    """
+    if not available():
+        p = os.path.join(DERIVED, "canon_stock_top10.csv.gz")
+        if not os.path.exists(p):
+            return pd.DataFrame()
+        d = pd.read_csv(p, compression="gzip", dtype={"stock_code": str})
+        d = d[d["quarter"] == q].copy()
+        if d.empty:
+            return d
+        # 千万不能 zfill(6)：港股 5 位代码（00700）补零会变成 000700，
+        # 与 A 股模塑科技撞码——这是本库踩过的坑，腾讯曾被算成汽车行业。
+        d["stock_code"] = d["stock_code"].astype(str).str.strip()
+        d["industry"] = np.where(pd.to_numeric(d["is_hk"], errors="coerce").fillna(0) == 1,
+                                 "港股", d["industry"].fillna("未映射"))
+        return d.set_index("stock_code")
+    try:
+        with _con() as con:
+            d = pd.read_sql(
+                "SELECT code, stock_code, stock_name, industry, is_hk, weight_pct, "
+                "shares, mv FROM fund_holdings WHERE quarter=?",
+                con, params=(q,), dtype={"code": str, "stock_code": str})
+    except Exception:
+        return pd.DataFrame()
+    if d.empty:
+        return d
+    u = universe(q)
+    d = d[d["code"].isin(u)] if u else d
+    if d.empty:
+        return pd.DataFrame()
+    d["rn"] = d.groupby("code")["weight_pct"].rank(method="first", ascending=False)
+    d = d[d["rn"] <= 10]
+    g = d.groupby("stock_code").agg(
+        stock_name=("stock_name", "max"), industry=("industry", "max"),
+        is_hk=("is_hk", "max"), n_funds=("code", "nunique"),
+        shares=("shares", "sum"), mv=("mv", "sum"))
+    g["stock_code"] = g.index.astype(str).str.strip()
+    g["industry"] = np.where(g["is_hk"].fillna(0) == 1, "港股",
+                             g["industry"].fillna("未映射"))
+    return g.set_index("stock_code")
+
+
+@lru_cache(maxsize=16)
+def stock_flow_top10(q0: str, q: str) -> pd.DataFrame:
+    """个股 Δ持股基金数（前十大口径）：环比与同比都能直接比。"""
+    a, b = stock_snapshot_top10(q0), stock_snapshot_top10(q)
+    if a.empty or b.empty:
+        return pd.DataFrame()
+    j = b.join(a, rsuffix="_0", how="outer")
+    for c in ("n_funds", "shares", "mv"):
+        j[c] = j[c].fillna(0)
+        j[c + "_0"] = j[c + "_0"].fillna(0)
+    j["d_n"] = j["n_funds"] - j["n_funds_0"]
+    j["d_mv_yi"] = (j["mv"] - j["mv_0"]) / 1e4
+    j["mv_yi"] = j["mv"] / 1e4
+    n0, n1 = len(universe(q0)) or 1, len(universe(q)) or 1
+    j["share"] = j["n_funds"] / n1 * 100
+    j["share_0"] = j["n_funds_0"] / n0 * 100
+    j["d_share_pp"] = j["share"] - j["share_0"]
+    j.attrs.update(q0=q0, q=q, n_funds=(n0, n1), basis="top10")
+    return j
+
+
 @lru_cache(maxsize=4)
 def stock_flow(q0: str, q: str) -> pd.DataFrame:
-    """个股 Δ持股基金数（只在同披露类型的两期之间调用）。"""
+    """个股 Δ持股基金数（**全部持仓**口径，只在同披露类型的两期之间调用）。
+
+    相邻季不要用它：Q2 全持仓 vs Q3 前十大，披露范围不同，
+    会把「没进前十」算成「清仓」。相邻季/同比请用 `stock_flow_top10`。
+    """
     a, b = stock_snapshot(q0), stock_snapshot(q)
     if a.empty or b.empty:
         return pd.DataFrame()

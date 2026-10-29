@@ -302,16 +302,18 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
         _y0, _v = _pos.get(ind, (0.0, 0.0))
         if _v < 2:
             continue
+        # 标签放在色块**内部**右端（xanchor=right）：放外面需要预留边距，
+        # 容器一窄就会被裁成「医药生物 2…」。放里面既不会被裁，也不挡数据。
         fig.add_annotation(x=_last, y=_y0 + _v / 2, text=f"{ind} {_v:.0f}%",
-                           showarrow=False, xanchor="left", xshift=8,
+                           showarrow=False, xanchor="right", xshift=-4,
                            font=dict(size=9, color="#FFFFFF"), bgcolor=ind_color(ind),
-                           borderpad=2, opacity=0.96)
+                           borderpad=1.6, opacity=0.96)
     fig.update_yaxes(title_text="占前十大 %" if residual_label.startswith("其他")
                      else "占净值比 %", range=[0, 100])
     fig.update_xaxes(tickangle=-45)
     fig = _base(fig, title, 430)
     # 末端标注需要右侧留白，否则会被裁掉
-    fig.update_layout(margin=dict(l=6, r=118, t=40, b=8))
+    fig.update_layout(margin=dict(l=6, r=14, t=40, b=8))
     return fig
 
 

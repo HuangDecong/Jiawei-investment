@@ -114,6 +114,37 @@ def main() -> None:
     """, con, params=last2, dtype={"code": str, "stock_code": str})
     _write(d6, "canon_fund_top10.csv.gz")
 
+    # 7) 个股榜（前十大口径、只含样本基金）：31 期全有，环比与同比都能算
+    #    为什么必须限定样本基金：不加的话指数基金、ETF 联接也会被算成
+    #    「持有该股的基金数」，个股榜会被被动资金污染。
+    #
+    #    实现上用 pandas 逐期算，不用 SQL 的 JOIN + ROW_NUMBER：
+    #    4M 行明细按 (quarter, code) 关联样本表的执行计划很差，
+    #    实测 20 分钟没跑完；改成「读一期 → 过滤样本 → 组内取前 10」只要 1–2 分钟。
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    import canon as cn
+    rows = []
+    for q in qs:
+        d = pd.read_sql(
+            "SELECT code, stock_code, stock_name, industry, is_hk, "
+            "weight_pct, shares, mv FROM fund_holdings WHERE quarter=?",
+            con, params=(q,), dtype={"code": str, "stock_code": str})
+        if d.empty:
+            continue
+        d = d[d["code"].isin(cn.universe(q))]
+        d["rn"] = d.groupby("code")["weight_pct"].rank(method="first", ascending=False)
+        d = d[d["rn"] <= 10]
+        g = d.groupby("stock_code").agg(
+            stock_name=("stock_name", "max"), industry=("industry", "max"),
+            is_hk=("is_hk", "max"), n_funds=("code", "nunique"),
+            shares=("shares", "sum"), mv=("mv", "sum")).reset_index()
+        g["quarter"] = q
+        rows.append(g)
+        print(f"  {q} 个股 {len(g):,} 只", flush=True)
+    d7 = pd.concat(rows, ignore_index=True)
+    _write(d7, "canon_stock_top10.csv.gz")
+
     con.close()
     tot = sum(os.path.getsize(os.path.join(OUT, f))
               for f in os.listdir(OUT) if f.startswith("canon_"))

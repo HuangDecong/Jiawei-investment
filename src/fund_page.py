@@ -223,9 +223,130 @@ def render(h) -> None:
       f'不是与基准比（基准权重不在本库内）。</div>')
 
     # =====================================================================
-    # ① 全部行业的结构漂移
+    # ① 全市场：公募基金整体的行业结构（先看大盘子，再看这一只）
     # =====================================================================
-    h('<div class="sec">① 全部 31 个行业的结构漂移：它这些年把钱挪到了哪里</div>')
+    h('<div class="sec">① 先看大盘子：公募基金整体的行业结构变化（31 期）</div>')
+    h('<div class="tiny" style="margin-bottom:3px">'
+      '口径：每期把所有样本基金的前十大归一化后等权平均，得到「一家典型的主动权益基金」'
+      '的行业结构。这是<b>全市场</b>的钱怎么分，不是单只基金。</div>')
+    Mkt = cn.level_matrix("top10")
+    cmp_m = cn.compare_periods()
+    if not Mkt.empty:
+        st.plotly_chart(
+            rc.fig_ind_structure(
+                Mkt, f"全市场行业结构（{Mkt.index[0]}–{Mkt.index[-1]}，前十大等权平均）",
+                residual_label="其他（港股/未映射）", label_top=4),
+            width="stretch", config={"displayModeBar": False})
+        h(rc.ind_legend_html(list(Mkt.columns)))
+        _mk_last = Mkt.iloc[-1]
+        _mk_top = _mk_last.nlargest(4)
+        _mk_chg = (Mkt.iloc[-1] - Mkt.iloc[0]).dropna().sort_values()
+        _read(h,
+              f'最新一期全市场前四大行业：'
+              + "、".join(f"{i} {v:.1f}%" for i, v in _mk_top.items())
+              + f'，合计 {_mk_top.sum():.1f}%（单只基金可能完全不同）。'
+              f'从 {Mkt.index[0]} 到现在，抬升最多的是 '
+              + "、".join(f"{i} {v:+.1f}pp" for i, v in _mk_chg.tail(2).iloc[::-1].items())
+              + f'，让位最多的是 '
+              + "、".join(f"{i} {v:+.1f}pp" for i, v in _mk_chg.head(2).items()) + '。',
+              f'这张图是「基准答案」：<b>先知道全市场在往哪挪，再判断一只基金是顺应还是逆行。</b>'
+              f'如果一只基金的行业变化和这张图的形状一致，它只是随大流；'
+              f'形状明显不同，才是它的主动选择。')
+
+    # ---------------- 指标条形图：31 个行业，悬停即见数值 ----------------
+    if not cmp_m.empty:
+        h('<div style="font-size:12px;font-weight:700;margin:8px 0 3px">'
+          '31 个行业逐个看：选一个指标，条形长度就是数值（悬停显示精确值）</div>')
+        _metric = st.radio(
+            "指标", ["配置比例 %", "环比 pp", "同比 pp", "配置分位", "拥挤度 CSI"],
+            horizontal=True, key="mkt_metric")
+        _map = {"配置比例 %": ("配置_前十", "%.2f", "当前配置（前十大归一化，%）"),
+                "环比 pp": ("Δ上季pp", "%+.2f", "对上一季的变化（pp，含价格）"),
+                "同比 pp": ("Δ上年pp", "%+.2f", "对上年同季的变化（pp）"),
+                "配置分位": ("历史分位", "%.0f", "在自身 31 期中的排名"),
+                "拥挤度 CSI": ("CSI", "%.0f", "(配置分位+价格分位+资金分位)/3")}
+        _col, _fmt, _lab = _map[_metric]
+        if _col in cmp_m.columns:
+            _s = cmp_m[_col].dropna().sort_values()
+            _c = [C.COLOR["up"] if v >= 0 else C.COLOR["down"] for v in _s] \
+                if _metric.endswith("pp") else [C.COLOR["price"]] * len(_s)
+            _fig = go.Figure(go.Bar(
+                y=list(_s.index), x=_s.values, orientation="h", marker_color=_c,
+                text=[_fmt % v for v in _s.values], textposition="outside",
+                textfont=dict(size=9),
+                hovertemplate="<b>%{y}</b><br>" + _lab + "：%{x:" +
+                              ("+.2f" if _fmt == "%+.2f" else ".2f" if _fmt == "%.2f" else ".0f") +
+                              "}<extra></extra>"))
+            _fig.add_vline(x=0, line=dict(color=C.COLOR["line"], width=1))
+            _fig.update_xaxes(title_text=_lab)
+            _fig.update_layout(margin=dict(l=6, r=54, t=16, b=30))
+            st.plotly_chart(_base(_fig, "", 620), width="stretch",
+                            config={"displayModeBar": False})
+
+        # ---------------- 单个行业：全市场 vs 这只基金 ----------------
+        h('<div style="font-size:12px;font-weight:700;margin:8px 0 3px">'
+          '也可以只看一个行业：全市场平均 vs 这只基金</div>')
+        _ind = st.selectbox("选择行业（可输入搜索）", list(cmp_m.index), key="mkt_ind")
+        _f = hist[_ind] if _ind in hist.columns else pd.Series(dtype=float)
+        _m = Mkt[_ind] if _ind in Mkt.columns else pd.Series(dtype=float)
+        _fig2 = go.Figure()
+        _fig2.add_trace(go.Scatter(x=list(_m.index), y=_m.values, mode="lines+markers",
+                                   name="全市场平均", line=dict(color=C.COLOR["text_dim"], width=2),
+                                   marker=dict(size=4),
+                                   hovertemplate="%{x}　全市场 %{y:.2f}%<extra></extra>"))
+        if len(_f):
+            _fig2.add_trace(go.Scatter(x=list(_f.index), y=_f.values, mode="lines+markers",
+                                       name=nm, line=dict(color=C.COLOR["price"], width=2),
+                                       marker=dict(size=4),
+                                       hovertemplate="%{x}　本基金 %{y:.2f}%<extra></extra>"))
+        _fig2.update_yaxes(title_text="占前十大 %")
+        _fig2.update_xaxes(tickangle=-45)
+        st.plotly_chart(_base(_fig2, f"{_ind}：全市场 vs {nm}", 340, legend=True),
+                        width="stretch", config={"displayModeBar": False})
+        _mf, _mm = (float(_f.iloc[-1]) if len(_f) else np.nan), (float(_m.iloc[-1]) if len(_m) else np.nan)
+        _hist_note = ""
+        if np.isfinite(_mf) and np.isfinite(_mm):
+            _hist_note = (" 历史上两条线" +
+                          ("基本重合，说明它在这个行业上没有主动判断。"
+                           if abs(_mf - _mm) < 1.5 else
+                           "长期分离，说明这是它持续的超配/低配方向。"))
+        _read(h,
+              f'灰线是全市场平均，蓝线是这只基金。最新一期：全市场 '
+              f'{_mm:.2f}%、本基金 {_mf:.2f}%，偏离 <b>{_mf - _mm:+.2f}pp</b>。'
+              + _hist_note,
+              f'<b>「全部」看结构，「单个」看偏离。</b>单看这只基金的曲线，无法判断它是'
+              f'「主动超配」还是「全市场都这样」；叠上全市场平均，才知道哪些是它的判断。'
+              f'这也是为什么本页先给全市场、再给单只基金。')
+
+        # ---------------- 全市场台账 ----------------
+        with st.expander("展开：全市场 31 个行业的台账（本期 / 上期 / 上年同期 / 分位）",
+                         expanded=False):
+            _t = cmp_m.reset_index()[["行业", "配置_前十", "上季_前十", "上年同期_前十",
+                                      "Δ上季pp", "Δ上年pp", "历史分位", "加仓占比", "判读"]]
+            _t = _t.rename(columns={
+                "配置_前十": f"本期%({cmp_m.attrs['q']})",
+                "上季_前十": f"上期%({cmp_m.attrs['q_prev']})",
+                "上年同期_前十": f"上年同期%({cmp_m.attrs['q_year']})",
+                "Δ上季pp": "环比pp", "Δ上年pp": "同比pp",
+                "历史分位": "配置分位(31期)", "加仓占比": f"加仓占比%({cmp_m.attrs['q']})"})
+            st.dataframe(_t.sort_values(f"本期%({cmp_m.attrs['q']})", ascending=False),
+                         width="stretch", hide_index=True, height=420,
+                         column_config={
+                             f"本期%({cmp_m.attrs['q']})": st.column_config.NumberColumn(format="%.2f"),
+                             f"上期%({cmp_m.attrs['q_prev']})": st.column_config.NumberColumn(format="%.2f"),
+                             f"上年同期%({cmp_m.attrs['q_year']})": st.column_config.NumberColumn(format="%.2f"),
+                             "环比pp": st.column_config.NumberColumn(format="%+.2f"),
+                             "同比pp": st.column_config.NumberColumn(format="%+.2f"),
+                             "配置分位(31期)": st.column_config.ProgressColumn(
+                                 format="%.0f", min_value=0, max_value=100),
+                             f"加仓占比%({cmp_m.attrs['q']})": st.column_config.NumberColumn(
+                                 format="%.0f", help="分母是「有实质变动的基金」"),
+                         })
+
+    # =====================================================================
+    # ② 这只基金：全部行业的结构漂移
+    # =====================================================================
+    h('<div class="sec">② 再看这一只：它的 31 个行业结构漂移</div>')
     fig = rc.fig_ind_structure(
         hist, f"{nm}　行业结构（{hist.index[0]}–{hist.index[-1]}，"
               f"{'前十大内部占比' if basis == 'top10' else '占净值比'}）",
@@ -295,7 +416,7 @@ def render(h) -> None:
     # =====================================================================
     # ② 与同行的偏离
     # =====================================================================
-    h('<div class="sec">② 它和同行差在哪：超配的行业、低配的行业</div>')
+    h('<div class="sec">③ 它和同行差在哪：超配的行业、低配的行业</div>')
     # 先剔掉「几乎为 0」的偏离：不持有某行业时 diff=0，画出来是一排空条，
     # 既占位置又让人以为「没有偏离」，实际是「这只基金不持有」。
     _dv = diff[diff.abs() >= 0.05]
@@ -336,7 +457,7 @@ def render(h) -> None:
         tp = _top_holdings(code, qf)
         _hold_q = qf
         _hold_tag = "全持仓（半年报，全部持仓的前 12 大）"
-    h(f'<div class="sec">③ 它的前十大到底是谁（{_hold_q}）</div>')
+    h(f'<div class="sec">④ 它的前十大到底是谁（{_hold_q}）</div>')
     if tp.empty:
         h('<div class="cg-note">该期无持仓明细。</div>')
         return
