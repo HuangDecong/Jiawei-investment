@@ -79,7 +79,7 @@ def action_table(q: str | None = None) -> pd.DataFrame:
         d = d.join(idx[["指数分位", "近3月涨幅%", "近1年涨幅%"]], how="left")
     cs = cn.crowding_score(q)
     if not cs.empty:
-        d = d.join(cs[["CSI", "等级"]], how="left")
+        d = d.join(cs[["CSI", "等级", "可靠"]], how="left")
     d["当期主动pp"] = d.get("平均主动pp", np.nan)
     d["半年主动pp"] = d.get("主动pp", np.nan)
 
@@ -88,16 +88,19 @@ def action_table(q: str | None = None) -> pd.DataFrame:
         br, cfg, ip = r["加仓占比"], r["历史分位"], r.get("指数分位", np.nan)
         if not np.isfinite(a) or not np.isfinite(br):
             return "数据不足"
+        # 小样本行业（持有基金数<150 或前十配置<0.5%）不参与「可以跟/别追高」评级：
+        # 几十只基金就能把分位推到极值，据此给出买卖动作会误导。
+        _small = r.get("可靠") == "小样本"
         # 「可以跟」要求半年报也不在撤：只靠一个季度转正就进场，
         # 往往是季度噪音（军工本期就是半年 −0.19、单季 +0.59）。
-        if (a >= TH["follow_active"] and br >= TH["follow_breadth"]
+        if (not _small) and (a >= TH["follow_active"] and br >= TH["follow_breadth"]
                 and (not np.isfinite(h) or h > 0)
                 and (not np.isfinite(cfg) or cfg <= TH["follow_cfg_pct"])
                 and (not np.isfinite(ip) or ip <= TH["follow_idx_pct"])):
             return "可以跟"
-        if ((np.isfinite(cfg) and cfg >= TH["hot_cfg_pct"])
-                or (np.isfinite(ip) and ip >= TH["hot_idx_pct"])) \
-                and br >= TH["hot_breadth"] and a > 0:
+        if (not _small) and (((np.isfinite(cfg) and cfg >= TH["hot_cfg_pct"])
+                or (np.isfinite(ip) and ip >= TH["hot_idx_pct"]))
+                and br >= TH["hot_breadth"] and a > 0):
             return "别追高"
         if (a <= TH["avoid_active"] and br <= TH["avoid_breadth"]) or \
                 (np.isfinite(cfg) and cfg >= TH["avoid_cfg_pct"] and br <= TH["avoid_breadth"]):
