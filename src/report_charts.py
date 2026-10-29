@@ -298,9 +298,15 @@ def fig_level_history(M: pd.DataFrame, industry: str,
                        arrowhead=0, ay=-22, font=dict(size=9, color=C.COLOR["up"]))
     fig.add_annotation(x=s.idxmin(), y=_lo, text=f"最低 {_lo:.1f}%", showarrow=True,
                        arrowhead=0, ay=22, font=dict(size=9, color=C.COLOR["down"]))
-    fig.update_yaxes(title_text="占前十大组合 %")
+    # 上下留 12% 余量：最高/最低点的文字标注画在点外侧，不留余量会被画到坐标区外
+    _lo, _hi = float(s.min()), float(s.max())
+    _pad = max((_hi - _lo) * 0.18, 0.6)
+    fig.update_yaxes(title_text="占前十大组合 %", range=[_lo - _pad, _hi + _pad])
     fig.update_xaxes(tickangle=-45)
-    return _base(fig, f"{industry} 配置比例的历史位置{title_extra}", 360)
+    fig = _base(fig, f"{industry} 配置比例的历史位置{title_extra}", 360)
+    # 右侧要放「历史均值」标注，不留边距会被裁成「历…」
+    fig.update_layout(margin=dict(l=6, r=72, t=46, b=10))
+    return fig
 
 
 # ---------------------------------------------------------------------------

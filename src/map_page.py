@@ -87,7 +87,9 @@ def render(h) -> None:
     _c2.metric("最冷门", f"{_bot}", f"{comp.loc[_bot, '历史分位']:.0f} 分位",
                delta_color="off")
     _c3.metric("行业集中度 HHI", f"{_hhi:.4f}",
-               f"{_hhi - _hhi0:+.4f}" if np.isfinite(_hhi0) else None, delta_color="off")
+               f"{_hhi - _hhi0:+.4f}" if np.isfinite(_hhi0) else None, delta_color="off",
+               help="Σ(行业占比)²，按前十大归一化口径算；与半年报全持仓口径"
+                    "（更分散、HHI 更低）不可直接比较，只看趋势")
     _c4.metric("前三大行业合计", f"{M.iloc[-1].nlargest(3).sum():.1f}%",
                f"{M.iloc[-1].nlargest(3).sum() - M.iloc[-2].nlargest(3).sum():+.1f}pp"
                if len(M) > 1 else None, delta_color="off")
