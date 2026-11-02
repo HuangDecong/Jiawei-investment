@@ -449,7 +449,9 @@ def fig_csi_bar(cs: pd.DataFrame, quarter: str = "") -> go.Figure:
     d = cs.dropna(subset=["CSI"]).copy()
     _lv = d["等级"].astype(str) if "等级" in d.columns else pd.Series("中性", index=d.index)
     d["等级"] = _lv
-    d["_sm"] = (_lv == "小样本").astype(int)
+    # 不参与排名的两类（小样本 / 数据不足）一起压到底部：
+    # 它们不是「冷门」，混在正常序列里会被读成「分数低」。
+    d["_sm"] = _lv.isin(["小样本", "数据不足"]).astype(int)
     d = d.sort_values(["_sm", "CSI"], ascending=[False, True])
     cols = [CSI_COLORS.get(l, "#C3CBD4") for l in d["等级"]]
     # 把悬浮文本**预先拼成字符串**，而不是用 hovertemplate 的格式符：
@@ -466,7 +468,10 @@ def fig_csi_bar(cs: pd.DataFrame, quarter: str = "") -> go.Figure:
         else:
             _base_txt = (f"<b>{i}</b><br>CSI {r['CSI']:.1f}"
                          f"（该期三项分位不全，按可用项平均）")
-        if str(r.get("可靠")) == "小样本":
+        if str(r.get("等级")) == "数据不足":
+            _base_txt += (f"<br><span style='color:#7A4A00'>⚠ 数据不足，不评级</span>"
+                          f"<br>三项分位不全（早期历史不够，或该行业指数 2022 年才有）")
+        elif str(r.get("可靠")) == "小样本":
             _base_txt += (f"<br><span style='color:#C62828'>⚠ 小样本，不评级</span>"
                           f"<br>全市场仅 {r.get('持有基金数', float('nan')):.0f} 只基金持有，"
                           f"前十配置 {r.get('配置', float('nan')):.2f}%"
@@ -695,7 +700,7 @@ def fig_dual_percentile(comp: pd.DataFrame, cs: pd.Series) -> go.Figure:
 # 9. 拥挤度双轴：配置分位（机构有多重）× 指数分位（价格有多贵）
 # ---------------------------------------------------------------------------
 def fig_crowding_map(comp: pd.DataFrame, idx: pd.DataFrame) -> go.Figure:
-    """横轴＝配置分位（自身历史），纵轴＝指数点位分位（2016 年以来）。
+    """横轴＝配置分位（自身历史），纵轴＝指数点位分位（2015 年以来）。
 
     两个分位回答不同问题：
       横轴：机构在这个行业上押得比过去重还是轻；
@@ -870,7 +875,7 @@ _CSI_SCALE = [
 
 
 def fig_csi_heatmap(H: pd.DataFrame, small: list[str] | None = None,
-                    height: int = 700) -> go.Figure:
+                    height: int = 700, bad: pd.DataFrame | None = None) -> go.Figure:
     """31 个行业 × 全样本期的 CSI 热力图：颜色＝档位。
 
     为什么用它替代「31 条线叠加」：叠加 31 条线谁都看不清（蜘蛛网），
@@ -888,12 +893,26 @@ def fig_csi_heatmap(H: pd.DataFrame, small: list[str] | None = None,
     order.sort(key=lambda c: (-(last.get(c) if np.isfinite(last.get(c, np.nan)) else -1)))
     order += [c for c in d.columns if c in small]
 
-    z = d[order].T.values
+    z = d[order].T.values.astype(float)
     ylab = [c + ("†" if c in small else "") for c in order]
+    # 数据不足的格子：先铺一层浅灰底，再把数值留空。
+    # 只留空的话，会和「中性」（近白）以及格子间的白缝混成一片，
+    # 看起来像渲染失败；浅灰底能明确地说「这里是没有数，不是 0 分」。
+    _mask = None
+    if bad is not None and not bad.empty:
+        _mask = bad.reindex(index=d.index, columns=order).fillna(False).values.T.astype(float)
+        z = np.where(_mask.astype(bool), np.nan, z)
     hv = [[f"<b>{ind}</b><br>{q}：CSI {z[i, j]:.1f}"
            + ("<br>小样本，不评级" if ind.replace("†", "") in small else "")
            for j, q in enumerate(d.index)] for i, ind in enumerate(ylab)]
-    fig = go.Figure(go.Heatmap(
+    fig = go.Figure()
+    if _mask is not None:
+        fig.add_trace(go.Heatmap(
+            z=_mask, x=list(d.index), y=ylab,
+            colorscale=[[0.0, "rgba(0,0,0,0)"], [1.0, "#DDE2E8"]],
+            zmin=0, zmax=1, showscale=False, xgap=1, ygap=1,
+            hoverinfo="skip"))
+    fig.add_trace(go.Heatmap(
         z=z, x=list(d.index), y=ylab,
         colorscale=_CSI_SCALE, zmin=0, zmax=100,
         xgap=1, ygap=1,

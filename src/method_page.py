@@ -244,6 +244,10 @@ def render(h, B=None, IND=None) -> None:
         '活下来的基金天然仓位更高、更集中。',
         '<b>只有股票，没有债券与现金。</b>灵活配置型基金的真实股票仓位可能远低于'
         '「各行业之和」，行业占比会被系统性放大。',
+        '<b>仓位中位数剔除打新基金。</b>2016–2018 年有大量灵活配置型「打新基金」，'
+        '股票只放 20–30%；若一并统计，会把当年中位数压到 76%，'
+        '让今天的 89% 显得「史上最高」。本库只统计股票仓位 ≥40% 的基金，'
+        '口径写在仓位图下方。',
     ], numbered=False))
 
     with st.expander("复现命令与数据文件", expanded=False):
@@ -255,8 +259,10 @@ python tools/run_factor_test.py   # 生成因子检验结果 factor_test.json
 python tools/audit_all.py         # 全站审计：静态/口径/渲染/文本/交互/一致性
 python -c "import sys; sys.path.insert(0,'src'); import selfcheck; print(selfcheck.run())"
 """, language="bash")
-        h('<div class="tiny">窗口：<b>2016Q1 起</b>——这是东财持仓明细与申万行业季度收益'
-          '同时可得的最早期次；再往前，行业收益必须换数据源，两套口径不能直接拼接。'
+        h('<div class="tiny">窗口：<b>2015Q1 起</b>——东财持仓明细最早覆盖到这里。'
+          '2015 年的行业季度收益由申万日行情累乘得到，与 Wind 在 2016 年后的重叠期逐季核对'
+          '（28 个行业完全相同）；<b>美容护理 / 石油石化 / 环保</b> 是 2021 年新设的一级行业，'
+          '2022 年前没有指数历史，这三年只按「配置 + 资金」两项展示、不评级。'
           '样本是「当前存续的主动权益基金」，已清盘基金无法取得历史，见上文局限。<br>'
           '数据文件：<span class="mono">data/db/fund_ak.db</span>'
           '（SQLite，约 900MB，不入库）；派生快照在 '
@@ -267,5 +273,5 @@ python -c "import sys; sys.path.insert(0,'src'); import selfcheck; print(selfche
       f'版本口径：季度 {qs[0]}–{qs[-1]}（{len(qs)} 期）、CSI 可算 '
       f'{max(len(qs) - 7, 0)} 期（前 7 期历史不足 8 个观测；不在这里现场算 CSI，'
       f'免得首次打开要等两分钟）、全持仓 {len(fq)} 期、'
-      f'指数 2016-01 起；样本 {n_funds:,} 只主动权益基金。'
+      f'指数 2015-01 起；样本 {n_funds:,} 只主动权益基金。'
       '更细的审计留痕（数据源探查记录、逐期溯源）见仓库 tools/ 下的脚本输出。</div>')

@@ -64,7 +64,7 @@ COV_MIN, COV_MAX = 1.0, 105.0
 # 无法做「CSI 分档 → 次季超额」的检验；把它混进来会让分位与检验的
 # 样本口径不一致（一处 47 期、一处 43 期），所以统一从这里开始。
 # 以后若补齐 2015 年行业收益，只改这一个常量即可。
-WINDOW_START = "2016Q1"
+WINDOW_START = "2015Q1"
 
 
 # ---------------------------------------------------------------------------
@@ -442,14 +442,19 @@ def panel_top10(q: str, normalize: bool = True) -> pd.DataFrame:
 IDX_PATH = os.path.join(ROOT, "data", "cache", "sw_index_daily_ret.csv")
 
 
-@lru_cache(maxsize=1)
-def index_levels(start: str = "2016-01-01") -> pd.DataFrame:
+@lru_cache(maxsize=2)
+def index_levels(start: str = "2015-01-01") -> pd.DataFrame:
     """31 个申万一级指数的累计点位（以 start 为 1 重新起算）。
 
-    缓存文件是日收益矩阵（2000 年起），这里只取 2016 年以后：
-    基金持仓数据最早也是 2016Q1，两条序列必须同窗口，否则「分位」不可比。
-    窗口越短，价格分位越容易被单轮行情主导；2016 起覆盖了两轮完整的
-    牛熊（2018 熊市、2019–2021 结构牛、2022–2024 调整），分位更有意义。
+    缓存文件是日收益矩阵（2000 年起），这里只取 2015 年以后：
+    基金持仓最早也是 2015Q1，两条序列必须同窗口，否则「分位」不可比。
+    2015 起覆盖了三轮完整周期（2015 杠杆牛与股灾、2018 熊市、
+    2019–2021 结构牛、2022–2024 调整），分位不会被单轮行情主导。
+
+    **不补 0**：美容护理、石油石化、环保是 2021 年新设的一级行业，
+    日行情从 2021-12 才有。早期补 0 会造出一段「价格永远不变」的假历史，
+    把它们的价格分位算到极低（环保曾因此从 57 分被压到 25 分）。
+    保留 NaN 后，`rank` 只在各行业自己的有效历史上排名。
     """
     if not os.path.exists(IDX_PATH):
         return pd.DataFrame()
@@ -457,7 +462,7 @@ def index_levels(start: str = "2016-01-01") -> pd.DataFrame:
     d = d[d.index >= pd.Timestamp(start)]
     if d.empty:
         return pd.DataFrame()
-    return (1 + d.fillna(0)).cumprod()
+    return (1 + d).cumprod()
 
 
 @lru_cache(maxsize=8)
@@ -469,7 +474,7 @@ def index_stats(q: str | None = None) -> pd.DataFrame:
     同一页面上 CSI 的价格分位与表格的指数分位会对不上（差 1 个月）。
     统一到季末之后，两个数必然相等。
 
-    分位＝季末累计点位在「2016-01 至该季末每一个交易日」中的排名（0–100）。
+    分位＝季末累计点位在「2015-01 至该季末每一个交易日」中的排名（0–100）。
     它回答「贵不贵」，与「配置分位」回答的「机构重不重」是两个维度。
     """
     lv = index_levels()
@@ -622,9 +627,21 @@ def _position_csv_ok() -> bool:
     return True
 
 
+# 仓位统计的最低股票仓位：低于这个数的不算「主动权益」。
+# 2016–2018 年有大量「打新基金」：合同是灵活配置，股票只放 20–30%，
+# 主体是债券+打新。把它们算进中位数，会把 2016 年的行业仓位压到 76%，
+# 今天 89% 就显得「史上最高」——而真实原因是这类产品后来消失了。
+# 这是样本构成变化，不是基金经理变激进。
+POS_MIN = 40.0
+
+
 @lru_cache(maxsize=8)
 def position_series() -> pd.DataFrame:
-    """每个全持仓期的股票仓位分布（中位/25%/75%），用于画仓位趋势。"""
+    """每个全持仓期的股票仓位分布（中位/25%/75%），用于画仓位趋势。
+
+    只统计股票仓位 ≥ `POS_MIN` 的基金：打新/偏债型灵活配置基金会把
+    早期中位数系统性拉低，让今天看起来「仓位史上最高」。
+    """
     if _position_csv_ok():
         return _position_csv().copy()
     rows = {}
@@ -635,6 +652,9 @@ def position_series() -> pd.DataFrame:
         if len(idx) < 50:
             continue
         v = c.loc[idx].dropna()
+        v = v[v >= POS_MIN]
+        if len(v) < 50:
+            continue
         rows[q] = dict(中位=v.median(), q1=v.quantile(0.25),
                        q3=v.quantile(0.75), 基金数=len(v))
     return pd.DataFrame(rows).T.sort_index()
@@ -739,7 +759,7 @@ def _crowding_score_impl(q: str | None = None) -> pd.DataFrame:
         CSI = (配置分位 + 价格分位 + 资金分位) / 3
 
         配置分位：该行业前十大配置在自身历史中的排名         —— 机构押得多重
-        价格分位：行业指数点位在 2016 年以来交易日中的排名   —— 价格有多贵
+        价格分位：行业指数点位在 2015 年以来交易日中的排名   —— 价格有多贵
         资金分位：当期加仓占比在 31 个行业之间的排名         —— 钱还在不在进
 
     为什么等权：三个维度量纲已统一为分位，等权是最朴素、不需要拟合的做法；
@@ -782,7 +802,9 @@ def _crowding_score_impl(q: str | None = None) -> pd.DataFrame:
         "小样本", "正常")
     # 「原等级」= 只看 CSI 数值得到的三分位档位，仅用于向读者解释
     # 「这个数字本来会被判成什么」；「等级」才是全站展示与统计用的那一列。
-    out["原等级"] = [_csi_level(v) if n >= 2 else "数据不足"
+    # 三项齐全才评级：两项平均的 CSI 与三项口径不可比（例如 2021 年前
+    # 石油石化没有指数历史，只有配置+资金两项）。
+    out["原等级"] = [_csi_level(v) if n >= 3 else "数据不足"
                     for v, n in zip(out["CSI"], out["数据完整"])]
     # 小样本行业不评级：58 只基金里 3 只加仓，就能把「资金分位」推到 80；
     # 指数从低位反弹 20%，就能把「价格分位」推到 91。三个分位平均出来 83，
@@ -791,7 +813,7 @@ def _crowding_score_impl(q: str | None = None) -> pd.DataFrame:
     # 所以在这里降级一次，比在每个展示层各写一遍可靠。
     # 三项分位齐全才评级：序列最前几期配置分位缺（历史不足 4 期），
     # 只有两项平均的 CSI 不能跟完整期次的口径混在一起看。
-    out["等级"] = np.where(out["配置分位"].isna(), "数据不足",
+    out["等级"] = np.where(out["原等级"] == "数据不足", "数据不足",
                           np.where(out["可靠"] == "小样本", "小样本", out["原等级"]))
     out.attrs["weights"] = {"配置分位": 1 / 3, "价格分位": 1 / 3, "资金分位": 1 / 3}
     return out.sort_values("CSI", ascending=False)
@@ -1111,6 +1133,10 @@ def position_change(q: str | None = None) -> dict:
     c0, c1 = coverage(q0), coverage(q1)
     u = universe(q0) & universe(q1)
     idx = c0.index.intersection(c1.index).intersection(list(u))
+    # 同一个人群才可比：以**上期**股票仓位 ≥40% 的基金为固定队列，
+    # 这样「仓位从 45% 砍到 30%」会被记为减仓，而不是被筛掉。
+    _b = c0.loc[idx].dropna()
+    idx = _b[_b >= POS_MIN].index
     if len(idx) < 30:
         return {}
     d = (c1.loc[idx] - c0.loc[idx]).dropna()
@@ -1205,6 +1231,21 @@ def csi_parts(q: str | None = None) -> pd.DataFrame:
     return s if not s.empty else pd.DataFrame()
 
 
+@lru_cache(maxsize=2)
+def csi_invalid() -> pd.DataFrame:
+    """哪些 (期, 行业) 单元格是「数据不足」——热力图要用它把假颜色涂掉。
+
+    成因有两种：① 序列最前 7 期历史不足 8 个观测（整期）；
+    ② 美容护理/石油石化/环保在 2022 年前没有指数历史（单行业）。
+    """
+    d = _csi_parts_csv()
+    if d.empty:
+        return pd.DataFrame()
+    p = d.pivot(index="quarter", columns="industry", values="等级")
+    p = p.reindex(index=list(quarters()), columns=list(C.INDUSTRIES))
+    return p.astype(str).eq("数据不足")
+
+
 @lru_cache(maxsize=4)
 def csi_threshold() -> dict:
     """CSI 阈值 → 次季超额收益的实证（扩张窗口，无前视）。
@@ -1296,10 +1337,43 @@ def csi_threshold() -> dict:
                 n_obs=len(det), q_first=qs[0], q_last=last)
 
 
+@lru_cache(maxsize=1)
+def _industry_returns_daily() -> pd.DataFrame:
+    """从申万日行情累乘出季度收益（%），补 Wind 缓存没有覆盖的 2015 年。
+
+    与 Wind 口径的一致性已验证：2016Q1–2026Q3 重叠的 31 个行业 × 43 个季度里，
+    28 个行业逐季**完全相同**（中位差 0.00pp），差异只出现在
+    美容护理/石油石化/环保这三个 2021 年新设的一级行业上——它们的日行情
+    从 2021-12 才有，早期是空值。所以这三个行业在 2015 年留空（NaN），
+    不用 0 或别的行业代理去凑，检验时自然被跳过。
+    """
+    if not os.path.exists(IDX_PATH):
+        return pd.DataFrame()
+    d = pd.read_csv(IDX_PATH, index_col=0, parse_dates=True)
+    comp = ((1 + d).groupby(d.index.to_period("Q")).prod() - 1) * 100
+    comp.index = [f"{p.year}Q{p.quarter}" for p in comp.index]
+    for c in ("美容护理", "石油石化", "环保"):
+        if c in comp.columns:
+            comp.loc[comp.index < "2022Q1", c] = np.nan
+    return comp.reindex(columns=list(C.INDUSTRIES))
+
+
 def industry_returns() -> pd.DataFrame:
-    """31 个申万一级行业的季度收益率（%），来自 Wind 缓存。"""
+    """31 个申万一级行业的季度收益率（%）。
+
+    2016Q1 起用 Wind 缓存（与报告口径一致）；2015 年用申万日行情累乘补上，
+    两个来源在重叠期逐季核对过（见 `_industry_returns_daily`）。
+    """
     import data_loader as dl
-    return dl.load_all().market["ret"]
+    base = dl.load_all().market["ret"]
+    extra = _industry_returns_daily()
+    if extra.empty:
+        return base
+    # 只补 Wind 覆盖之前的部分：一是避免重复，二是日行情最后一行是
+    # 「本季度至今」，2026Q4 这种未走完的季度绝不能当成完整季度收益。
+    add = extra.loc[[q for q in extra.index
+                     if WINDOW_START <= q < base.index[0]]]
+    return pd.concat([add, base]).sort_index().reindex(columns=list(C.INDUSTRIES))
 
 
 def industry_flow(q0: str, q: str) -> pd.DataFrame:

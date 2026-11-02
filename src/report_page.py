@@ -181,7 +181,10 @@ def render(h, B=None, IND=None) -> None:
         st.plotly_chart(rc.fig_position(pos_hist, _c.loc[_idx].dropna(), pos["q"]),
                         width="stretch", config={"displayModeBar": False})
         h(f'<div class="tiny">口径：全持仓半年报（{pos["q0"]}→{pos["q"]}），'
-          f'占净值比；只含股票，不含债券与现金。样本 {pos["n"]:,} 只。'
+          f'占净值比；只含股票，不含债券与现金。样本 '
+          f'{int(pos_hist["基金数"].iloc[-1]):,} 只'
+          f'（只统计股票仓位 ≥40% 的基金：2016–2018 年的打新/偏债型灵活配置'
+          f'股票只有两三成，混进来会把早期中位数压到 76%，让今天显得「史上最高」）。'
           f'<b>期次说明</b>：最新季报是 {q}，但季报只披露前十大、算不出股票仓位，'
           f'所以仓位只能用最近的全持仓期 {pos["q"]}；后文行业与广度已更新到 {q}。</div>')
         _pmin, _pmax = float(pos_hist["中位"].min()), float(pos_hist["中位"].max())
