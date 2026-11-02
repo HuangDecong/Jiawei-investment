@@ -144,17 +144,36 @@ def render(h, B=None, IND=None) -> None:
     _n_ext = int((_cs["等级"] == "极度拥挤").sum()) if not _cs.empty else 0
     # 一句话里的数字全部现算：硬编码过「电子 −4.94」这种值，
     # 数据一更新就会和下面的表对不上。
-    _dd = t.dropna(subset=["Δ上季pp"])
-    _up2 = _dd.nlargest(2, "Δ上季pp") if not _dd.empty else pd.DataFrame()
-    _dn2 = _dd.nsmallest(2, "Δ上季pp") if not _dd.empty else pd.DataFrame()
+    # 用「当期主动 pp」（价格中性后的净买卖）而不是环比：标题说的是「钱」，
+    # 环比含价格漂移，会把「跌出来的占比下降」也说成资金撤出。
+    _flow = ("当期主动pp" if "当期主动pp" in t.columns
+             and t["当期主动pp"].notna().any() else "Δ上季pp")
+    _dd = t.dropna(subset=[_flow])
+    _up2 = _dd.nlargest(2, _flow) if not _dd.empty else pd.DataFrame()
+    _dn2 = _dd.nsmallest(2, _flow) if not _dd.empty else pd.DataFrame()
+
+    # 标题也必须现算：硬编码过「科技硬件→医药/银行」，数据一换就是错的。
+    _dpos = float(pos.get("中位变化pp", np.nan)) if pos else np.nan
+    _pos_txt = ("机构没有加仓" if not np.isfinite(_dpos) or abs(_dpos) < 0.5
+                else f"机构在{'加' if _dpos > 0 else '减'}仓（{_dpos:+.1f}pp）")
+    if len(_dn2) >= 1 and len(_up2) >= 1:
+        # 「钱流进去」和「现在能不能买」是两件事：如果流入的行业正好是「别追高」，
+        # 必须在同一句里说清楚，否则读者会以为系统自相矛盾。
+        _hot_in = [i for i in _up2.index if i in set(_hot.index)]
+        _hot_note = (f'（其中{"、".join(_hot_in)}已在高位，只算资金流、不是买点）'
+                     if _hot_in else '')
+        _head = (f'{_pos_txt}：钱在从 <b>{"、".join(_dn2.index)}</b> 撤出，'
+                 f'加向 <b>{"、".join(_up2.index)}</b>{_hot_note}'
+                 + (f'；可以跟 {len(_hi)} 个、要回避 {len(_av)} 个。' if len(_hi) or len(_av) else '。'))
+    else:
+        _head = f'{_pos_txt}：本期行业间没有形成一致的方向。'
 
     h('<div class="sec">一、一句话结论</div>')
     h(f'<div style="background:linear-gradient(90deg,{C.COLOR["panel"]} 0%,#FFFFFF 100%);'
       f'border:1px solid {C.COLOR["line"]};border-left:5px solid {C.COLOR["price"]};'
       f'border-radius:10px;padding:15px 20px;margin:2px 0 10px">'
       f'<div style="font-size:20px;font-weight:700;line-height:1.6;color:#16283C">'
-      f'机构没有加仓，钱在<b>从「跌得最狠的科技硬件」撤出，'
-      f'一半抄底医药、一半躲进银行与公用事业</b>。</div>'
+      f'{_head}</div>'
       f'<div style="font-size:14px;line-height:2.0;margin-top:8px;color:#2C3E50">'
       f'{q} 主动权益基金季报（样本 <b>{n_funds:,}</b> 只）：股票仓位中位 '
       f'<b>{pos.get("仓位1", float("nan")):.1f}%</b>，比上一个半年报期 '
@@ -169,7 +188,7 @@ def render(h, B=None, IND=None) -> None:
       f'</div></div>')
 
     h(_kpis([
-        ("股票仓位", _fmt(pos.get("仓位1"), 1, "%"), f"15 期第 {pct:.0f} 分位"),
+        ("股票仓位", _fmt(pos.get("仓位1"), 1, "%"), f"{len(hist)} 期第 {pct:.0f} 分位"),
         ("可以跟", f"{len(_hi)} 个", "、".join(_hi.index[:3]) or "无"),
         ("要回避", f"{len(_av)} 个", "、".join(_av.index[:3]) or "无"),
         ("极度拥挤", f"{_n_ext} 个", "CSI≥80 且样本充足"),
@@ -317,4 +336,4 @@ def render(h, B=None, IND=None) -> None:
       '含公式、计算过程、阈值、标准来源与常见误用；'
       '想看逐图证据：切到「② 本期解读」；'
       '想看单个行业的历史：切到「③ 行业拥挤度」。'
-      f'　版本口径：全持仓 {qf0}→{qf}、前十大 {qp}→{q}、指数 2019-01 起。</div>')
+      f'　版本口径：全持仓 {qf0}→{qf}、前十大 {qp}→{q}、指数 2016-01 起。</div>')

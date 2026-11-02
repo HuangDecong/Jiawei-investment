@@ -95,16 +95,20 @@ def _run_round(year: str, nshards: int, rnd: int) -> None:
 
 
 def main(argv):
-    nshards = 5
+    nshards, rounds = 5, 3
     if "--shards" in argv:
         i = argv.index("--shards")
         nshards = int(argv[i + 1])
         argv = argv[:i] + argv[i + 2:]
+    if "--rounds" in argv:
+        i = argv.index("--rounds")
+        rounds = int(argv[i + 1])
+        argv = argv[:i] + argv[i + 2:]
     years = argv or ["2026", "2025", "2024", "2023"]
-    log(f"开始：年份 {years}，{nshards} 分片")
+    log(f"开始：年份 {years}，{nshards} 分片，每年最多 {rounds} 轮")
     for y in years:
         try:
-            run_year(y, nshards)
+            run_year(y, nshards, rounds=rounds)
         except Exception as e:
             log(f"{y} 异常：{type(e).__name__}: {e}")
     log("全部年份完成")

@@ -77,6 +77,25 @@ def stage_static() -> None:
     except Exception as e:
         rec("静态", "pyflakes 检查", True, f"跳过：{type(e).__name__}")
 
+    # 每个分析块必须写满三段（事实 / 经济含义 / 投资含义）。
+    # 用 AST 而不是正则：_read(h, a, b) 这种少一段的调用，正则很难数清楚。
+    import ast
+    short = []
+    for f in files:
+        if os.sep + "tools" + os.sep in f:
+            continue
+        try:
+            with open(f, encoding="utf-8") as fh:
+                tree = ast.parse(fh.read())
+        except Exception:
+            continue
+        for n in ast.walk(tree):
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                    and n.func.id in ("_read", "analysis")):
+                if len(n.args) < 4 and not ({k.arg for k in n.keywords} & {"invest"}):
+                    short.append(f"{os.path.basename(f)}:{n.lineno}")
+    rec("静态", "分析块都写了投资含义（三段式）", not short, "；".join(short[:5]))
+
 
 # ---------------------------------------------------------------------------
 # 2. 口径自检
@@ -100,8 +119,8 @@ def stage_data() -> None:
     from pathlib import Path
     deriv = Path(ROOT) / "data" / "derived"
     need = ["canon_level_top10.csv.gz", "canon_position.csv.gz",
-            "canon_csi_history.csv.gz", "canon_top10.csv.gz", "fund_list.csv.gz",
-            "factor_test.json"]
+            "canon_csi_history.csv.gz", "canon_csi_parts.csv.gz",
+            "canon_top10.csv.gz", "fund_list.csv.gz", "factor_test.json"]
     miss = [f for f in need if not (deriv / f).exists()]
     rec("数据", "派生快照齐全", not miss, "缺：" + "、".join(miss) if miss else f"{len(need)} 个文件")
 
@@ -110,7 +129,8 @@ def stage_data() -> None:
     if db.exists():
         older = []
         for f in ["canon_level_top10.csv.gz", "canon_position.csv.gz",
-                  "canon_csi_history.csv.gz", "canon_top10.csv.gz"]:
+                  "canon_csi_history.csv.gz", "canon_csi_parts.csv.gz",
+                  "canon_top10.csv.gz"]:
             p = deriv / f
             if p.exists() and p.stat().st_mtime < db.stat().st_mtime:
                 older.append(f)
@@ -122,6 +142,20 @@ def stage_data() -> None:
     cs = cn.csi_history()
     rec("数据", "CSI 面板与本期一致", abs(float(c["CSI"].max()) - float(cs.iloc[-1].max())) < 1e-6,
         f"{c['CSI'].idxmax()} 本期 {c['CSI'].max():.1f}")
+
+    # 三项分位长表必须覆盖全部期次：缺一期，⑤ 的「选一期」就会现场重算（慢 2–4 秒）
+    part_q = set(cn._csi_parts_csv().get("quarter", [])) if not cn._csi_parts_csv().empty else set()
+    miss_q = [q for q in qs if q not in part_q]
+    rec("数据", "CSI 三项分位覆盖全部期次", not miss_q,
+        f"缺 {len(miss_q)} 期：{'、'.join(miss_q[:5])}" if miss_q else f"{len(part_q)} 期")
+
+    # 某一期拆出来的三项分位，加总必须等于该期 CSI（防止导出时列错位）
+    if not miss_q:
+        _last = qs[-1]
+        _p = cn.csi_parts(_last)
+        _calc = _p[["配置分位", "价格分位", "资金分位"]].mean(axis=1, skipna=True)
+        _diff = float((_calc - _p["CSI"]).abs().max())
+        rec("数据", "CSI = 三项分位均值（任一期可复算）", _diff < 0.06, f"最大差 {_diff:.3f}")
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +199,15 @@ def stage_pages(fast: bool = False) -> None:
                          for x in list(at.markdown) + list(at.get("html")))]
         if silent:
             hits.append("静默失败：" + "、".join(silent))
+        # 期数已经动态化：文案里再出现写死的「31 期」，说明有地方漏改
+        import canon as _cn
+        _nq = len(_cn.quarters())
+        if _nq != 31:
+            stale = [w for w in ("31 期",)
+                     if any(w in str(getattr(x, "value", "") or getattr(x, "body", "") or "")
+                            for x in list(at.markdown) + list(at.get("html")))]
+            if stale:
+                hits.append("写死的期数：" + "、".join(stale))
         rec("文本", f"{p} 无 nan/None/未渲染标签/静默失败", not hits, "；".join(hits[:3]))
 
         n_chart = len(at.get("plotly_chart"))

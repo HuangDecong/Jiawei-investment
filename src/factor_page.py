@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -167,6 +168,10 @@ def render(h, B=None, IND=None) -> None:
         return
 
     F = d.get("factors", [])
+    _bd = next((f for f in F if f.get("key") == "breadth"), {})
+    _bd_ic = float(_bd.get("ic_mean", float("nan")))
+    _bd_t = float(_bd.get("t", float("nan")))
+    _bd_n = _bd.get("n", "—")
     if not F:
         h('<div class="cg-note">结果文件为空，请重跑 tools/run_factor_test.py。</div>')
         return
@@ -310,7 +315,8 @@ def render(h, B=None, IND=None) -> None:
           '③ <b>含价格漂移</b>：旧超配比例没剥离涨跌，行业涨了没人买也会显示超配上升。<br>'
           '④ <b>依赖 Wind 授权</b>：接口会截断、换机器就跑不了；新因子只用东财公开披露。<br>'
           '<b>代价</b>：算不了「相对沪深300 的超配」（只能用同行平均作基准）；'
-          '期数从 43 降到 31；没有换手率/成交额类「交易拥挤」因子——'
+          '期数口径也随之改变（旧：Wind 43 期；新：东财持仓，CSI 可算 36 期）；'
+          '没有换手率/成交额类「交易拥挤」因子——'
           '这是取舍，不是单向升级。</div>')
 
     # =====================================================================
@@ -320,9 +326,12 @@ def render(h, B=None, IND=None) -> None:
     h(ui.concl_board([
         '<b>「可以跟」不是「会涨」</b>：规则筛的是「机构在做 + 多数在加 + 价格不贵」，'
         '这是赔率与风险的组合。因子检验已证明这些指标对次季收益没有稳定预测力。',
-        '<b>广度只能用来判断共识是否成立</b>：它的 IC 为负（−0.041），'
-        '意味着「大家一窝蜂加」之后往往跑输。这恰好支持「在拥挤处减仓、在冷门处观察」，'
-        '而不是「跟着加」。',
+        ('<b>广度只能用来判断共识是否成立</b>：它的 IC 为 '
+         f'{_bd_ic:+.3f}（t={_bd_t:+.2f}、n={_bd_n}），'
+         + ('方向为负但未过显著线——' if (not np.isfinite(_bd_t) or abs(_bd_t) < 1.96)
+            else '方向为负且显著——')
+         + '意味着「大家一窝蜂加」之后并不占优。这支持「在拥挤处减仓、在冷门处观察」，'
+         '而不是「跟着加」。'),
         '<b>拥挤度只能用来约束仓位</b>：CSI 与配置分位的 t 值都不显著，'
         '但方向与「拥挤即风险」一致。所以 ≥80 时压仓位上限，而不是清仓。',
         '<b>真正有用的是「约束」而不是「预测」</b>：知道机构在撤就别抄底、'

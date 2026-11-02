@@ -38,6 +38,15 @@ def _body(page: str = "") -> None:
     pick = st.selectbox("选择指标", keys, format_func=_lab, key=f"gl_pick_{_ctxkey}")
     st.markdown(g.card_html(pick, C.COLOR), unsafe_allow_html=True)
 
+    # 光靠搜索不够：读者不知道「有哪些词可以查」。
+    # 给一份按分类排的全量清单，扫一眼就知道覆盖到哪。
+    with st.expander(f"全部 {len(g.ITEMS)} 个指标一览（按分类）", expanded=False):
+        # 弹窗够宽，用三列表格；侧边栏太窄，只列名称
+        if st.session_state.get("_gl_in_dialog"):
+            st.markdown(g.compact_table(C.COLOR), unsafe_allow_html=True)
+        else:
+            st.markdown(g.name_list_html(C.COLOR), unsafe_allow_html=True)
+
     st.markdown(
         f'<div style="font-size:10.5px;line-height:1.7;color:{C.COLOR["text_dim"]};'
         f'margin-top:6px">'
@@ -78,7 +87,7 @@ def render(page: str = "") -> None:
             f'<div style="font-size:12px;font-weight:700;margin-bottom:3px">三套口径</div>'
             f'<div style="font-size:10.5px;line-height:1.75;color:#37485C">'
             f'<b>A 全持仓</b>（半年报）：占净值比，可做主动/被动分解，最准但一年两次。<br>'
-            f'<b>B 前十大</b>（季报）：每只基金取前 10 只再归一化，31 期都有，'
+            f'<b>B 前十大</b>（季报）：每只基金取前 10 只再归一化，每期都有，'
             f'用来算广度与环比。<br>'
             f'<b>C 个股</b>：同披露类型两期对比，看谁被建仓/移出。<br>'
             f'<span style="color:{C.COLOR["threshold"]}">三套不能相加</span>——'

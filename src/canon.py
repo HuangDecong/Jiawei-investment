@@ -59,6 +59,13 @@ THEME_MAX = 80.0
 # （东财个别分级、联接、QDII 会算出 181%），必须剔除而不是归一化。
 COV_MIN, COV_MAX = 1.0, 105.0
 
+# 分析窗口起点：东财持仓明细与申万行业季度收益**同时可得**的最早期次。
+# 2015 年及更早的持仓也能抓，但没有同口径的行业季度收益，
+# 无法做「CSI 分档 → 次季超额」的检验；把它混进来会让分位与检验的
+# 样本口径不一致（一处 47 期、一处 43 期），所以统一从这里开始。
+# 以后若补齐 2015 年行业收益，只改这一个常量即可。
+WINDOW_START = "2016Q1"
+
 
 # ---------------------------------------------------------------------------
 # 连接与缓存
@@ -100,14 +107,15 @@ def quarters() -> tuple[str, ...]:
     """库内全部期次（升序）。"""
     if not available():
         d = _fb_all()
-        return tuple(sorted(d["quarter"].unique())) if not d.empty else ()
+        qs = sorted(d["quarter"].unique()) if not d.empty else []
+        return tuple(q for q in qs if q >= WINDOW_START)
     try:
         with _con() as con:
             qs = [r[0] for r in con.execute(
                 "SELECT DISTINCT quarter FROM fund_holdings ORDER BY quarter")]
     except Exception:
         return ()
-    return tuple(qs)
+    return tuple(q for q in qs if q >= WINDOW_START)
 
 
 def latest(n: int = 1) -> str | None:
@@ -435,11 +443,13 @@ IDX_PATH = os.path.join(ROOT, "data", "cache", "sw_index_daily_ret.csv")
 
 
 @lru_cache(maxsize=1)
-def index_levels(start: str = "2019-01-01") -> pd.DataFrame:
+def index_levels(start: str = "2016-01-01") -> pd.DataFrame:
     """31 个申万一级指数的累计点位（以 start 为 1 重新起算）。
 
-    缓存文件是日收益矩阵（2000 年起），这里只取 2019 年以后：
-    基金持仓数据也是 2019Q1 起，两条序列必须同窗口，否则「分位」不可比。
+    缓存文件是日收益矩阵（2000 年起），这里只取 2016 年以后：
+    基金持仓数据最早也是 2016Q1，两条序列必须同窗口，否则「分位」不可比。
+    窗口越短，价格分位越容易被单轮行情主导；2016 起覆盖了两轮完整的
+    牛熊（2018 熊市、2019–2021 结构牛、2022–2024 调整），分位更有意义。
     """
     if not os.path.exists(IDX_PATH):
         return pd.DataFrame()
@@ -459,7 +469,7 @@ def index_stats(q: str | None = None) -> pd.DataFrame:
     同一页面上 CSI 的价格分位与表格的指数分位会对不上（差 1 个月）。
     统一到季末之后，两个数必然相等。
 
-    分位＝季末累计点位在「2019-01 至该季末每一个交易日」中的排名（0–100）。
+    分位＝季末累计点位在「2016-01 至该季末每一个交易日」中的排名（0–100）。
     它回答「贵不贵」，与「配置分位」回答的「机构重不重」是两个维度。
     """
     lv = index_levels()
@@ -512,7 +522,7 @@ def index_stats(q: str | None = None) -> pd.DataFrame:
 def industry_level(q: str, basis: str = "top10") -> pd.Series:
     """该期样本基金的等权平均行业配置（%）。
 
-    basis="top10"：前十大口径，31 期全有 → 用于季度/年度对比；
+    basis="top10"：前十大口径，每期都有 → 用于季度/年度对比；
     basis="full" ：全持仓口径，只有半年报 → 用于水平与主动/被动。
     两者不能混算：前十大只覆盖组合的一小部分，数值天然低于全持仓。
     """
@@ -699,22 +709,25 @@ def compare_periods(q: str | None = None) -> pd.DataFrame:
 
 @lru_cache(maxsize=32)
 def config_pct_expanding(q: str) -> pd.Series:
-    """配置分位的**扩张窗口**版本：只用 [2019Q1..q] 的历史排名。
+    """配置分位的**扩张窗口**版本：只用 [首期..q] 的历史排名。
 
-    为什么不能用全样本分位：`compare_periods()["历史分位"]` 是在 31 期上排的，
+    为什么不能用全样本分位：`compare_periods()["历史分位"]` 是在全部期次上排的，
     2020 年的分位用到了 2024 年的数据——做「当期阈值 → 次季收益」的实证时，
     这是前视偏差，会把结果做得比真实更好看。
 
     扩张窗口在最后一期与全样本完全相等（历史一样长），所以**当期数字不变**，
     只有历史序列会变——这正是画折线、做阈值检验时需要的那个序列。
 
-    前 4 期历史太短（3 个观测排不出有意义的百分位），返回 NaN。
+    历史不足 8 期时返回 NaN：4 个观测排出来的「分位」只有 25/50/75/100
+    四档，会把「恰好是历史最高」直接写成 100 分，在图上表现为一片假的红。
+    8 期是能让分位有 12.5% 分辨率的最低要求；这之前的期次只作为后续分位的
+    历史底稿，不进入 CSI 序列（所以 CSI 的可算期数少于持仓期数）。
     """
     M = level_matrix("top10")
     if M.empty or q not in M.index:
         return pd.Series(dtype=float)
     sub = M.loc[:q]
-    if len(sub) < 4:
+    if len(sub) < 8:
         return pd.Series(np.nan, index=list(C.INDUSTRIES))
     return (sub.rank(pct=True).iloc[-1] * 100).reindex(list(C.INDUSTRIES))
 
@@ -725,12 +738,12 @@ def _crowding_score_impl(q: str | None = None) -> pd.DataFrame:
 
         CSI = (配置分位 + 价格分位 + 资金分位) / 3
 
-        配置分位：该行业前十大配置在自身 31 期中的排名     —— 机构押得多重
-        价格分位：行业指数点位在 2019 年以来交易日中的排名   —— 价格有多贵
+        配置分位：该行业前十大配置在自身历史中的排名         —— 机构押得多重
+        价格分位：行业指数点位在 2016 年以来交易日中的排名   —— 价格有多贵
         资金分位：当期加仓占比在 31 个行业之间的排名         —— 钱还在不在进
 
     为什么等权：三个维度量纲已统一为分位，等权是最朴素、不需要拟合的做法；
-    任何加权都需要样本外验证，而 31 个行业 × 31 期不足以稳定估计权重。
+    任何加权都需要样本外验证，而 31 个行业 × 全部期次不足以稳定估计权重。
     因此本指标只做「排序 + 分级」，不做「预测收益」——它回答「挤不挤」，
     不回答「会不会跌」（后者已被证伪，见因子检验页）。
 
@@ -751,7 +764,7 @@ def _crowding_score_impl(q: str | None = None) -> pd.DataFrame:
     out["配置分位_全样本"] = comp["历史分位"] if "历史分位" in comp.columns else np.nan
     out["价格分位"] = _index_pct_at(q).reindex(out.index)
     # 第一期没有「上期」，compare_periods 不会给出加仓占比；
-    # 直接取列会 KeyError（折线图遍历 31 期时必踩）。
+    # 直接取列会 KeyError（折线图遍历每一期时必踩）。
     out["资金分位"] = (comp["加仓占比"].rank(pct=True) * 100) \
         if "加仓占比" in comp.columns else np.nan
     out["横截面分位"] = cs.reindex(out.index)
@@ -776,8 +789,8 @@ def _crowding_score_impl(q: str | None = None) -> pd.DataFrame:
     # 但这个行业在整个组合里只占 0.12%——把它标成「极度拥挤」是错的。
     # 全站（色块、条形图、表格、结论计数、报告）统一读「等级」，
     # 所以在这里降级一次，比在每个展示层各写一遍可靠。
-    # 三项分位齐全才评级：2019 年前几期配置分位缺（历史不足 4 期），
-    # 只有两项平均的 CSI 不能跟 31 期的口径混在一起看。
+    # 三项分位齐全才评级：序列最前几期配置分位缺（历史不足 4 期），
+    # 只有两项平均的 CSI 不能跟完整期次的口径混在一起看。
     out["等级"] = np.where(out["配置分位"].isna(), "数据不足",
                           np.where(out["可靠"] == "小样本", "小样本", out["原等级"]))
     out.attrs["weights"] = {"配置分位": 1 / 3, "价格分位": 1 / 3, "资金分位": 1 / 3}
@@ -850,7 +863,7 @@ def _cross_section_percentile_impl(q: str | None = None) -> pd.Series:
     """当期 31 个行业之间的**横截面分位**（0–100）。
 
     与「自身历史分位」是两个完全不同的尺子：
-    · 自身分位：这个行业的配置，在**它自己**过去 31 期里排第几；
+    · 自身分位：这个行业的配置，在**它自己**过去全部期次里排第几；
     · 横截面分位：这个行业的配置，在**当期 31 个行业之间**排第几。
     银行配置 1.3% 在自身历史里可能只有 6 分位（历史最低），
     但在 31 个行业里能排到中游——两者一起看才不会误判。
@@ -1113,7 +1126,7 @@ CSI_CSV = os.path.join(DERIVED, "canon_csi_history.csv.gz")
 
 @lru_cache(maxsize=2)
 def _csi_history_csv() -> pd.DataFrame:
-    """预计算的 CSI 面板（31 期 × 31 行业），tools/export_csi.py 生成。"""
+    """预计算的 CSI 面板（全部期次 × 31 行业），tools/export_csi.py 生成。"""
     if not os.path.exists(CSI_CSV):
         return pd.DataFrame()
     try:
@@ -1128,7 +1141,7 @@ def _csi_history_csv() -> pd.DataFrame:
 
 @lru_cache(maxsize=2)
 def csi_history() -> pd.DataFrame:
-    """31 期 × 31 行业的 CSI 面板（扩张窗口口径），用于画折线。
+    """全部期次 × 31 行业的 CSI 面板（扩张窗口口径），用于画折线。
 
     优先读预计算文件（0.05 秒）；期次不一致或文件比数据库旧时现场重算
     （约 1–2 分钟，只在数据刚更新、还没跑 tools/export_csi.py 时发生）。
@@ -1136,13 +1149,60 @@ def csi_history() -> pd.DataFrame:
     c = _csi_history_csv()
     if not c.empty and list(c.index) == list(quarters()):
         if not (os.path.exists(DB_PATH) and os.path.getmtime(CSI_CSV) < os.path.getmtime(DB_PATH)):
-            return c.copy()
+            # 前几期配置分位不足（历史 <8 期）→ CSI 全空。这些行只作为
+            # 扩张窗口的底稿存在，画图与统计都从第一期有效值开始。
+            return c.dropna(how="all").copy()
     rows = {}
     for q in quarters():
         s = crowding_score(q)
         if not s.empty:
             rows[q] = s["CSI"]
-    return pd.DataFrame(rows).T.reindex(columns=list(C.INDUSTRIES))
+    d = pd.DataFrame(rows).T.reindex(columns=list(C.INDUSTRIES))
+    return d.dropna(how="all")
+
+
+CSI_PARTS_CSV = os.path.join(DERIVED, "canon_csi_parts.csv.gz")
+
+
+@lru_cache(maxsize=2)
+def _csi_parts_csv() -> pd.DataFrame:
+    """预计算的三项分位长表（期 × 行业 × 三个分位 + 样本量），export_csi 生成。
+
+    为什么要单独存：柱状图要能「选任意一期」并看到 CSI 是怎么加出来的，
+    现场算一期要 2–4 秒（资金分位依赖逐期广度），全部期次就是几分钟。
+    """
+    if not os.path.exists(CSI_PARTS_CSV):
+        return pd.DataFrame()
+    try:
+        d = pd.read_csv(CSI_PARTS_CSV)
+    except Exception:
+        return pd.DataFrame()
+    if d.empty:
+        return pd.DataFrame()
+    d["quarter"] = d["quarter"].astype(str)
+    d["industry"] = d["industry"].astype(str)
+    return d
+
+
+@lru_cache(maxsize=8)
+def csi_parts(q: str | None = None) -> pd.DataFrame:
+    """某一期 31 个行业的三项分位与等级（含小样本判定）。
+
+    返回列：CSI / 配置分位 / 价格分位 / 资金分位 / 持有基金数 / 配置 /
+            原等级 / 等级 / 可靠。
+    读预计算表；该期不在表里（数据刚更新、还没跑 export_csi）就现场算，
+    结果与 csi_history 完全同源（都走 crowding_score），不会出现两套数。
+    """
+    q = q or latest()
+    if not q:
+        return pd.DataFrame()
+    d = _csi_parts_csv()
+    if not d.empty and q in set(d["quarter"]):
+        s = d[d["quarter"] == q].set_index("industry")
+        s.index.name = "行业"
+        return s.reindex(list(C.INDUSTRIES))
+    s = crowding_score(q)
+    return s if not s.empty else pd.DataFrame()
 
 
 @lru_cache(maxsize=4)
@@ -1442,7 +1502,7 @@ def fund_holdings(code: str, q: str, limit: int = 12) -> pd.DataFrame:
 def _top10_snapshot_ok() -> bool:
     """快照是否可当主口径用：期次与库一致，且导出后没有重新抓数。
 
-    单只基金要看 31 期的行业结构，走数据库要 31 次 SQL（约 14 秒）；
+    单只基金要看全部期次的行业结构，走数据库要几十次 SQL（约 14 秒）；
     走快照只读一个 53 万行的文件（约 0.12 秒），过滤出一行再归一化。
     两者结果必须完全一致，否则会出现「页面与台账对不上」。
     """
@@ -1480,7 +1540,7 @@ def _fund_struct_snapshot(code: str) -> pd.DataFrame:
 def fund_structure(code: str, basis: str = "top10") -> pd.DataFrame:
     """单只基金的行业结构时间序列（行＝期，列＝31 个行业，单位 %）。
 
-    basis="top10"：31 期全有，每期取该基金前十大并归一化到 100%（结构占比）；
+    basis="top10"：每期都有，每期取该基金前十大并归一化到 100%（结构占比）；
     basis="full" ：15 个半年报期，占净值比（之和＝该基金股票仓位）。
     两者的差别不是精度，而是**分母**：前者回答「股票里怎么分」，
     后者回答「净值里放了多少股票、行业各占多少」。页面必须标清楚。

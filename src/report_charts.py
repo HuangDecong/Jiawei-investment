@@ -274,15 +274,25 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
                       residual_label: str = "其他（港股/未映射/现金）",
                       label_top: int = 4,
                       max_items: int | None = 10) -> go.Figure:
-    """行业结构堆叠面积图（行＝期，列＝行业，单位 %）。
+    """行业结构：**竖向**堆叠柱（x＝期，y＝占比 %，每根柱子＝一期的 100%）。
+
+    为什么从堆叠面积改成竖柱
+    ------------------------
+    面积图适合看「连续趋势」，但季度数据只有 31 个点，面积图的斜边会把
+    「一个季度的跳变」画成平滑过渡，读者会以为持仓是渐变发生的。
+    竖柱一格一期，跳变就是跳变，而且每根柱子的顶部都在 100%，
+    「谁变厚、谁变薄」在相邻两根柱子之间一眼可比。
 
     为什么默认只画前 10 大 + 「其他 N 个」：31 个色块叠在一起时，
     后面 20 个行业每个只有 1–3pp，颜色块细到看不清，图例也排不下。
-    合并之后每一层都有 4pp 以上的厚度，趋势才读得出来。
-    想看全部 31 个，把 max_items 设为 None（页面上有开关）。
+
+    悬停：每一段柱子都有自己的悬浮框（行业 + 期次 + 数值），
+    并把 hovermode 设为 x 合并——鼠标放在任意一根柱子上，
+    一次列出该期全部行业，不用逐段找。旧版面积图只有画布中线有反应，
+    就是因为数值全塞在一条透明轨迹上，其余区域 hoverinfo=skip。
 
     残差带：各行业之和常常不到 100——差的部分是港股、未映射行业与现金。
-    不补这一条，图上会出现一块白色空白，看起来像渲染错误。
+    不补这一条，柱子顶部会缺一块，看起来像渲染错误。
     """
     if M.empty:
         return _base(go.Figure(), "数据未就绪")
@@ -298,60 +308,37 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
         order = keep + [merged_label]
 
     fig = go.Figure()
+    _n = len(d)
+    # 行业多时（「全部 31 个」模式）用 closest：x unified 会把 32 行塞进一个
+    # 悬浮框，比屏幕还高，反而看不清。默认的「前 10 大 + 其他」用合并模式。
+    _unified = len(order) + 1 <= 12
+    _tpl = ("%{y:.2f}%<extra>" if _unified else "%{x}　%{y:.2f}%<extra>")
     for ind in order:
         s_ = d[ind]
-        fig.add_trace(go.Scatter(
-            x=list(d.index), y=s_.values, mode="lines", name=ind,
-            stackgroup="one", line=dict(width=0.6, color="#FFFFFF"),
-            fillcolor="#C9D3DE" if ind == merged_label else ind_color(ind),
-            hoverinfo="skip", showlegend=False))
+        # 只在最后一根柱子上标数值（前几期标满会糊成一片）
+        _txt = [""] * (_n - 1) + [f"{float(s_.iloc[-1]):.0f}%"
+                                  if float(s_.iloc[-1]) >= 4 else ""]
+        fig.add_trace(go.Bar(
+            x=list(d.index), y=s_.values, name=ind,
+            marker=dict(color="#C9D3DE" if ind == merged_label else ind_color(ind),
+                        line=dict(width=0)),
+            text=_txt, textposition="inside", insidetextanchor="middle",
+            textfont=dict(size=10, color="#FFFFFF"),
+            hovertemplate=_tpl + ind + "</extra>"))
     _resid = (100 - d.sum(axis=1)).clip(lower=0)
     if float(_resid.max()) > 0.5:
-        fig.add_trace(go.Scatter(
-            x=list(d.index), y=_resid.values, mode="lines", name=residual_label,
-            stackgroup="one", line=dict(width=0.6, color="#FFFFFF"),
-            fillcolor="#E9EDF2", hoverinfo="skip", showlegend=False))
+        fig.add_trace(go.Bar(
+            x=list(d.index), y=_resid.values, name=residual_label,
+            marker=dict(color="#E9EDF2", line=dict(width=0)),
+            hovertemplate=_tpl + residual_label + "</extra>"))
 
-    # 末端标注前几大：读者需要一眼看到「现在最大的是谁」。
-    # 位置按堆叠顺序累加，不能用「最新一期的排序」。
-    _last = d.index[-1]
-    _cur = d.iloc[-1]
-    _pos, _acc = {}, 0.0
-    for ind in order:
-        _v = float(_cur.get(ind, 0) or 0)
-        _pos[ind] = (_acc, _v)
-        _acc += _v
-    _top_now = [i for i in _cur.sort_values(ascending=False).index][:label_top]
-    for ind in _top_now:
-        _y0, _v = _pos.get(ind, (0.0, 0.0))
-        if _v < 4:
-            continue
-        fig.add_annotation(x=_last, y=_y0 + _v / 2, text=f"{ind} {_v:.0f}%",
-                           showarrow=False, xanchor="right", xshift=-4,
-                           font=dict(size=10, color="#FFFFFF"),
-                           bgcolor="#C9D3DE" if ind == merged_label else ind_color(ind),
-                           borderpad=2, opacity=0.96)
-    fig.update_yaxes(title_text="占前十大 %" if residual_label.startswith("其他")
-                     else "占净值比 %", range=[0, 100], tickfont=dict(size=11))
-    # 悬停：一条透明轨迹承载「该季度全部行业」的数值，一次看全。
-    _txt = []
-    for q in d.index:
-        row = M.loc[q].sort_values(ascending=False)
-        if float(_resid.get(q, 0) or 0) > 0.02:
-            row = pd.concat([row, pd.Series({residual_label: float(_resid[q])})])
-        lines = [f"{k} {v:.2f}" for k, v in row.items() if v >= 0.02]
-        more = len(row) - len(lines)
-        _txt.append(f"<b>{q}</b>　单位 %<br>" + "　".join(lines[:14])
-                    + (f"<br>…另有 {more} 个行业 &lt;0.02%" if more > 0 else ""))
-    fig.add_trace(go.Scatter(
-        x=list(d.index), y=[50] * len(d), mode="markers",
-        marker=dict(size=1, color="rgba(0,0,0,0)"), showlegend=False,
-        customdata=_txt, hovertemplate="%{customdata}<extra></extra>",
-        name="全部行业"))
-    fig.update_layout(hovermode="closest",
+    fig.update_layout(barmode="stack", bargap=0.18,
+                      hovermode="x unified" if _unified else "closest",
                       hoverlabel=dict(bgcolor="rgba(255,255,255,0.98)", font_size=11,
                                       bordercolor=C.COLOR["line"], align="left",
-                                      namelength=0))
+                                      namelength=-1))
+    fig.update_yaxes(title_text="占前十大 %" if residual_label.startswith("其他")
+                     else "占净值比 %", range=[0, 100], tickfont=dict(size=11))
     _ticks = [q for q in d.index if str(q).endswith("Q1")] + [d.index[-1]]
     fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
                      tickangle=-45, tickfont=dict(size=10))
@@ -447,19 +434,22 @@ CSI_COLORS = {
 }
 
 
-def fig_csi_bar(cs: pd.DataFrame) -> go.Figure:
-    """按 CSI 排序的横向条形图，颜色＝拥挤等级，条端标注分位。
+def fig_csi_bar(cs: pd.DataFrame, quarter: str = "") -> go.Figure:
+    """按 CSI 排序的横向条形图（最拥挤在最上面），颜色＝拥挤等级。
 
-    这张图替代原来的「四象限散点」承担「一眼看完 31 个行业」的职责：
-    散点要读两个轴，条形只需要读长度和颜色。
+    这张图承担「一眼看完 31 个行业」的职责：散点要读两个轴，条形只需要读长度和颜色。
+    传入的 `cs` 可以是任意一期（由 canon.csi_parts(q) 提供）：
+    历史期的三个分位若不全，悬浮里会说明「按可用项平均」，不硬凑。
     """
-    if cs.empty:
+    if cs.empty or "CSI" not in cs.columns:
         return _base(go.Figure(), "数据未就绪")
     # 排序：正常样本按 CSI 升序（最拥挤画在最上面），不评级的小样本统一压在底部。
     # 纯按 CSI 排会让综合 83 插在石油石化 85 与银行 78 之间，灰色条夹在红条里，
     # 读者会以为「这个灰的也算拥挤」。
     d = cs.dropna(subset=["CSI"]).copy()
-    d["_sm"] = (d["等级"].astype(str) == "小样本").astype(int)
+    _lv = d["等级"].astype(str) if "等级" in d.columns else pd.Series("中性", index=d.index)
+    d["等级"] = _lv
+    d["_sm"] = (_lv == "小样本").astype(int)
     d = d.sort_values(["_sm", "CSI"], ascending=[False, True])
     cols = [CSI_COLORS.get(l, "#C3CBD4") for l in d["等级"]]
     # 把悬浮文本**预先拼成字符串**，而不是用 hovertemplate 的格式符：
@@ -467,11 +457,16 @@ def fig_csi_bar(cs: pd.DataFrame) -> go.Figure:
     # 是条件分支，模板语法表达不了。
     _hv = []
     for i, r in d.iterrows():
-        _base_txt = (f"<b>{i}</b><br>CSI {r['CSI']:.1f} = "
-                     f"({r['配置分位']:.0f} + {r['价格分位']:.0f} + {r['资金分位']:.0f}) / 3<br>"
-                     f"配置分位 {r['配置分位']:.0f}｜价格分位 {r['价格分位']:.0f}｜"
-                     f"资金分位 {r['资金分位']:.0f}")
-        if r.get("可靠") == "小样本":
+        _a, _b, _c = (r.get("配置分位", np.nan), r.get("价格分位", np.nan),
+                      r.get("资金分位", np.nan))
+        if np.isfinite([_a, _b, _c]).all():
+            _base_txt = (f"<b>{i}</b><br>CSI {r['CSI']:.1f} = "
+                         f"({_a:.0f} + {_b:.0f} + {_c:.0f}) / 3<br>"
+                         f"配置分位 {_a:.0f}｜价格分位 {_b:.0f}｜资金分位 {_c:.0f}")
+        else:
+            _base_txt = (f"<b>{i}</b><br>CSI {r['CSI']:.1f}"
+                         f"（该期三项分位不全，按可用项平均）")
+        if str(r.get("可靠")) == "小样本":
             _base_txt += (f"<br><span style='color:#C62828'>⚠ 小样本，不评级</span>"
                           f"<br>全市场仅 {r.get('持有基金数', float('nan')):.0f} 只基金持有，"
                           f"前十配置 {r.get('配置', float('nan')):.2f}%"
@@ -493,8 +488,9 @@ def fig_csi_bar(cs: pd.DataFrame) -> go.Figure:
     fig.update_xaxes(title_text="拥挤度指数 CSI（0＝最冷，100＝最挤）　†＝小样本",
                      range=[0, 132], tickfont=dict(size=11))
     fig.update_yaxes(tickfont=dict(size=11.5))
-    fig = _base(fig, "", 730)
-    fig.update_layout(margin=dict(l=8, r=92, t=14, b=40),
+    fig = _base(fig, quarter, 730)
+    # 标题要留出空间：t=14 时标题会压在第一条（最拥挤的那条）上
+    fig.update_layout(margin=dict(l=8, r=92, t=42 if quarter else 14, b=40),
                       hoverlabel=dict(font_size=11))
     return fig
 
@@ -699,7 +695,7 @@ def fig_dual_percentile(comp: pd.DataFrame, cs: pd.Series) -> go.Figure:
 # 9. 拥挤度双轴：配置分位（机构有多重）× 指数分位（价格有多贵）
 # ---------------------------------------------------------------------------
 def fig_crowding_map(comp: pd.DataFrame, idx: pd.DataFrame) -> go.Figure:
-    """横轴＝配置分位（31 期），纵轴＝指数点位分位（2019 年以来）。
+    """横轴＝配置分位（自身历史），纵轴＝指数点位分位（2016 年以来）。
 
     两个分位回答不同问题：
       横轴：机构在这个行业上押得比过去重还是轻；
@@ -741,7 +737,7 @@ def fig_crowding_map(comp: pd.DataFrame, idx: pd.DataFrame) -> go.Figure:
             text=g.index, textposition="top center",
             textfont=dict(size=9, color=C.COLOR["text_dim"]),
             customdata=np.stack([g["配置_前十"], g["近3月涨幅%"], g["Δ上季pp"]], axis=-1),
-            hovertemplate=("<b>%{text}</b><br>配置分位 %{x:.0f}（31 期）<br>"
+            hovertemplate=("<b>%{text}</b><br>配置分位 %{x:.0f}（自身历史）<br>"
                            "指数分位 %{y:.0f}<br>前十配置 %{customdata[0]:.2f}%<br>"
                            "近 3 月 %{customdata[1]:+.1f}%<br>"
                            "环比 %{customdata[2]:+.2f}pp<extra></extra>"),
@@ -749,7 +745,7 @@ def fig_crowding_map(comp: pd.DataFrame, idx: pd.DataFrame) -> go.Figure:
     fig.add_vline(x=50, line=dict(color=C.COLOR["line"], width=1, dash="dot"))
     fig.add_hline(y=50, line=dict(color=C.COLOR["line"], width=1, dash="dot"))
     # 不再画四角文字：图例已经写明四个象限，角标还会压住落在角落的点
-    fig.update_xaxes(title_text="配置分位（机构押得多重，31 期）", range=[-6, 108])
+    fig.update_xaxes(title_text="配置分位（机构押得多重，自身历史）", range=[-6, 108])
     fig.update_yaxes(title_text="指数分位（价格相对自己多贵）", range=[-6, 108])
     # 坐标轴标题要留出边距，否则左侧竖排标题会被裁掉
     fig.update_layout(margin=dict(l=64, r=16, t=52, b=54))
@@ -757,7 +753,7 @@ def fig_crowding_map(comp: pd.DataFrame, idx: pd.DataFrame) -> go.Figure:
 
 
 # ---------------------------------------------------------------------------
-# 12. 拥挤度折线：31 期怎么变、什么时候穿过阈值
+# 12. 拥挤度折线：全样本期怎么变、什么时候穿过阈值
 # ---------------------------------------------------------------------------
 CSI_BANDS = [(80, 101, "rgba(198,40,40,0.16)", "≥80 极度拥挤"),
              (65, 80, "rgba(232,113,10,0.14)", "65–80 拥挤"),
@@ -768,7 +764,7 @@ CSI_BANDS = [(80, 101, "rgba(198,40,40,0.16)", "≥80 极度拥挤"),
 
 def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
                   show_band: bool = True) -> go.Figure:
-    """31 期 CSI 折线：看「拥挤度怎么变」，而不是只看当期一个点。
+    """全样本期 CSI 折线：看「拥挤度怎么变」，而不是只看当期一个点。
 
     为什么必须画折线：CSI 是一个 0–100 的水位，单看当期数字无法判断
     「它是在涨还是在退」。同样的 88 分，从 60 涨上来和从 95 跌下来，
@@ -860,7 +856,7 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
 
 
 # ---------------------------------------------------------------------------
-# 13. 拥挤度全景热力图：31 个行业 × 31 期，一屏看全
+# 13. 拥挤度全景热力图：31 个行业 × 全样本期，一屏看全
 # ---------------------------------------------------------------------------
 _CSI_SCALE = [
     # 分段色阶（不是渐变）：颜色只表达「档位」，不表达「小数差多少」。
@@ -875,7 +871,7 @@ _CSI_SCALE = [
 
 def fig_csi_heatmap(H: pd.DataFrame, small: list[str] | None = None,
                     height: int = 700) -> go.Figure:
-    """31 个行业 × 31 期的 CSI 热力图：颜色＝档位。
+    """31 个行业 × 全样本期的 CSI 热力图：颜色＝档位。
 
     为什么用它替代「31 条线叠加」：叠加 31 条线谁都看不清（蜘蛛网），
     而热力图一屏就能看出「哪一行什么时候变红」——这是横向对比最有效的编码。
@@ -956,54 +952,4 @@ def fig_threshold(bins: pd.DataFrame, events: pd.DataFrame) -> go.Figure:
     fig.update_layout(margin=dict(l=58, r=70, t=42, b=56),
                       xaxis=dict(tickfont=dict(size=11)),
                       hoverlabel=dict(font_size=11))
-    return fig
-
-
-def _band_of(v: float) -> str:
-    if not np.isfinite(v):
-        return "数据不足"
-    if v >= 80:
-        return "极度拥挤"
-    if v >= 65:
-        return "拥挤"
-    if v >= 45:
-        return "中性"
-    if v >= 25:
-        return "偏冷"
-    return "冷门"
-
-
-def fig_csi_snapshot(H: pd.DataFrame, quarter: str,
-                     small: list[str] | None = None,
-                     height: int = 720) -> go.Figure:
-    """某一个季度、31 个行业的 CSI 一次全部排出来（横向条形）。
-
-    为什么需要它：热力图能看「谁什么时候变红」，但每一格只有一个颜色，
-    想知道「这一期到底谁 88 分、谁 71 分」必须逐个悬停，很费劲。
-    这里把选中的那一期整列展开成条形，所有数值一次性标在条端。
-    """
-    if H.empty or quarter not in H.index:
-        return _base(go.Figure(), "数据未就绪")
-    small = small or []
-    s = H.loc[quarter].dropna()
-    if s.empty:
-        return _base(go.Figure(), "数据未就绪")
-    d = s.to_frame("CSI")
-    d["_sm"] = d.index.isin(small)
-    d = d.sort_values(["_sm", "CSI"], ascending=[True, False])
-    cols = [CSI_COLORS["小样本"] if sm else CSI_COLORS.get(_band_of(v), "#C3CBD4")
-            for v, sm in zip(d["CSI"], d["_sm"])]
-    fig = go.Figure(go.Bar(
-        y=[i + ("†" if sm else "") for i, sm in zip(d.index, d["_sm"])],
-        x=d["CSI"], orientation="h", marker_color=cols,
-        text=[f"{v:.0f}" for v in d["CSI"]], textposition="outside",
-        textfont=dict(size=11),
-        hovertemplate="<b>%{y}</b><br>%{x:.1f} 分<extra></extra>"))
-    for x, lab in [(80, "80"), (65, "65"), (45, "45"), (25, "25")]:
-        fig.add_vline(x=x, line=dict(color="#B9C4D0", width=0.9, dash="dot"))
-    fig.update_xaxes(title_text=f"{quarter} 的 CSI（0＝最冷，100＝最挤）",
-                     range=[0, 108], tickfont=dict(size=11))
-    fig.update_yaxes(tickfont=dict(size=11.5))
-    fig = _base(fig, "", height)
-    fig.update_layout(margin=dict(l=8, r=44, t=12, b=40))
     return fig

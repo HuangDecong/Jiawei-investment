@@ -4,18 +4,21 @@
 页面结构
 --------
     本页结论（先给判断）
-    ① 搜索 + 行业总览（31 个色块，红＝拥挤）
-    ② 单行业详情（6 个指标 + 历史走势 + 近 8 期台账）
-    ③ 31 个行业一根条（颜色＝等级）
-    ④ 双分位：相对自己 vs 相对同行
-    ⑤ 四象限：配置 × 价格
-    ⑥ 全行业表
+    ① 拥挤度怎么变：全样本期折线 + 31 行业全景热力图
+    ② 阈值有没有用：分档 → 次季超额（含事件研究）
+    ③ 找行业：搜索 + 31 个色块（颜色＝等级）
+    ④ 单行业详情（6 个指标 + 历史走势 + 近 8 期台账）
+    ⑤ 31 个行业排一排：**选一期**，最拥挤的排在最上面
+    ⑥ 为什么用 CSI 不用 HHI
+    ⑦ 双分位：相对自己 vs 相对同行
+    ⑧ 四象限：配置 × 价格
+    ⑨ 全行业表
 
 口径
 ----
-· 配置比例用**前十大归一化**（31 期都有，才能做环比/同比/分位）；
+· 配置比例用**前十大归一化**（每期都有，才能做环比/同比/分位）；
 · 「全持仓」只在半年报期存在，单列并标期次，不与前十大混算；
-· 分位＝当前值在**自身 31 期**中的排名（0＝历史最低，100＝历史最高）；
+· 分位＝当前值在**自身全部期次**中的排名（0＝历史最低，100＝历史最高）；
 · 拥挤度 CSI＝(配置分位＋价格分位＋资金分位)/3，等权、不拟合。
 """
 from __future__ import annotations
@@ -240,18 +243,27 @@ def render(h) -> None:
     h(ui.concl_board(_bl))
 
     # =====================================================================
-    # ① 拥挤度变化：31 期折线
+    # ① 拥挤度变化：全样本期折线
     # =====================================================================
     H = cn.csi_history()
-    h('<div class="sec">① 拥挤度怎么变：31 期折线，以及它什么时候穿过阈值</div>')
+    _nq = len(H) if not H.empty else len(cn.quarters())
+    h(f'<div class="sec">① 拥挤度怎么变：{_nq} 期折线，以及它什么时候穿过阈值</div>')
+    _gap = len(cn.quarters()) - _nq if not H.empty else 0
+    if _gap > 0:
+        h(f'<div class="tiny" style="margin:-2px 0 5px">'
+          f'CSI 自 <b>{H.index[0]}</b> 起可算：配置分位要求至少 8 个历史观测，'
+          f'更早的 {_gap} 期（{cn.quarters()[0]}–{cn.quarters()[_gap - 1]}）'
+          f'只作为分位的历史底稿，不进入曲线——否则只有 4 个观测时，'
+          f'「恰好是历史最高」会被写成 100 分，图上会出现一片假的红。</div>')
     if H.empty:
         h('<div class="tiny">历史 CSI 不可用（数据不足）。</div>')
     else:
         _c1, _c2 = st.columns([0.70, 0.30])
         with _c1:
-            _opts = ["只看全市场中位（31 个行业的 CSI 中位数）"] + list(H.columns)
+            _opts = [f"只看全市场中位（31 个行业的 CSI 中位数）"] + list(H.columns)
             _focus = st.selectbox("聚焦一个行业", _opts, index=0, key="csi_focus",
-                                  help="选一个行业会画出它自己的 31 期曲线，并标出它上穿/下穿 80 的时点")
+                                  help=f"选一个行业会画出它自己的 {_nq} 期曲线，"
+                                       f"并标出它上穿/下穿 80 的时点")
         with _c2:
             _band = st.checkbox("显示 31 个行业的分位带", value=True, key="csi_band",
                                 help="灰色带是 31 个行业每一期的 25–75% 分位区间，"
@@ -265,7 +277,7 @@ def render(h) -> None:
         _imax = int(np.argmax(_med.values))
         _imin = int(np.argmin(_med.values))
         _txt2 = (f'灰粗线是<b>全市场中位</b>：最新 <b>{_now:.0f}</b> 分，'
-                 f'在 31 期里排第 <b>{_pct:.0f}</b> 分位；'
+                 f'在 {_nq} 期里排第 <b>{_pct:.0f}</b> 分位；'
                  f'历史最高 {_med.iloc[_imax]:.0f}（{_med.index[_imax]}）、'
                  f'最低 {_med.iloc[_imin]:.0f}（{_med.index[_imin]}）。'
                  f'背景色带就是五档阈值：<b>≥80 淡红、65–80 淡橙、45–65 近白、25–45 淡蓝、&lt;25 深蓝</b>，'
@@ -277,13 +289,28 @@ def render(h) -> None:
             _n_dn = sum(1 for i in range(1, len(_s)) if _s.iloc[i - 1] >= 80 > _s.iloc[i])
             _txt2 += (f'<br><b>{_sel_t}</b>：最新 <b>{_s.iloc[-1]:.0f}</b>'
                       f'（上期 {_s.iloc[-2]:.0f}，{_d1:+.0f}）；'
-                      f'31 期里上穿 80 共 <b>{_n_up}</b> 次、下穿 <b>{_n_dn}</b> 次，'
+                      f'{len(_s)} 期里上穿 80 共 <b>{_n_up}</b> 次、下穿 <b>{_n_dn}</b> 次，'
                       f'图上红三角＝上穿、绿三角＝下穿。')
+        # 投资含义随所选行业变化：同一个分数，上行与下行对应完全相反的动作
+        _inv3 = (f' 你选的 <b>{_sel_t}</b> 最新 {_s.iloc[-1]:.0f} 分、'
+                 f'上期 {_s.iloc[-2]:.0f} 分（{_d1:+.0f}）：'
+                 + ("<b>还在变挤</b>——仓位上限压到平时的七成，等它转向再恢复。"
+                    if _d1 > 3 else
+                    "<b>正在变松</b>——不要因为分数还高就恐慌卖出，资金已经在退。"
+                    if _d1 < -3 else
+                    "<b>基本走平</b>——按水位办事即可，不需要因为这张图调仓。")
+                 ) if _sel_t and len(_s) > 1 else ''
         _read(h, _txt2,
               f'<b>折线回答的是「方向」，不是「高低」。</b>同样是 88 分，'
               f'从 60 涨上来（刚变挤）与从 95 跌下来（正在退潮）含义完全相反——'
               f'上面这张图就是把「水位」和「方向」放在一张图上。'
-              f'下面的阈值实证会回答：这些分界线到底有没有预测力。')
+              f'下面的阈值实证会回答：这些分界线到底有没有预测力。',
+              f'<b>看方向做仓位，看水位做上限。</b>分数还在往上走、且已经过 80 的，'
+              f'本季不要再加，甚至把已有仓位减半（还有人在往没有空间的地方挤，'
+              f'转向时卖出会非常集中）；分数从 90 以上往下掉到 70 附近的，'
+              f'反而是「压力已经释放」，不必急着卖。' + _inv3
+              + f' 需要提醒的是：{_nq} 期样本下「上穿 80」的次季胜率不到五成、'
+                't 值不显著，所以这条线只能约束仓位，不能当买卖信号。')
 
         # ---- 全景热力图：替代「31 条线叠加」 ----
         _small = ([i for i in csi.index if csi.loc[i, "等级"] == "小样本"]
@@ -293,29 +320,24 @@ def render(h) -> None:
         st.plotly_chart(rc.fig_csi_heatmap(H, _small), width="stretch",
                         config={"displayModeBar": False})
 
-        # ---- 同期横向：选一个季度，31 个行业一次全部排出来 ----
-        h('<div style="font-size:14px;font-weight:700;margin:14px 0 4px">'
-          '同期横向对比：选一个季度，31 个行业的 CSI 一次全部列出</div>')
-        _qc = st.selectbox("选择季度", list(H.index)[::-1], index=0, key="csi_q_pick",
-                           help="热力图每格只有一个颜色，想知道具体谁多少分，用这张图")
-        st.plotly_chart(rc.fig_csi_snapshot(H, _qc, _small), width="stretch",
-                        config={"displayModeBar": False})
-        _sq = H.loc[_qc].dropna().sort_values(ascending=False)
+        # ---- 最新一期读数：只用文字，不重复画图 ----
+        # 原来这里还有一张「同期横向对比」条形图，和 ⑤ 的排名图是同一份数据画两遍，
+        # 而且横向条形图的 y 轴是从下往上排，最拥挤的反而落在最底部，读起来别扭。
+        # 现在季度选择合并到 ⑤，一张图既能看当期、也能回看历史。
+        _sq = H.loc[H.index[-1]].dropna().sort_values(ascending=False)
         _sq_ok = _sq[[i for i in _sq.index if i not in _small]]
-        _chg = (H.loc[_qc] - H.loc[list(H.index)[max(0, list(H.index).index(_qc) - 1)]]) \
-            if list(H.index).index(_qc) > 0 else pd.Series(dtype=float)
+        _chg = H.iloc[-1] - H.iloc[-2] if len(H) > 1 else pd.Series(dtype=float)
         _upq = _chg.dropna().nlargest(2)
         _dnq = _chg.dropna().nsmallest(2)
-        _second = (f'、次之 {_sq_ok.index[1]} {_sq_ok.iloc[1]:.0f}'
-                   if len(_sq_ok) > 1 else '')
         h(f'<div class="cg-note" style="font-size:12.5px">'
-          f'{_qc} 共 {len(_sq)} 个行业有值：最挤 '
-          f'<b>{_sq_ok.index[0]} {_sq_ok.iloc[0]:.0f}</b>{_second}；最冷 '
-          f'<b>{_sq_ok.index[-1]} {_sq_ok.iloc[-1]:.0f}</b>。'
+          f'最新一期（{H.index[-1]}）最挤的是 '
+          f'<b>{_sq_ok.index[0]} {_sq_ok.iloc[0]:.0f}</b>'
+          + (f'、次之 {_sq_ok.index[1]} {_sq_ok.iloc[1]:.0f}' if len(_sq_ok) > 1 else '')
+          + f'；最冷的是 <b>{_sq_ok.index[-1]} {_sq_ok.iloc[-1]:.0f}</b>。'
           + (f' 相对上一期，变挤最多 {_upq.index[0]}（{_upq.iloc[0]:+.0f}）、'
-             f'变松最多 {_dnq.index[0]}（{_dnq.iloc[0]:+.0f}）。'
-             if len(_upq) else '')
-          + f' 灰色 † 为小样本，不参与排名。</div>')
+             f'变松最多 {_dnq.index[0]}（{_dnq.iloc[0]:+.0f}）。' if len(_upq) else '')
+          + f' 想看某一期的完整排名，用下面 ⑤ 的季度选择器；'
+            f'灰色 † 为小样本，不参与排名。</div>')
 
         # 最近 4 期里变化最大的几行
         _d4 = (H.iloc[-1] - H.iloc[-5]).dropna() if len(H) >= 5 else pd.Series(dtype=float)
@@ -348,7 +370,7 @@ def render(h) -> None:
     # =====================================================================
     # ② 阈值实证
     # =====================================================================
-    h('<div class="sec">② 阈值有没有用：31 期 × 31 行业，按 CSI 分档看次季能否跑赢同行</div>')
+    h(f'<div class="sec">② 阈值有没有用：{_nq} 期 × 31 行业，按 CSI 分档看次季能否跑赢同行</div>')
     try:
         _ST = cn.csi_threshold()
         if not _ST:
@@ -370,7 +392,7 @@ def render(h) -> None:
             _sig = _bt[_bt["t 值"].abs() >= 1.65]
             _read(h,
                   f'把 {_ST["q_first"]}–{_ST["q_last"]} 的每一期、每个行业都当成一个观测，'
-                  f'共 <b>{_ST["n_obs"]}</b> 个（31 期 × 31 行业，剔除末期无次季收益的）。'
+                  f'共 <b>{_ST["n_obs"]}</b> 个（{_nq} 期 × 31 行业，剔除无次季收益的期次）。'
                   f'「次季超额」＝该行业下一季收益 − 下一季 31 个行业等权收益，'
                   f'<b>已经扣掉大盘涨跌</b>；胜率＝次季跑赢同行的比例。'
                   f'<br>五档的均值从 {_bt["次季超额均值%"].min():+.2f}% 到 '
@@ -389,7 +411,17 @@ def render(h) -> None:
                   f'<br><b>胜率为什么大多不到 50%</b>：A 股行业季度超额收益是右偏分布——'
                   f'少数行业暴涨把均值拉高，多数行业低于均值。所以 '
                   f'{_bt["胜率%"].min():.0f}% 的胜率不等于「大概率下跌」，'
-                  f'只说明「中位数略负」。看胜负要同时看中位数与幅度。')
+                  f'只说明「中位数略负」。看胜负要同时看中位数与幅度。',
+                  f'<b>所以这张表只能这么用</b>：① ≥80 的行业把「单行业仓位上限」'
+                  f'打到平时的七折（{_bt.iloc[-1]["CSI 档位"]} 档的均值 '
+                  f'{_bt.iloc[-1]["次季超额均值%"]:+.2f}% 说明高位并不必然下跌，'
+                  f'砍的是风险预算、不是收益预期）；② 25–45 档不要因为「便宜」就加，'
+                  f'它的均值 {_bt.iloc[1]["次季超额均值%"]:+.2f}%、t 值 '
+                  f'{_bt.iloc[1]["t 值"]:+.2f}，没有任何统计优势；'
+                  f'③ 任何一档都不构成「买/卖」信号——真正可交易的是'
+                  f'「上穿/下穿 80 的方向」，而它也只有四成胜率。'
+                  f'把这张表当成「别把仓位押在拥挤行业上」的量化依据，'
+                  f'不要当成选行业模型。')
             if not _events.empty:
                 _et = _events.copy()
                 _et.index.name = "事件"
@@ -503,7 +535,7 @@ def render(h) -> None:
                  help=f"在自身 {len(M)} 期历史中的排名（0＝最低，100＝最高），满分 100")
     _d[2].metric("价格分位",
                  f"{r['指数分位']:.0f}" if np.isfinite(r.get("指数分位", np.nan)) else "—",
-                 help="行业指数季末点位在 2019 年以来每个交易日中的排名（0–100），回答「贵不贵」")
+                 help="行业指数季末点位在 2016 年以来每个交易日中的排名（0–100），回答「贵不贵」")
     _d[3].metric("CSI 拥挤度", f"{r.get('CSI', float('nan')):.0f}",
                  help="(配置分位+价格分位+资金分位)/3，等权，0–100 分；"
                       "≥80 极度拥挤、65–80 拥挤、45–65 中性、25–45 偏冷、<25 冷门")
@@ -551,28 +583,52 @@ def render(h) -> None:
     # =====================================================================
     # ③ 31 个行业一根条
     # =====================================================================
-    h('<div class="sec">⑤ 31 个行业排一排：长度＝拥挤度，颜色＝等级</div>')
-    st.plotly_chart(rc.fig_csi_bar(comp.dropna(subset=["CSI"])), width="stretch",
-                    config={"displayModeBar": False})
-    _c = comp.dropna(subset=["CSI"])
-    _hi = _c[_c["CSI"] >= 80]
-    _lo = _c[_c["CSI"] < 25]
+    h('<div class="sec">⑤ 31 个行业排一排：选一期，最拥挤的排在最上面</div>')
+    h('<div class="tiny" style="margin:-2px 0 6px">长度＝CSI，颜色＝拥挤等级；'
+      '小样本（†）压在最底部、不参与排名。鼠标悬停任一条可看 CSI 由哪三个分位加出来。</div>')
+    _qbar = None
+    if not H.empty:
+        _qbar = st.selectbox("看哪一期", list(H.index)[::-1],
+                             index=0, key="csi_bar_q",
+                             help="默认最新一期；选历史期可回看当时谁最挤、谁最冷——"
+                                  "同一行业在不同期的分数可以直接对比")
+    _bar = cn.csi_parts(_qbar) if _qbar else pd.DataFrame()
+    if _bar.empty:
+        _bar = comp.dropna(subset=["CSI"]).copy()
+    _qtitle = _qbar or "最新一期"
+    st.plotly_chart(rc.fig_csi_bar(_bar, f"{_qtitle}　CSI 排名（最拥挤在最上面）"),
+                    width="stretch", config={"displayModeBar": False})
+    _c = _bar.dropna(subset=["CSI"])
+    _c_ok = _c[_c["等级"].astype(str) != "小样本"] if "等级" in _c else _c
+    _hi = _c_ok[_c_ok["CSI"] >= 80]
+    _lo = _c_ok[_c_ok["CSI"] < 25]
+    _sm_n = len(_c) - len(_c_ok)
+    _is_latest = (_qbar is None) or (_qbar == (H.index[-1] if not H.empty else ""))
     _read(h,
-          f'≥80 极度拥挤的有 <b>{len(_hi)} 个</b>：'
+          f'{_qtitle}：≥80 极度拥挤的有 <b>{len(_hi)} 个</b>：'
           + ("、".join(f'{i}（{r["CSI"]:.0f}）' for i, r in _hi.iterrows()) or "无")
           + f'；&lt;25 冷门的有 <b>{len(_lo)} 个</b>：'
           + ("、".join(f'{i}（{r["CSI"]:.0f}）' for i, r in _lo.iterrows()) or "无")
-          + f'；其余 {len(_c) - len(_hi) - len(_lo)} 个落在中间段。',
+          + f'；其余 {len(_c_ok) - len(_hi) - len(_lo)} 个落在中间段。'
+          + (f' 另有 {_sm_n} 个小样本行业（†）不评级。' if _sm_n else ''),
           f'CSI 把「配置、价格、资金」三个维度压成一个 0–100 的分数，'
           f'分数高说明三件事同时成立：机构配得多、价格在历史高位、资金还在进。'
           f'这三个条件凑齐时，行业的<b>边际买家最少</b>——想买的人已经买完了，'
           f'剩下的只有卖出选项。这就是「拥挤」的经济含义，与「贵」不是一回事：'
-          f'贵只说明价格高，拥挤说明<b>持仓结构脆弱</b>。',
+          f'贵只说明价格高，拥挤说明<b>持仓结构脆弱</b>。'
+          + ('' if _is_latest else
+             f'<br>你现在看的是<b>历史期 {_qbar}</b>：它的分位只用到 {_qbar} 及以前的数据，'
+             f'所以「当时的分位」与「今天回看的分位」是同一个数，没有用到未来信息。'),
           f'≥80 的行业<b>压缩仓位上限</b>（单行业不超过权益的 10%），但不等于清仓——'
           f'因子检验显示高 CSI 对未来收益没有显著负向预测力，所以「卖」没有依据，'
           f'「不加」有依据。&lt;25 的行业不要因为便宜就买，要等「广度≥60% 且净额转正」'
           f'两个信号同时出现，因为冷门可能是「没人要」而不是「没人发现」。'
-          f'中间段不必调整，按个股逻辑处理。')
+          f'中间段不必调整，按个股逻辑处理。'
+          + ('' if _is_latest else
+             f'<br><b>历史期怎么用</b>：只用来看「这一行的分数是怎么走到今天的」——'
+             f'比如某个行业在 {_qbar} 就已经 85 分，说明它挤了很久，'
+             f'今天的 80 分是「退潮中的高位」，而不是「刚变挤」。'
+             f'不要拿历史期的分数当今天的买卖依据。'))
 
     # =====================================================================
     # ④ 双分位
@@ -632,7 +688,7 @@ def render(h) -> None:
       '<b>它不回答</b>：「<b>哪个</b>行业挤？」——HHI 是一个标量，'
       '31 个行业最后只剩一个数，无法排序、无法定位。<br>'
       '<b>当前值</b>：全市场前十大口径 HHI <b>' + f'{_hhi_now:.4f}' + '</b>，'
-      '处在 31 期的第 <b>' + f'{_hhi_pct:.0f}' + '</b> 分位（越高质量越集中）。'
+      f'处在 {len(_hhi_hist)} 期的第 <b>' + f'{_hhi_pct:.0f}' + '</b> 分位（越高质量越集中）。'
       '</div></div>'
       '<div style="flex:1 1 320px;background:#FFFFFF;border:1px solid ' + C.COLOR["line"] +
       ';border-top:3px solid ' + C.COLOR["threshold"] + ';border-radius:7px;padding:9px 11px">'
@@ -643,7 +699,7 @@ def render(h) -> None:
       '0–100 的分位后等权平均。<br>'
       '<b>它回答</b>：「这个行业被多少人在什么价位上挤着买？现在是不是人人都上车了？」<br>'
       '<b>它不回答</b>：「整个组合分散不分散」——那是 HHI 的事。<br>'
-      '<b>为什么等权</b>：三维已统一为分位，量纲一致；31 个行业 × 31 期不足以'
+      f'<b>为什么等权</b>：三维已统一为分位，量纲一致；31 个行业 × {_nq} 期不足以'
       '稳定估计权重，任何加权都是过拟合。'
       '</div></div></div>')
     h('<div class="cg-note" style="margin-top:6px"><b>一句话区别</b>：'
@@ -670,7 +726,7 @@ def render(h) -> None:
           + f'。自身分位高、但横截面不到 50 的有 {len(_self_only)} 个；'
           f'自身分位低、横截面 ≥70 的有 {len(_mt_high)} 个（'
           + ("、".join(_mt_high.index) or "无") + '）。',
-          f'「重不重」有两个完全不同的参照系。相对自己：这个行业在它过去 31 期里算不算高位，'
+          f'「重不重」有两个完全不同的参照系。相对自己：这个行业在它过去 {_nq} 期里算不算高位，'
           f'回答「机构是不是刚开始重视它」；相对同行：它在当期 31 个行业里排第几，'
           f'回答「它是不是组合里的大块头」。小行业可以在自己历史上创纪录，'
           f'绝对配置却只有 1%，对净值几乎没有影响；大行业可以一直是第一大重仓，'
@@ -728,8 +784,8 @@ def render(h) -> None:
         "配置_前十": f"前十配置%({q})", "Δ上季pp": f"环比pp({qp}→{q})",
         "Δ上年pp": f"同比pp({qy}→{q})", "平均主动pp": f"当期主动pp({qp}→{q})",
         "加仓占比": f"加仓占比%({q})", "配置_全持仓": f"全持仓%({qf})",
-        "主动pp": f"半年主动pp({qf0}→{qf})", "历史分位": "配置分位(31期)",
-        "横截面分位": "横截面分位", "指数分位": "价格分位(2019起)",
+        "主动pp": f"半年主动pp({qf0}→{qf})", "历史分位": f"配置分位({_nq}期)",
+        "横截面分位": "横截面分位", "指数分位": "价格分位(2016起)",
         "近3月涨幅%": "指数近3月%", "CSI": "CSI", "等级": "拥挤等级"})
     # 给「拥挤等级」与「判读」上色：一屏 31 行，纯文字很难扫出谁最挤。
     # 小样本用灰色——它既不是拥挤也不是冷门，是「样本不够，判不了」。
@@ -774,12 +830,12 @@ def render(h) -> None:
             f"全持仓%({qf})": st.column_config.NumberColumn(format="%.2f"),
             f"半年主动pp({qf0}→{qf})": st.column_config.NumberColumn(
                 format="%+.2f", help="GK 分解后的机构主动部分（半年报口径）"),
-            "配置分位(31期)": st.column_config.ProgressColumn(
+            f"配置分位({_nq}期)": st.column_config.ProgressColumn(
                 format="%.0f", min_value=0, max_value=100,
-                help="该行业配置在它自己 31 期历史中的排名"),
-            "价格分位(2019起)": st.column_config.ProgressColumn(
+                help=f"该行业配置在它自己 {_nq} 期历史中的排名"),
+            "价格分位(2016起)": st.column_config.ProgressColumn(
                 format="%.0f", min_value=0, max_value=100,
-                help="行业指数点位在 2019 年以来每个交易日中的排名"),
+                help="行业指数点位在 2016 年以来每个交易日中的排名"),
             "CSI": st.column_config.ProgressColumn(
                 format="%.0f", min_value=0, max_value=100,
                 help="(配置分位+价格分位+资金分位)/3", width="small"),
@@ -793,7 +849,7 @@ def render(h) -> None:
     h(f'<div class="tiny">三组口径、三种期次，<b>不要相加</b>：'
       f'「前十配置/环比/同比/当期主动/广度」是<b>前十大（{qp}→{q}）</b>；'
       f'「全持仓/半年主动」是<b>全持仓（{qf0}→{qf}）</b>；'
-      f'「配置分位/CSI」用 31 期前十大算，「价格分位」用 2019 年以来的日频指数算。'
+      f'「配置分位/CSI」用 {_nq} 期前十大算，「价格分位」用 2016 年以来的日频指数算。'
       f'<br>样本 {len(cn.universe(q)):,} 只主动权益基金，已剔除主题基金与覆盖率异常记录。'
       f'<br><b>这条序列含价格漂移</b>：行业涨了，即使没人买，占比也会上升——'
       f'所以「分位高」只能说明<b>它在组合里很重</b>，不能直接说成「机构在买」。'

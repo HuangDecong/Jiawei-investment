@@ -393,8 +393,12 @@ def validate(b: Bundle, write_log: bool = True) -> dict:
     add("公募基金交易拥挤度与集中度仪表盘 —— 数据校验日志")
     add(f"生成时间：{_dt.datetime.now():%Y-%m-%d %H:%M:%S}")
     add(f"数据区间：{b.quarters[0]} ~ {b.latest}  共 {b.n_quarters} 个季度")
-    add(f"其中具备基金持仓数据的季度：{len(hq)} 期（{hq[0] if hq else '-'} ~ "
+    # 注意：这里说的是 Wind「行情/配置层」有多少期持仓可比，
+    # 不是页面主口径（东财持仓，2016Q1 起 43 期）——两者数据源不同，
+    # 写混了会让读者以为主口径只有十来期。
+    add(f"其中 Wind 行情层可比的持仓季度：{len(hq)} 期（{hq[0] if hq else '-'} ~ "
         f"{hq[-1] if hq else '-'}）")
+    add("页面主口径：东财基金定期报告（2016Q1 起，期数以 src/canon.py 为准）")
     add(f"行业口径：申万一级 {len(b.industries)} 个行业")
     add("=" * 78)
     add()

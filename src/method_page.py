@@ -100,9 +100,10 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     # 样本漏斗
     # =====================================================================
-    h('<div class="sec">三、数据从哪来：从 1.5 万只到 4,270 只</div>')
     try:
         _mk = cn.market_fund_counts()
+        h(f'<div class="sec">三、数据从哪来：从 {_mk.get("全市场基金", 0):,} 只到 '
+          f'{len(cn.universe(q)):,} 只</div>')
         _pool = cn.profiles()
         _cov = cn.coverage(q)
         _eq = cn.equity_codes()
@@ -179,15 +180,15 @@ def render(h, B=None, IND=None) -> None:
     c3, c4 = st.columns(2, gap="small")
     with c3:
         h(_card("分位（扩张窗口）", [
-            ("定义", "当前值在「2019Q1 至当期」中的排名 ×100"),
-            ("为什么扩张", "用全样本排名会让 2019 年的分位用上 2026 年的数据，"
+            ("定义", "当前值在「首期至当期」中的排名 ×100"),
+            ("为什么扩张", "用全样本排名会让早期的分位用上后来的数据，"
                           "做检验时 IC 被系统性高估。"),
             ("注意", "最后一期与全样本完全相等，所以当期数字不变，只有历史序列会变。"),
         ], C.COLOR["accent"]))
     with c4:
         h(_card("CSI 拥挤度", [
             ("公式", "(配置分位 + 价格分位 + 资金分位) ÷ 3，等权"),
-            ("为什么等权", "三维已统一为分位；31 行业 × 31 期不足以稳定估计权重。"),
+            ("为什么等权", "三维已统一为分位；31 行业 × 全样本期不足以稳定估计权重。"),
             ("小样本", "持有基金数 &lt;150 或前十配置 &lt;0.5% 的行业不评级，"
                       "只显示灰色。"),
         ], C.COLOR["threshold"]))
@@ -249,17 +250,22 @@ def render(h, B=None, IND=None) -> None:
         st.code("""python tools/run_ak_all.py        # 抓全市场持仓（东财，可断点续传）
 python tools/export_canon.py      # 导出压缩快照（无数据库时线上可用）
 python tools/export_matrix.py     # 预计算行业矩阵与仓位分布
-python tools/export_csi.py        # 预计算 CSI 面板（31×31）
+python tools/export_csi.py        # 预计算 CSI 面板（全期 × 31 行业）+ 三项分位长表
 python tools/run_factor_test.py   # 生成因子检验结果 factor_test.json
 python tools/audit_all.py         # 全站审计：静态/口径/渲染/文本/交互/一致性
 python -c "import sys; sys.path.insert(0,'src'); import selfcheck; print(selfcheck.run())"
 """, language="bash")
-        h('<div class="tiny">数据文件：<span class="mono">data/db/fund_ak.db</span>'
+        h('<div class="tiny">窗口：<b>2016Q1 起</b>——这是东财持仓明细与申万行业季度收益'
+          '同时可得的最早期次；再往前，行业收益必须换数据源，两套口径不能直接拼接。'
+          '样本是「当前存续的主动权益基金」，已清盘基金无法取得历史，见上文局限。<br>'
+          '数据文件：<span class="mono">data/db/fund_ak.db</span>'
           '（SQLite，约 900MB，不入库）；派生快照在 '
           '<span class="mono">data/derived/*.csv.gz</span>（约 12MB，随仓库发布）。'
           '线上环境没有数据库时自动读快照，两条路径的计算结果已逐格核对一致。</div>')
 
     h('<div class="tiny" style="margin-top:10px">'
-      f'版本口径：季度 {qs[0]}–{qs[-1]}（{len(qs)} 期）、全持仓 {len(fq)} 期、'
-      f'指数 2019-01 起；样本 {n_funds:,} 只主动权益基金。'
+      f'版本口径：季度 {qs[0]}–{qs[-1]}（{len(qs)} 期）、CSI 可算 '
+      f'{max(len(qs) - 7, 0)} 期（前 7 期历史不足 8 个观测；不在这里现场算 CSI，'
+      f'免得首次打开要等两分钟）、全持仓 {len(fq)} 期、'
+      f'指数 2016-01 起；样本 {n_funds:,} 只主动权益基金。'
       '更细的审计留痕（数据源探查记录、逐期溯源）见仓库 tools/ 下的脚本输出。</div>')
