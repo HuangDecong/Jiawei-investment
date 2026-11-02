@@ -698,6 +698,28 @@ def compare_periods(q: str | None = None) -> pd.DataFrame:
 
 
 @lru_cache(maxsize=32)
+def config_pct_expanding(q: str) -> pd.Series:
+    """配置分位的**扩张窗口**版本：只用 [2019Q1..q] 的历史排名。
+
+    为什么不能用全样本分位：`compare_periods()["历史分位"]` 是在 31 期上排的，
+    2020 年的分位用到了 2024 年的数据——做「当期阈值 → 次季收益」的实证时，
+    这是前视偏差，会把结果做得比真实更好看。
+
+    扩张窗口在最后一期与全样本完全相等（历史一样长），所以**当期数字不变**，
+    只有历史序列会变——这正是画折线、做阈值检验时需要的那个序列。
+
+    前 4 期历史太短（3 个观测排不出有意义的百分位），返回 NaN。
+    """
+    M = level_matrix("top10")
+    if M.empty or q not in M.index:
+        return pd.Series(dtype=float)
+    sub = M.loc[:q]
+    if len(sub) < 4:
+        return pd.Series(np.nan, index=list(C.INDUSTRIES))
+    return (sub.rank(pct=True).iloc[-1] * 100).reindex(list(C.INDUSTRIES))
+
+
+@lru_cache(maxsize=32)
 def _crowding_score_impl(q: str | None = None) -> pd.DataFrame:
     """行业拥挤度指数 CSI：三个独立维度的等权平均（0–100）。
 
@@ -724,9 +746,14 @@ def _crowding_score_impl(q: str | None = None) -> pd.DataFrame:
         return pd.DataFrame()
     cs = cross_section_percentile(q)
     out = pd.DataFrame(index=comp.index)
-    out["配置分位"] = comp["历史分位"]
+    # 用扩张窗口，与折线图、阈值检验同一口径；最后一期与全样本相等
+    out["配置分位"] = config_pct_expanding(q).reindex(out.index)
+    out["配置分位_全样本"] = comp["历史分位"] if "历史分位" in comp.columns else np.nan
     out["价格分位"] = _index_pct_at(q).reindex(out.index)
-    out["资金分位"] = (comp["加仓占比"].rank(pct=True) * 100)
+    # 第一期没有「上期」，compare_periods 不会给出加仓占比；
+    # 直接取列会 KeyError（折线图遍历 31 期时必踩）。
+    out["资金分位"] = (comp["加仓占比"].rank(pct=True) * 100) \
+        if "加仓占比" in comp.columns else np.nan
     out["横截面分位"] = cs.reindex(out.index)
     _parts = out[["配置分位", "价格分位", "资金分位"]]
     out["CSI"] = _parts.mean(axis=1, skipna=True).round(1)
@@ -749,7 +776,10 @@ def _crowding_score_impl(q: str | None = None) -> pd.DataFrame:
     # 但这个行业在整个组合里只占 0.12%——把它标成「极度拥挤」是错的。
     # 全站（色块、条形图、表格、结论计数、报告）统一读「等级」，
     # 所以在这里降级一次，比在每个展示层各写一遍可靠。
-    out["等级"] = np.where(out["可靠"] == "小样本", "小样本", out["原等级"])
+    # 三项分位齐全才评级：2019 年前几期配置分位缺（历史不足 4 期），
+    # 只有两项平均的 CSI 不能跟 31 期的口径混在一起看。
+    out["等级"] = np.where(out["配置分位"].isna(), "数据不足",
+                          np.where(out["可靠"] == "小样本", "小样本", out["原等级"]))
     out.attrs["weights"] = {"配置分位": 1 / 3, "价格分位": 1 / 3, "资金分位": 1 / 3}
     return out.sort_values("CSI", ascending=False)
 
@@ -1076,6 +1106,134 @@ def position_change(q: str | None = None) -> dict:
                 仓位1=float(c1.loc[idx].median()),
                 中位变化pp=float(d.median()),
                 加仓基金占比=float((d > 0.5).mean() * 100))
+
+
+CSI_CSV = os.path.join(DERIVED, "canon_csi_history.csv.gz")
+
+
+@lru_cache(maxsize=2)
+def _csi_history_csv() -> pd.DataFrame:
+    """预计算的 CSI 面板（31 期 × 31 行业），tools/export_csi.py 生成。"""
+    if not os.path.exists(CSI_CSV):
+        return pd.DataFrame()
+    try:
+        d = pd.read_csv(CSI_CSV, index_col=0)
+    except Exception:
+        return pd.DataFrame()
+    if d.empty:
+        return pd.DataFrame()
+    d.index = d.index.astype(str)
+    return d.reindex(columns=list(C.INDUSTRIES))
+
+
+@lru_cache(maxsize=2)
+def csi_history() -> pd.DataFrame:
+    """31 期 × 31 行业的 CSI 面板（扩张窗口口径），用于画折线。
+
+    优先读预计算文件（0.05 秒）；期次不一致或文件比数据库旧时现场重算
+    （约 1–2 分钟，只在数据刚更新、还没跑 tools/export_csi.py 时发生）。
+    """
+    c = _csi_history_csv()
+    if not c.empty and list(c.index) == list(quarters()):
+        if not (os.path.exists(DB_PATH) and os.path.getmtime(CSI_CSV) < os.path.getmtime(DB_PATH)):
+            return c.copy()
+    rows = {}
+    for q in quarters():
+        s = crowding_score(q)
+        if not s.empty:
+            rows[q] = s["CSI"]
+    return pd.DataFrame(rows).T.reindex(columns=list(C.INDUSTRIES))
+
+
+@lru_cache(maxsize=4)
+def csi_threshold() -> dict:
+    """CSI 阈值 → 次季超额收益的实证（扩张窗口，无前视）。
+
+    为什么必须用超额而不是绝对收益：行业绝对收益里有一半是大盘 beta。
+    2020Q2 所有行业都涨，不能说明「高 CSI 会涨」。所以每一期先减去
+    当期 31 个行业的等权收益，剩下的才是「这个行业跑赢/跑输同行多少」。
+
+    返回三张表：
+        bins    按 CSI 分档（<25/25-45/45-65/65-80/≥80）的次季超额统计
+        events  上穿 80、下穿 80 两个事件的次季超额
+        detail  逐观测明细（q, 行业, CSI, ΔCSI, 次季超额），供画散点/查证
+    """
+    H = csi_history()
+    R = industry_returns()
+    if H.empty or R.empty:
+        return {}
+    qs = [q for q in H.index if q in R.index]
+    H = H.reindex(qs)
+    R = R.reindex(qs)
+    ex = R.sub(R.mean(axis=1), axis=0)      # 当期超额
+    fwd = ex.shift(-1)                       # 次季超额
+    d = H.diff()
+
+    rows = []
+    for i, q in enumerate(qs[:-1]):
+        for ind in H.columns:
+            v = H.loc[q, ind]
+            r = fwd.loc[q, ind]
+            if not (np.isfinite(v) and np.isfinite(r)):
+                continue
+            rows.append(dict(q=q, 行业=ind, CSI=float(v),
+                             dCSI=float(d.loc[q, ind]) if np.isfinite(d.loc[q, ind]) else np.nan,
+                             次季超额=float(r), 次季收益=float(R.shift(-1).loc[q, ind])))
+    det = pd.DataFrame(rows)
+    if det.empty:
+        return {}
+
+    def _agg(x: pd.DataFrame, col: str = "次季超额") -> dict:
+        v = x[col].dropna()
+        if len(v) < 5:
+            return dict(样本=len(v), 均值=np.nan, 中位=np.nan, 胜率=np.nan, t=np.nan)
+        t = v.mean() / (v.std(ddof=1) / np.sqrt(len(v)))
+        return dict(样本=int(len(v)), 均值=float(v.mean()), 中位=float(v.median()),
+                    胜率=float((v > 0).mean() * 100), t=float(t))
+
+    cuts = [(-1, 25, "冷门 <25"), (25, 45, "偏冷 25–45"), (45, 65, "中性 45–65"),
+            (65, 80, "拥挤 65–80"), (80, 101, "极度 ≥80")]
+    bins = pd.DataFrame([dict(档=lab, **_agg(det[(det["CSI"] >= lo) & (det["CSI"] < hi)]))
+                         for lo, hi, lab in cuts]).set_index("档")
+
+    # 事件：上穿/下穿 80
+    ev = []
+    for i in range(1, len(qs) - 1):
+        q0, q1 = qs[i - 1], qs[i]
+        for ind in H.columns:
+            a, b = H.loc[q0, ind], H.loc[q1, ind]
+            if not (np.isfinite(a) and np.isfinite(b)):
+                continue
+            row = det[(det["q"] == q1) & (det["行业"] == ind)]
+            if row.empty:
+                continue
+            if a < 80 <= b:
+                ev.append(dict(类型="上穿 80（刚变极度拥挤）", **row.iloc[0].to_dict()))
+            elif a >= 80 > b:
+                ev.append(dict(类型="下穿 80（拥挤解除）", **row.iloc[0].to_dict()))
+    evd = pd.DataFrame(ev)
+    events = (evd.groupby("类型").apply(lambda x: pd.Series(_agg(x)), include_groups=False)
+              if not evd.empty else pd.DataFrame())
+
+    # 本期状态
+    last, prev = qs[-1], qs[-2] if len(qs) > 1 else qs[-1]
+    cur = pd.DataFrame({
+        "CSI": H.loc[last], "上期CSI": H.loc[prev],
+        "ΔCSI": H.loc[last] - H.loc[prev],
+    })
+    cur["状态"] = np.select(
+        [(cur["上期CSI"] < 80) & (cur["CSI"] >= 80),
+         (cur["上期CSI"] >= 80) & (cur["CSI"] < 80),
+         (cur["CSI"] >= 80), (cur["CSI"] < 25)],
+        ["刚上穿 80", "刚跌破 80", "持续 ≥80", "冷门 <25"], default="区间内")
+    # 带上等级：小样本行业（综合等）的穿越没有意义，展示时要过滤掉
+    _lv = crowding_score(last)
+    if not _lv.empty and "等级" in _lv.columns:
+        cur["等级"] = _lv["等级"].reindex(cur.index)
+    else:
+        cur["等级"] = "—"
+    return dict(bins=bins, events=events, detail=det, current=cur.sort_values("CSI", ascending=False),
+                n_obs=len(det), q_first=qs[0], q_last=last)
 
 
 def industry_returns() -> pd.DataFrame:

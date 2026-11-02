@@ -684,3 +684,133 @@ def fig_crowding_map(comp: pd.DataFrame, idx: pd.DataFrame) -> go.Figure:
     # 坐标轴标题要留出边距，否则左侧竖排标题会被裁掉
     fig.update_layout(margin=dict(l=64, r=16, t=52, b=54))
     return _base(fig, "两个分位一起看：只有右上角才是真拥挤", 520, legend=True)
+
+
+# ---------------------------------------------------------------------------
+# 12. 拥挤度折线：31 期怎么变、什么时候穿过阈值
+# ---------------------------------------------------------------------------
+CSI_BANDS = [(80, 101, "rgba(198,40,40,0.16)", "≥80 极度拥挤"),
+             (65, 80, "rgba(232,113,10,0.14)", "65–80 拥挤"),
+             (45, 65, "rgba(138,151,165,0.04)", "45–65 中性"),
+             (25, 45, "rgba(76,141,223,0.12)", "25–45 偏冷"),
+             (0, 25, "rgba(31,78,156,0.16)", "<25 冷门")]
+
+
+def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
+                  show_all: bool = False) -> go.Figure:
+    """31 期 CSI 折线：看「拥挤度怎么变」，而不是只看当期一个点。
+
+    为什么必须画折线：CSI 是一个 0–100 的水位，单看当期数字无法判断
+    「它是在涨还是在退」。同样的 88 分，从 60 涨上来和从 95 跌下来，
+    含义完全相反。
+    """
+    if H.empty:
+        return _base(go.Figure(), "数据未就绪")
+    d = H.dropna(how="all")
+    fig = go.Figure()
+
+    # 阈值背景带：先把「哪里是危险区」画出来，再看线怎么走
+    for lo, hi, color, lab in CSI_BANDS:
+        fig.add_hrect(y0=lo, y1=hi, fillcolor=color, line_width=0,
+                      layer="below", showlegend=False)
+    # 阈值标注放**图内左上**：放右侧会被坐标区裁掉（只露出「拥挤度」三个字），
+    # 放左侧四条线互不遮挡，也不占右边距。
+    for y, txt in [(80, "80 极度拥挤"), (65, "65 拥挤"), (45, "45 中性"), (25, "25 冷门")]:
+        fig.add_hline(y=y, line=dict(color="#9AA6B2", width=0.9, dash="dot"),
+                      annotation_text=txt, annotation_position="top left",
+                      annotation_font=dict(size=8, color="#5A6B7D"),
+                      annotation_bgcolor="rgba(255,255,255,0.75)")
+
+    # 全市场中位：代表「整体水位」，是所有行业的共同背景
+    med = d.median(axis=1)
+    fig.add_trace(go.Scatter(
+        x=list(d.index), y=med.values, mode="lines", name="全市场中位",
+        line=dict(color="#7C8B9C", width=2.4),
+        hovertemplate="%{x}<br>全市场中位 %{y:.1f}<extra></extra>"))
+
+    if show_all:
+        for ind in d.columns:
+            fig.add_trace(go.Scatter(
+                x=list(d.index), y=d[ind].values, mode="lines", name=ind,
+                line=dict(color=ind_color(ind), width=1), opacity=0.55,
+                showlegend=False,
+                hovertemplate=f"<b>{ind}</b><br>%{{x}}：%{{y:.1f}}<extra></extra>"))
+
+    if sel and sel in d.columns:
+        s = d[sel]
+        _c = CSI_COLORS.get("中性", "#1F6FEB")
+        fig.add_trace(go.Scatter(
+            x=list(d.index), y=s.values, mode="lines+markers", name=sel,
+            line=dict(color="#1F6FEB", width=2.8),
+            marker=dict(size=3.5, color="#1F6FEB"),
+            hovertemplate=f"<b>{sel}</b><br>%{{x}}：%{{y:.1f}}<extra></extra>"))
+        # 穿过 80 的时点：上穿红三角、下穿绿三角，一眼看出「什么时候变挤/变松」
+        up, dn = [], []
+        for i in range(1, len(s)):
+            a, b = s.iloc[i - 1], s.iloc[i]
+            if not (np.isfinite(a) and np.isfinite(b)):
+                continue
+            if a < 80 <= b:
+                up.append((s.index[i], b))
+            elif a >= 80 > b:
+                dn.append((s.index[i], b))
+        if up:
+            fig.add_trace(go.Scatter(
+                x=[x for x, _ in up], y=[y for _, y in up], mode="markers",
+                name="上穿 80", marker=dict(symbol="triangle-up", size=10,
+                                            color=C.COLOR["up"],
+                                            line=dict(width=1, color="#FFFFFF")),
+                hovertemplate="%{x}<br>上穿 80：%{y:.1f}<extra></extra>"))
+        if dn:
+            fig.add_trace(go.Scatter(
+                x=[x for x, _ in dn], y=[y for _, y in dn], mode="markers",
+                name="下穿 80", marker=dict(symbol="triangle-down", size=10,
+                                            color=C.COLOR["down"],
+                                            line=dict(width=1, color="#FFFFFF")),
+                hovertemplate="%{x}<br>下穿 80：%{y:.1f}<extra></extra>"))
+
+    fig.update_yaxes(title_text="CSI（0＝最冷，100＝最挤）", range=[0, 104])
+    fig.update_xaxes(tickangle=-45, tickfont=dict(size=8.5))
+    fig = _base(fig, "", 420, legend=True)
+    fig.update_layout(margin=dict(l=52, r=18, t=42, b=64))
+    return fig
+
+
+def fig_threshold(bins: pd.DataFrame, events: pd.DataFrame) -> go.Figure:
+    """阈值实证：各档的次季超额收益 + 胜率 + 样本量。
+
+    为什么把胜率和均值放一张图：只看均值会被少数极端值带偏，
+    只看胜率会忽略幅度；两者一起看，才知道「这个档位值不值得下注」。
+    """
+    if bins.empty:
+        return _base(go.Figure(), "数据未就绪")
+    d = bins.reset_index()
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    cols = [C.COLOR["up"] if v > 0 else C.COLOR["down"] for v in d["均值"]]
+    fig.add_trace(go.Bar(
+        x=d["档"], y=d["均值"], name="次季超额（%）", marker_color=cols,
+        text=[f"{v:+.2f}%" for v in d["均值"]], textposition="outside",
+        textfont=dict(size=9.5, color="#37485C"), width=0.52,
+        customdata=np.stack([d["样本"], d["中位"], d["t"]], axis=-1),
+        hovertemplate=("<b>%{x}</b><br>次季超额均值 %{y:+.2f}%<br>"
+                       "中位 %{customdata[1]:+.2f}%<br>样本 %{customdata[0]:.0f}<br>"
+                       "t 值 %{customdata[2]:+.2f}<extra></extra>")),
+        secondary_y=False)
+    fig.add_trace(go.Scatter(
+        x=d["档"], y=d["胜率"], name="胜率（%）", mode="lines+markers+text",
+        line=dict(color="#1F6FEB", width=2), marker=dict(size=7),
+        text=[f"{v:.0f}%" for v in d["胜率"]], textposition="bottom center",
+        textfont=dict(size=9, color="#1F6FEB"),
+        hovertemplate="<b>%{x}</b><br>次季跑赢同行概率 %{y:.1f}%<extra></extra>"),
+        secondary_y=True)
+    fig.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1), secondary_y=False)
+    fig.add_hline(y=50, line=dict(color="#B9C4D0", width=1, dash="dot"),
+                  secondary_y=True)
+    fig.update_yaxes(title_text="次季超额收益（%）", secondary_y=False,
+                     range=[-1.1, 1.1], dtick=0.5)
+    fig.update_yaxes(title_text="胜率（%）", secondary_y=True, range=[36, 56],
+                     dtick=5)
+    fig = _base(fig, "", 380, legend=True)
+    fig.update_layout(margin=dict(l=54, r=54, t=42, b=56),
+                      xaxis=dict(tickfont=dict(size=9)))
+    return fig
