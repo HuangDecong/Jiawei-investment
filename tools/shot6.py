@@ -15,7 +15,7 @@ import time
 from playwright.sync_api import sync_playwright
 
 URL = "http://localhost:8509"
-PAGES = ["① 结论总览", "② 本期解读", "③ 单只基金", "④ 行业拥挤度",
+PAGES = ["① 结论总览", "② 本期解读", "③ 行业拥挤度", "④ 单只基金",
          "⑤ 因子检验", "⑥ 方法与口径"]
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                    "output", "shots6")

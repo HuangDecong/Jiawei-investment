@@ -47,7 +47,7 @@ _LOCAL_MODULES = ("config", "data_loader", "factor_engine", "backtest", "researc
                   "change_analysis", "change_page", "institution",
                   "canon", "report_page", "report_charts", "insight_charts", "map_page",
                   "fund_page", "overview_page", "playbook", "glossary", "sidebar_panel",
-                  "factor_page", "factor_test")
+                  "factor_page", "factor_test", "factor_doc", "method_page", "ui")
 
 
 def _reload_local_modules_if_changed() -> None:
@@ -207,15 +207,15 @@ st.markdown(f"""
 
   .hdr {{ display:flex; align-items:center; gap:12px; flex-wrap:wrap;
           border-bottom:1px solid {C.COLOR['line']}; padding-bottom:8px; margin-bottom:8px; }}
-  .hdr h1 {{ font-size:17px; margin:0; font-weight:700; letter-spacing:.2px; }}
+  .hdr h1 {{ font-size:19px; margin:0; font-weight:700; letter-spacing:.2px; }}
   .tag {{ font-size:11.5px; padding:2px 9px; border-radius:10px; font-weight:700;
           border:1px solid transparent; }}
-  .tiny {{ font-size:10.5px; color:{C.COLOR['text_dim']}; line-height:1.5; }}
-  .sec {{ font-size:12px; font-weight:700; color:{C.COLOR['text']};
-          margin:10px 0 5px 0; padding-left:7px;
-          border-left:3px solid {C.COLOR['price']}; }}
+  .tiny {{ font-size:12px; color:{C.COLOR['text_dim']}; line-height:1.75; }}
+  .sec {{ font-size:15px; font-weight:700; color:{C.COLOR['text']};
+          margin:16px 0 7px 0; padding-left:9px;
+          border-left:4px solid {C.COLOR['price']}; }}
   /* 顶栏标题：不用 <h1>，避免与 Streamlit 的标题组件在 React 协调时冲突 */
-  .hdr .ttl {{ font-size:17px; font-weight:700; letter-spacing:.2px;
+  .hdr .ttl {{ font-size:19px; font-weight:700; letter-spacing:.2px;
                color:{C.COLOR['text']}; }}
 
   /* 结论卡片组：结论 → 判断依据 → 失效条件，三段固定结构便于回溯 */
@@ -223,23 +223,24 @@ st.markdown(f"""
   .concl {{ background:#FFFFFF; border:1px solid {C.COLOR['line']};
             border-left:4px solid {C.COLOR['price']}; border-radius:7px;
             padding:7px 11px; }}
-  .concl .ct {{ font-size:12px; font-weight:700; margin-bottom:3px;
+  .concl .ct {{ font-size:14px; font-weight:700; margin-bottom:4px;
                 color:{C.COLOR['text']}; }}
-  .concl .cc {{ font-size:11.5px; line-height:1.68; color:{C.COLOR['text']}; }}
-  .concl .cr {{ font-size:11px; line-height:1.62; color:#37485C;
-                margin-top:2px; padding-left:8px;
+  .concl .cc {{ font-size:13px; line-height:1.85; color:{C.COLOR['text']}; }}
+  .concl .cr {{ font-size:12.5px; line-height:1.8; color:#37485C;
+                margin-top:3px; padding-left:9px;
                 border-left:2px solid {C.COLOR['grid']}; }}
-  .concl .cw {{ font-size:10.5px; line-height:1.55; margin-top:4px;
+  .concl .cw {{ font-size:12px; line-height:1.7; margin-top:5px;
                 color:#A35A00; background:#FFF8EC; border-radius:4px;
-                padding:3px 7px; }}
+                padding:4px 8px; }}
 
   .kpis {{ display:flex; gap:7px; flex-wrap:wrap; }}
   .kpi {{ flex:1 1 0; min-width:82px; background:{C.COLOR['panel']};
           border:1px solid {C.COLOR['line']}; border-radius:7px;
           padding:7px 9px; }}
-  .kpi .k {{ font-size:10px; color:{C.COLOR['text_dim']}; white-space:nowrap; }}
-  .kpi .v {{ font-size:16px; font-weight:700; line-height:1.32; }}
-  .kpi .s {{ font-size:9.5px; color:{C.COLOR['text_dim']}; }}
+  .kpi .k {{ font-size:11.5px; color:{C.COLOR['text_dim']}; white-space:nowrap; }}
+  .kpi .v {{ font-size:20px; font-weight:700; line-height:1.32;
+             font-variant-numeric:tabular-nums; }}
+  .kpi .s {{ font-size:11px; color:{C.COLOR['text_dim']}; line-height:1.5; }}
 
   .mini {{ display:flex; gap:7px; flex-wrap:wrap; }}
   .mcard {{ flex:1 1 0; min-width:118px; background:#FFFFFF;
@@ -260,7 +261,7 @@ st.markdown(f"""
           padding:1.5px 7px; border-radius:9px; color:#fff; }}
   [data-testid="stElementToolbar"] {{ display:none; }}
   div[data-testid="stRadio"] > div {{ gap:1px !important; }}
-  div[data-testid="stRadio"] label {{ font-size:12px; padding:1px 3px;
+  div[data-testid="stRadio"] label {{ font-size:14px; padding:2px 5px;
       border-radius:4px; }}
   .stDataFrame {{ border:1px solid {C.COLOR['line']}; border-radius:6px; }}
 
@@ -288,6 +289,18 @@ st.markdown(f"""
   {md.css(C.COLOR)}
   /* 环比变化页（src/change_page.py） */
   {cp.css(C.COLOR)}
+
+  /* ---- 全站说明块统一（必须放在 cp.css 之后覆盖它的 10.5px）---- */
+  .cg-note {{ font-size:13px; line-height:1.95; color:#2C3E50;
+      background:{C.COLOR['panel']}; border-left:3px solid {C.COLOR['price']};
+      border-radius:0 8px 8px 0; padding:10px 14px; margin:6px 0 10px; }}
+  .cg-note b {{ color:{C.COLOR['text']}; }}
+  /* 表格与选择器的字号也上调一档，避免「正文大、控件小」的割裂感 */
+  [data-testid="stSelectbox"] label, [data-testid="stTextInput"] label,
+  [data-testid="stCheckbox"] label, [data-testid="stRadio"] p {{
+      font-size:13px !important; }}
+  [data-testid="stMetricLabel"] p {{ font-size:12px !important; }}
+  [data-testid="stMetricValue"] {{ font-size:22px !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -425,7 +438,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.11.02-r32.1"
+APP_VERSION = "2026.11.02-r33.0"
 
 
 def _fp_short() -> str:
@@ -550,11 +563,13 @@ if st.session_state.get("gl_show"):
 # ============================================================================
 # 页面切换
 # ============================================================================
-# 页面顺序按「先结论、后证据、再工具」排：
+# 页面顺序按「先结论、后证据、再工具」排，且**行业视角在个股视角之前**：
 #   ① 结论总览（所有判断与动作）→ ② 本期解读（逐图证据）
-#   → ③ 单只基金（落到具体产品）→ ④ 行业拥挤度（落到具体行业）
-#   → ⑤ 因子检验（这套方法到底靠不靠谱）→ ⑥ 方法与口径（口径与来源）
-PAGES = ["① 结论总览", "② 本期解读", "③ 单只基金", "④ 行业拥挤度",
+#   → ③ 行业拥挤度（先看 31 个行业谁挤）→ ④ 单只基金（再看具体产品）
+#   → ⑤ 因子检验（这套方法靠不靠谱）→ ⑥ 方法与口径（口径与来源）
+# 行业在前是有原因的：选基金之前先知道哪个行业在什么位置，
+# 否则会先被单只基金的历史业绩带跑。
+PAGES = ["① 结论总览", "② 本期解读", "③ 行业拥挤度", "④ 单只基金",
          "⑤ 因子检验", "⑥ 方法与口径"]
 # 深链：?p=2 直达第 2 页（便于分享与截图走查）；非法值静默忽略，不影响默认行为。
 try:
@@ -640,18 +655,18 @@ if _P == "② 本期解读":
 
 
 # ============================================================================
-# 页面 ③ 单只基金
+# 页面 ④ 单只基金
 # ============================================================================
-if _P == "③ 单只基金":
+if _P == "④ 单只基金":
     import fund_page
     fund_page.render(_h)
     st.stop()
 
 
 # ============================================================================
-# 页面 ④ 行业拥挤度
+# 页面 ③ 行业拥挤度
 # ============================================================================
-if _P == "④ 行业拥挤度":
+if _P == "③ 行业拥挤度":
     import map_page
     map_page.render(_h)
     st.stop()
@@ -1514,1008 +1529,19 @@ if _P == "（已停用）旧版因子检验":
 
 
 # ============================================================================
-# 页面 ⑤ 数据与方法（数据质量 + 方法说明）
+# ============================================================================
+# 页面 ⑥ 方法与口径（精简版：口径 → 数据 → 关键指标 → 自检 → 局限）
 # ============================================================================
 if _P == "⑥ 方法与口径":
-    # ---- 本页结论：先讲清「读完这一页你应该相信什么、不该相信什么」 ----
-    _h('<div class="sec">本页结论：这套数字能信到什么程度</div>')
-    _h("""<div class="cg-note" style="line-height:1.95">
-· <b>三套口径不能混用，也不能相加。</b>全持仓（半年报）回答「配了多少、主动还是被动」，
-前十大（季报）回答「多少基金在加」，个股（同披露两期）回答「谁被建仓」。
-页面上每个数字都标了口径与期次；看到没标的，一律当作不可信。<br>
-· <b>本版修掉了两个会系统性骗人的口径</b>：① 加仓占比改成<b>价格中性</b>
-（原始变化与当期行业收益的秩相关 ρ=0.73，中性化后降到 0.18），
-否则暴跌季会把「没交易」算成「集体减仓」；② 分位改成<b>扩张窗口</b>
-（每期只排到当期），否则做检验时会用到未来数据，IC 被高估。<br>
-· <b>它是描述工具，不是预测模型。</b>9 个季报因子在 29 期样本上没有一个是正向可用的
-（见「⑤ 因子检验」）。所以本系统的价值是：读懂机构在做什么、避免在拥挤处接棒、
-避免在撤离处抄底——<b>不承诺选出会涨的行业</b>。
-</div>""")
-
-    # ---- 自检：口径恒等式（现场跑，不写死结果） ----
-    _h('<div class="sec">自检：12 条口径恒等式，跑一遍就知道有没有被改坏</div>')
-    try:
-        import selfcheck as _sc
-        _t = _sc.run()
-        _h(_sc.html(_t, C.COLOR))
-        _h('<div class="tiny">这些检查全部是<b>恒等式</b>（左边必须等于右边），'
-           '不是「看起来差不多」。改任何一处口径，这里会立刻变红——'
-           '比人工对表可靠。</div>')
-    except Exception as _e:
-        _h(f'<div class="cg-note">自检脚本未通过：{type(_e).__name__}: {_e}</div>')
-
-    # ---- 口径总表：先讲清「同一句话在不同口径下不是一个数」 ----
-    _h('<div class="sec">零、三套口径 · 每套只回答一个问题</div>')
-    try:
-        import canon as _cn
-        _qs = _cn.quarters()
-        _nf = len(_cn.universe(_qs[-1])) if _qs else 0
-        _nf_full = len(_cn.full_quarters())
-        _info = (f"当前库：<b>{len(_qs)}</b> 期（{_qs[0]}–{_qs[-1]}）、"
-                 f"全持仓期 <b>{_nf_full}</b> 个、最新期样本 <b>{_nf:,}</b> 只主动权益基金。")
-    except Exception:
-        _info = ""
-    _rule = pd.DataFrame([
-        dict(口径="A 全持仓（半年报 Q2/Q4）", 频率="半年",
-             权重= "占净值比（之和＝股票仓位）",
-             回答="配置有多高、超配低配、主动还是被动、整体加仓还是减仓",
-             不能="本季发生了什么——披露滞后约 3–4 周（法定 15 个工作日）"),
-        dict(口径="B 前十大（季报 Q1–Q4）", 频率="季",
-             权重="每只基金取前 10 只，再归一化到 100%",
-             回答="多少基金在加、方向是否一致、结构怎么漂移",
-             不能="绝对配置水平——只覆盖前十大，会把每个行业都压低"),
-        dict(口径="C 个股（同披露类型两期）", 频率="年",
-             权重="持有该股的基金数、持股数、持仓市值",
-             回答="谁被建仓、谁被清仓",
-             不能="相邻季比较——从第 11 名掉出前十大会被误判成清仓"),
-    ])
-    st.dataframe(_rule, width="stretch", hide_index=True,
-                 column_config={"不能": st.column_config.TextColumn(width="large"),
-                                "回答": st.column_config.TextColumn(width="large")})
-    _h(f'<div class="tiny">{_info}'
-       '样本池＝普通股票型 + 偏股混合 + 灵活配置；剔除单行业占前十大 >80% 的主题基金'
-       '（其变动反映主题申赎，不是行业观点）、剔除覆盖率 >105% 或 <1% 的失真记录。</div>')
-
-    _h('<div class="sec">统计规则（事前固定，不看结果调参）</div>')
-    _h("""<div class="cg-note" style="line-height:1.95">
-· <b>Δ配置 = 被动 + 主动</b>：被动 = w₀(1+r)/Σw₀(1+r) − w₀，主动 = Δ − 被动。
-这是唯一能回答「机构到底动没动」的算法；把 Δ 直接叫「减仓」是最常见的错误。<br>
-· <b>加仓占比</b> = 加仓基金数 ÷ (加仓 + 减仓)，单只基金变化超过 ±0.1pp 才计数。<br>
-· <b>分歧度 = |2×加仓占比 − 1|</b>：它是加仓占比的单调变换，<b>不是独立指标</b>，
-所以任何图都不能把两者当两个轴画散点（那是一条线）。真正独立的分歧度量是
-<b>离散度</b>＝Δ 的标准差。<br>
-· <b>分位</b>＝该行业当前值在<b>它自己</b>历史序列中的排名，不是跨行业比较：
-银行 20% 与电子 20% 的「贵」不是同一件事。<br>
-· <b>判读</b>只看加仓占比（≥65% 共识、≤35% 撤离、其余多空对撞）。
-旧规则写成「占比 ≥70% 且分歧度 &lt;0.4」，两个条件数学上互斥，
-导致「共识形成」永远不会出现——已修正。
-</div>""")
-
-    _h('<div class="sec">四条必须知道的局限（不写清楚就等于骗人）</div>')
-    _h("""<div class="cg-note" style="line-height:1.95">
-· <b>幸存者偏差</b>：基金清单取自「当前仍在存续」的基金，历史上已清盘、
-已转型的基金不在库内。所以 2021 年只有 3000 只左右、2026 年 4100 只，
-早期分位偏乐观。<b>不要用 2019–2021 的分位做「历史极值」判断</b>，
-它的样本池和今天不是同一个。<br>
-· <b>季报只有前十大</b>：Q1/Q3 每只基金只披露 10 只股票，占净值约 20–50%。
-所以季报期的「行业配置」永远是不完整的，本库在季报期一律用它算<b>广度</b>、
-不算<b>水平</b>。<br>
-· <b>持仓与净值不同步</b>：季报在季末后 15 个工作日内披露，本库抓取入库还要再晚几天；本期数据距季末 28 天，等你看到时下季度已过约 1/3。
-本库的补救办法是用日度净值反推当前行业暴露（另见「净值反推」实验），
-但那是估计值，不是披露值，只作参考。<br>
-· <b>只有股票，没有债券与现金</b>：灵活配置型基金的债券、现金仓位不在明细里，
-所以「股票仓位」是「股票占净值比」，不是「总仓位」；
-债仓重的基金，其行业占比会被系统性放大。
-</div>""")
-
-    _h('<div class="sec">三条被数据修正的说法（数字见「⑤ 因子检验」）</div>')
-    _h("""<div class="cg-note" style="line-height:1.95">
-· <b>「拥挤即风险」——方向对，但不显著。</b>配置分位的 RankIC <b>−0.039</b>、
-t <b>−0.83</b>、p <b>0.42</b>（26 期），五分层从 Q1 <b>+2.39%</b> 降到 Q5 <b>+0.51%</b>
-但不单调（单调性 −0.70）。所以拥挤度只能当<b>风险提示与仓位约束</b>，
-不能当卖出信号。<br>
-· <b>「跟着基金加仓就能赚」——方向甚至可能是反的。</b>加仓广度的 RankIC
-<b>−0.041</b>、t <b>−1.98</b>、p <b>0.058</b>（29 期）：大家一窝蜂加的行业，
-次季反而略弱。10% 显著、样本外需再验证，但至少可以否定「追共识」这条逻辑。<br>
-· <b>「前十大口径会系统性低估」——不成立。</b>用半年报全持仓反推，
-前十大 ÷ 全持仓 的中位比值 <b>1.07</b>：前十大不是低估，
-而是<b>把尾部行业归零、把集中行业放大</b>。只有综合、煤炭低于 0.7。
-</div>""")
-
-    _h('<div class="sec">一、数据来源 · 东方财富（主口径）+ Wind（交叉校验）</div>')
-
-    # 数据健康（R19）：五类数据源的覆盖、缺口、取数方式——先看能不能用，再看结论
-    _ds = inst.data_status()
-    _badge = {"available": "✅ 可用", "proxy": "⚠️ 代理", "blocked": "⛔ 未就绪"}
-    _ds_show = _ds.assign(状态=_ds["state"].map(_badge))[
-        ["name", "状态", "have", "need", "why"]].rename(columns={
-            "name": "数据源", "have": "现有覆盖", "need": "补齐所需", "why": "约束"})
-    _h('<div class="sec">数据健康 · 五类数据源覆盖与缺口（先看能不能用）</div>')
-    st.dataframe(_ds_show, width="stretch", hide_index=True)
-    _h('<div class="tiny">口径：持仓明细与行业聚合来自<b>东方财富公开披露</b>（逐基金全量抓取，'
-       '可随时用 tools/run_ak_all.py 重建）；Wind 只保留<b>交叉验证</b>角色（同基金同行业'
-       '相关系数 0.98–0.99）。<b>仍未就绪的只有两项</b>：基金经理任职区间、季报正文——'
-       '前者影响「经理变更不可比」的剔除，后者影响文本因子，两者都不影响当前结论。</div>')
-
-    # 个股库覆盖（若管道已入库）
-    try:
-        import sqlite3
-        if os.path.exists(inst.DB_PATH):
-            _con = sqlite3.connect(inst.DB_PATH)
-            _cov = pd.read_sql(
-                "SELECT quarter 季度, COUNT(*) 行数, MIN(n_funds) 最少基金数,"
-                " MAX(n_funds) 最多基金数, ROUND(SUM(mv_yi),1) 持仓市值合计亿元 "
-                "FROM stock_holdings GROUP BY quarter ORDER BY quarter", _con)
-            _log = pd.read_sql(
-                "SELECT quarter 季度, status 状态, rows 行数, ts 时间, note 备注 "
-                "FROM fetch_log ORDER BY id DESC LIMIT 12", _con)
-            _con.close()
-            if not _cov.empty:
-                with st.expander("历史口径：Wind 重仓股前 50 只 · 逐期覆盖（已被全市场口径取代）",
-                                 expanded=False):
-                    st.dataframe(_cov, width="stretch", hide_index=True)
-                    _h('<div class="tiny">这张表<b>只作历史留档</b>：Wind 接口每期只给'
-                       '「按持股基金数排序的前 50 只」，跌出前 50 会被误判为退出。'
-                       '现行口径已换成东方财富完整明细（见上「全市场持仓库 · 逐期覆盖」），'
-                       '本表不再参与任何结论。</div>')
-            if not _log.empty:
-                with st.expander("取数日志（最近 12 条）", expanded=False):
-                    st.dataframe(_log, width="stretch", hide_index=True)
-    except Exception as _e:
-        _h(f'<div class="tiny">个股库尚未建立：{_e}。运行 tools/fund_pipeline.py --ingest 后显示覆盖。</div>')
-
-    # 日度行业暴露（4.4）：净值对 31 行业日收益做滚动约束回归
-    try:
-        _nev = os.path.join("data", "cache", "nav_exposure_50.csv")
-        if os.path.exists(_nev):
-            _nq = pd.read_csv(_nev, dtype={"code": str})
-            _h('<div class="sec">日度行业暴露 · 净值反推（4.4）</div>')
-            _c1, _c2, _c3 = st.columns(3)
-            _c1.metric("R² 中位", f"{_nq['r2'].median():.3f}")
-            _c2.metric("R² < 0.5 占比", f"{(_nq['r2'] < 0.5).mean() * 100:.0f}%")
-            _c3.metric("样本基金", f"{len(_nq)} 只")
-            st.dataframe(_nq.head(20), width="stretch", hide_index=True,
-                         column_config={
-                             "r2": st.column_config.NumberColumn("R²", format="%.3f"),
-                             "w_sum": st.column_config.NumberColumn("Σ权重", format="%.2f"),
-                             "top1_w": st.column_config.NumberColumn("第一大行业%", format="%.1f%%"),
-                         })
-            _bad = (_nq["r2"] < 0.5).mean()
-            _h(f'<div class="tiny">模型：r(基金) = Σ w_k·r(申万一级行业)，w≥0、Σw≤1，'
-               f'窗口 60 个交易日滚动。<b>R² 中位 {_nq["r2"].median():.3f}、'
-               f'低于 0.5 的占 {_bad * 100:.0f}%</b>——'
-               f'{"未超过 30% 阈值，日度暴露可用于压缩季报滞后（从 3–4 周压到 1–2 周）" if _bad < 0.3 else "超过 30% 阈值，按规则回退季频"}。'
-               f'<b>已知偏差</b>：31 个行业日收益高度共线，多数基金的 Σw 会顶到上限 1，'
-               f'所以这里得到的是<b>相对行业结构</b>（谁多谁少），不是绝对仓位；'
-               f'要得到绝对仓位需再乘基金实际股票仓位。</div>')
-    except Exception:
-        pass
-
-    # 季末以来漂移（4.4 时效性）：同模型前后对比，把 3–4 周滞后压到 1–2 周
-    try:
-        _drf = os.path.join("data", "cache", "nav_drift_2026Q3.csv")
-        if os.path.exists(_drf):
-            _dd = pd.read_csv(_drf)
-            _h('<div class="sec">季末以来行业漂移 · 净值反推（补 3–4 周滞后）</div>')
-            st.dataframe(_dd, width="stretch", hide_index=True, height=330,
-                         column_config={
-                             "行业平均漂移pp": st.column_config.NumberColumn(format="%+.2f"),
-                             "平均绝对漂移pp": st.column_config.NumberColumn(format="%.2f"),
-                         })
-            _up = _dd.head(3)
-            _dn = _dd.tail(3).iloc[::-1]
-            _h(f'<div class="tiny">区间 <b>2026-09-30 → 最新交易日</b>，'
-               f'样本为有日度净值的主动权益基金（R²≥0.5）。<b>净加仓</b>：'
-               + "、".join(f"{r['行业']} {r['行业平均漂移pp']:+.2f}pp"
-                          f"（{int(r['加仓基金数'])} 加 / {int(r['减仓基金数'])} 减）"
-                          for _, r in _up.iterrows())
-               + f'；<b>净减仓</b>：'
-               + "、".join(f"{r['行业']} {r['行业平均漂移pp']:+.2f}pp"
-                          f"（{int(r['加仓基金数'])} 加 / {int(r['减仓基金数'])} 减）"
-                          for _, r in _dn.iterrows())
-               + '。<b>这是季报之后发生的事，季报里看不到</b>；'
-                 '口径为同一回归模型内「季末窗口权重」与「最新窗口权重」之差，'
-                 '避免与季报占比混比产生口径差。</div>')
-    except Exception:
-        pass
-
-    # 前十大偏差校准（4.5）：用半年报全持仓反推前十大口径低估了哪些行业
-    try:
-        import ak_data as akd
-        _fq = next((x for x in reversed(akd.latest_quarters_all())
-                    if x[-1] in ("2", "4")), None)
-        _tb = akd.top10_bias(_fq) if _fq else pd.DataFrame()
-        if not _tb.empty:
-            _h('<div class="sec">前十大口径偏差校准 · 前十大 ÷ 全持仓（按行业）</div>')
-            _low = _tb[_tb["前十大除以全持仓"] < 0.7]
-            st.dataframe(_tb, width="stretch", hide_index=True, height=380,
-                         column_config={
-                             "前十大除以全持仓": st.column_config.NumberColumn(format="%.2f"),
-                             "全持仓占比中位": st.column_config.NumberColumn(format="%.1f%%"),
-                             "前十大占比中位": st.column_config.NumberColumn(format="%.1f%%"),
-                         })
-            _h(f'<div class="tiny">样本期 <b>{_fq}</b>（半年报，披露全部持仓）。'
-               f'做法：同一只基金里取权重前 10 只算行业结构，与全部明细的行业结构相除，'
-               f'两边都先归一化到 100% 以剥离覆盖率差异。<b>中位比值 '
-               f'{_tb["前十大除以全持仓"].median():.2f}</b>——说明前十大整体上'
-               f'<b>高估</b>了集中行业、把尾部行业直接归零，而不是系统性低估。'
-               f'比值 &lt;0.7 的行业有 <b>{len(_low)}</b> 个'
-               f'{("：" + "、".join(_low["industry"].tolist())) if len(_low) else ""}，'
-               f'这些行业的「前十大读数」不能直接用，必须双口径对照。</div>')
-    except Exception:
-        pass
-
-    # 自检与证伪（R22）：每次改数据/改页面后跑 tools/audit_selfcheck.py
-    try:
-        _aud = os.path.join("报告", "自检表.csv")
-        if os.path.exists(_aud):
-            _a = pd.read_csv(_aud)
-            _n = len(_a)
-            _ok = int((_a["结果"] == "通过").sum())
-            _fail = _a[_a["结果"] == "失败"]
-            _fal = _a[_a["结果"].str.startswith("被证伪")]
-            _h('<div class="sec">自检与证伪 · 数据自洽 + 主动找反证</div>')
-            _c = st.columns(3)
-            _c[0].metric("不变量通过", f"{_ok}/{int((_a['类别']=='不变量').sum())}")
-            _c[1].metric("被证伪的假设", f"{len(_fal)}",
-                         help="这是结论：说明那些说法在你的数据上不成立")
-            _c[2].metric("失败项", f"{len(_fail)}",
-                         delta=None if len(_fail) == 0 else "需修数据", delta_color="inverse")
-            st.dataframe(_a, width="stretch", hide_index=True, height=320)
-            _h('<div class="tiny">'
-               + (f'<b>失败项 {len(_fail)} 个，页面数字此时不可信，必须先修数据。</b>' if len(_fail) else
-                  '不变量（合计=100、HHI=Σw²、分歧度三类计数、个股Δ=两期之差、港股不混入行业、'
-                  '覆盖率=明细合计、未过验证不得标“可用”）<b>全部通过</b>。')
-               + ('　被证伪项是结论而非错误：' +
-                  '；'.join(f'{r["检查项"]}（{r["证据"]}）' for _, r in _fal.iterrows())
-                  if len(_fal) else '')
-               + f'　复跑命令：<span class="mono">python tools/audit_selfcheck.py</span></div>')
-    except Exception as _e:
-        pass
-
-    # 全市场持仓库健康度（R20.1）：期次、基金数、覆盖率、披露口径
-    try:
-        import ak_data as akd
-        _ct = akd.coverage_table()
-        if not _ct.empty:
-            _ct = _ct.rename(columns={"quarter": "期次", "n_funds": "基金数",
-                                      "avg_cov": "平均覆盖率%", "n_rows": "明细行数"})
-            _ct["平均覆盖率%"] = _ct["平均覆盖率%"].round(1)
-            _ct["披露口径"] = _ct["期次"].str[-1].map(
-                lambda x: "全持仓（半年报/年报）" if x in ("2", "4") else "前十大（季报）")
-            _ct["跨期可比"] = _ct["披露口径"].map(
-                lambda x: "只与上年同季可比" if "前十大" in x else "只与上年同期可比")
-            _h('<div class="sec">全市场持仓库 · 逐期覆盖与披露口径</div>')
-            st.dataframe(_ct, width="stretch", hide_index=True)
-            _h(f'<div class="tiny">共 <b>{len(_ct)}</b> 期、'
-               f'<b>{int(_ct["基金数"].max())}</b> 只基金（去重后）。'
-               f'季报只披露前十大（覆盖率约 {_ct[_ct["披露口径"].str.contains("前十大")]["平均覆盖率%"].mean():.0f}%），'
-               f'半年报披露全部（约 {_ct[_ct["披露口径"].str.contains("全持仓")]["平均覆盖率%"].mean():.0f}%）。'
-               f'<b>所以任何跨期比较都必须先除以每只基金每期覆盖率，并且只和同披露口径的期比。</b>'
-               f'抓取可随时中断，重跑 <span class="mono">python tools/run_ak_all.py</span> 从断点继续。</div>')
-    except Exception as _e:
-        pass
-
-    # 数据源交叉验证（R20）：东财 vs Wind，同基金、同行业、均按覆盖率归一化
-    try:
-        import ak_data as akd
-        _aq = akd.latest_quarters()
-        _cv = akd.cross_validate_wind(_aq[0]) if _aq else pd.DataFrame()
-        if not _cv.empty:
-            _h('<div class="sec">数据源交叉验证 · 东方财富 vs Wind（同基金同行业）</div>')
-            st.dataframe(_cv, width="stretch", hide_index=True,
-                         column_config={
-                             "平均绝对偏差": st.column_config.NumberColumn(format="%.2f pp"),
-                             "Wind均值": st.column_config.NumberColumn(format="%.2f%%"),
-                             "东财均值": st.column_config.NumberColumn(format="%.2f%%"),
-                             "相关": st.column_config.NumberColumn(format="%.3f"),
-                         })
-            _h(f'<div class="tiny">区间 <b>{_aq[0]}</b>，可比行业 {len(_cv)} 个；'
-               f'平均绝对偏差中位 <b>{_cv["平均绝对偏差"].median():.2f}pp</b>、'
-               f'最大 {_cv["平均绝对偏差"].max():.2f}pp，相关系数中位 '
-               f'<b>{_cv["相关"].median():.3f}</b>。偏差主要来自两处：'
-               f'东财持仓明细截断 100 只（大基金尾部缺失）、季报期只披露前十大。'
-               f'结论：两套数据口径一致，可互为校验；<b>决策表采用东财全市场口径，'
-               f'Wind 50 只样本用于交叉验证</b>。</div>')
-    except Exception as _e:
-        pass
-
-    # Python 接口探查记录（R19.2）：为什么不走 WindPy，而是走 MCP
-    _h('<div class="sec">Python 接口探查记录 · 为什么没走 WindPy</div>')
-    st.dataframe(pd.DataFrame([
-        dict(途径="WindPy", 尝试="pip install WindPy", 结果="PyPI 无此包（No matching distribution）",
-             结论="Wind 官方只通过终端分发，无法从公网安装"),
-        dict(途径="Wind 终端", 尝试="检查 C:/Wind 与进程", 结果="仅剩 Wind.NET.Client 空壳目录，无 exe、无进程",
-             结论="终端未安装/已卸载，即使装上 WindPy 也无法登录取数"),
-        dict(途径="Choice 量化接口", 尝试="检查 C:/eastmoney/Choice 与 EmQuantAPI", 结果="有 Choice.exe，但无 EmQuantAPI 目录或 pyd",
-             结论="接口需在终端内下载安装并登录，无法命令行完成"),
-        dict(途径="掘金 gm", 尝试="pip install gm", 结果="安装失败，且无基金持仓字段",
-             结论="不适用"),
-        dict(途径="Wind MCP", 尝试="单基金 + 批量汇总问句", 结果="单基金可返回行业配置/前十大；批量汇总可返回每期前 50 只",
-             结论="采用：43 期个股 + 50 只×4 期行业配置，逐次调用、断点续传"),
-    ]), width="stretch", hide_index=True)
-    _h('<div class="tiny">这条记录的意义：<b>不是没试，而是试过三条路都不通</b>。'
-       'MCP 是当前唯一可用的取数通道，代价是样本受限（每期前 50 只、50 只基金），'
-       '所有相关结论都已标注样本边界。</div>')
-
-    # 个股库数据质量（R19）：断点、别名、ST、代码缺失——数据能用，但要知道它哪里不可比
-    try:
-        import sqlite3
-        if os.path.exists(inst.DB_PATH):
-            _c2 = sqlite3.connect(inst.DB_PATH)
-            _qm = pd.read_sql("SELECT quarter 季度, AVG(n_funds) 平均基金数,"
-                              " COUNT(*) 行数 FROM stock_holdings GROUP BY quarter"
-                              " ORDER BY quarter", _c2)
-            _c2.close()
-            _qm["环比%"] = (_qm["平均基金数"].pct_change() * 100).round(1)
-            _brk = _qm[_qm["季度"].isin(list(inst.REGIME_BREAK))]
-            _h('<div class="sec">个股库数据质量 · 口径断层与不可比项</div>')
-            st.dataframe(pd.DataFrame([
-                dict(项="样本池断层", 事实=f'2019Q2 均值 +34.1%、2020Q2 +39.4%（见下表）',
-                     处理="跨断层比较 Δ持股基金数会高估，页面与报告已标注"),
-                dict(项="A/H 双重主体", 事实="中国海油 / 中国海洋石油同期并存",
-                     处理="已合并 6 组别名（基金数取 max、市值求和）"),
-                dict(项="ST/退市", 事实="库内存在 ST、退市整理期主体",
-                     处理="按名称含「ST/退市」剔除，剔除数记录在 stock_flow.attrs"),
-                dict(项="股票代码", 事实="42/43 期无代码，只能按简称合并",
-                     处理="改名会断链；跨期匹配按名称，已知会低估 Δ"),
-                dict(项="港股", 事实="含腾讯、阿里、中芯国际等港股",
-                     处理="与 A 股同表，行业映射缺失时标「未映射」"),
-                dict(项="榜单截断", 事实="每期只取前 50 只",
-                     处理="「退出前50」≠清仓、「新进前50」≠新建仓"),
-            ]), width="stretch", hide_index=True)
-            _h('<div class="tiny">断层明细（平均持股基金数环比）：</div>')
-            st.dataframe(_qm[_qm["季度"].isin(["2018Q4","2019Q1","2019Q2","2019Q3",
-                                              "2020Q1","2020Q2","2020Q3","2021Q1"])],
-                         width="stretch", hide_index=True)
-    except Exception:
-        pass
-
-    # 样本清洗：区分「已执行」与「未执行」，数字现算不写死
-    _h('<div class="sec">样本清洗 · 已执行的剔除与未执行的原因</div>')
-    _rows = []
-    try:
-        import ak_data as akd
-        _q = akd.latest_quarters()
-        _pan = akd.industry_panel(_q[0], normalize=True) if _q else pd.DataFrame()
-        if not _pan.empty:
-            _theme = int((_pan.max(axis=1) > 80).sum())
-            _rows.append(dict(步骤="单行业>80% 的主题基金", 状态="已执行",
-                              剔除=f"{_theme} 只（占样本 {_theme / len(_pan) * 100:.1f}%）",
-                              说明="该基金在单一行业配置超过 80%，其变动反映主题申赎而非行业观点"))
-        if akd.available():
-            import sqlite3 as _s3
-            _c = _s3.connect(f"file:{os.path.join('data','db','fund_ak.db')}?mode=ro", uri=True)
-            _bad = _c.execute("SELECT COUNT(*) FROM coverage WHERE coverage>105 OR coverage<1").fetchone()[0]
-            _tot = _c.execute("SELECT COUNT(*) FROM coverage").fetchone()[0]
-            _c.close()
-            _rows.append(dict(步骤="覆盖率异常（>105% 或 <1%）", 状态="已执行",
-                              剔除=f"{_bad} 组（基金×期，共 {_tot:,} 组）",
-                              说明="东财个别分级/联接/QDII 的占净值比合计失真，归一化会压低真实占比"))
-    except Exception:
-        pass
-    _rows += [
-        dict(步骤="ST / 退市主体", 状态="部分执行",
-             剔除="个股不进行业聚合（行业置空）", 说明="缺少个股状态字段，个股榜无法按 ST 剔除"),
-        dict(步骤="新基金（成立不足 2 期）", 状态="未执行", 剔除="—",
-             说明="需基金成立日；现有基金列表无该字段"),
-        dict(步骤="清盘 / 转型 / 类型变更", 状态="未执行", 剔除="—", 说明="需基金档案与变更记录"),
-        dict(步骤="近4季仓位<60% 的灵活配置", 状态="未执行", 剔除="—",
-             说明="需基金资产净值与股票投资市值（东财明细只有占净值比）"),
-        dict(步骤="规模<5000万 迷你基金", 状态="未执行", 剔除="—", 说明="需逐期基金规模"),
-        dict(步骤="基金经理变更（不可比）", 状态="未执行", 剔除="—", 说明="需经理任职起止日期"),
-        dict(步骤="流动性<5000万/日、总市值<50亿", 状态="未执行", 剔除="—",
-             说明="需个股日成交额与总市值；个股榜目前只用「持股基金数≥10」过滤噪音"),
-    ]
-    st.dataframe(pd.DataFrame(_rows), width="stretch", hide_index=True,
-                 column_config={"说明": st.column_config.TextColumn(width="large")})
-    _h('<div class="tiny">只把<b>真正执行过</b>的规则标「已执行」，其余写清缺哪个字段。'
-       '分歧度的样本边界因此是「覆盖率可用的主动权益基金」，不含迷你基金/经理变更等更细的剔除——'
-       '这些会在结论里以「样本边界」标注，而不是假装做过。</div>')
-
-    _h(f"""<div class="kpis">
-          <div class="kpi"><div class="k">数据源</div><div class="v" style="font-size:15px">Wind</div>
-            <div class="s">MCP 结构化取数</div></div>
-          <div class="kpi"><div class="k">基金口径</div><div class="v" style="font-size:13px">主动权益三类</div>
-            <div class="s">股票型+偏股混合+灵活配置</div></div>
-          <div class="kpi"><div class="k">配置分母</div><div class="v" style="font-size:13px">重仓股总市值</div>
-            <div class="s">非基金资产净值</div></div>
-          <div class="kpi"><div class="k">基准</div><div class="v" style="font-size:13px">沪深300动态</div>
-            <div class="s">逐季实测，非静态</div></div>
-          <div class="kpi"><div class="k">可建模区间</div><div class="v" style="font-size:15px">{QUARTERS[0]}</div>
-            <div class="s">~ {LATEST} · {len(QUARTERS)} 期</div></div>
-        </div>""")
-
-    # ---------------------------------------------------------------- 样本漏斗
-    _h('<div class="sec">零、我们统计的是谁：从 1.5 万只到 4,270 只</div>')
-    try:
-        import canon as _cn2
-        _mk = _cn2.market_fund_counts()
-        _pool = _cn2.profiles()
-        _qq = _cn2.latest()
-        _cov = _cn2.coverage(_qq)
-        _eq = _cn2.equity_codes()
-        _keep = _cov.index.intersection(list(_eq)) if _eq else _cov.index
-        _good = _cov.loc[_keep]
-        _good = _good[(_good >= _cn2.COV_MIN) & (_good <= _cn2.COV_MAX)]
-        _uni = _cn2.universe(_qq)
-        _n_pool, _n_cov, _n_good, _n_uni = len(_pool), len(_cov), len(_good), len(_uni)
-        _tot = _mk.get("主动权益基金") or 0
-        _rows = [
-            ("全市场公募基金", _mk.get("全市场基金"), 0,
-             f"东财名录 {_mk.get('全市场份额', 0):,} 条份额，按名称合并 A/C/后端；"
-             f"含债、货币、指数、QDII、FOF、REITs、商品"),
-            ("其中主动权益", _tot, 1,
-             "普通股票 + 偏股混合 + 灵活配置 + 平衡混合；其余类型要么不投 A 股，"
-             "要么是复制指数（被动资金不算「机构观点」）"),
-            ("本库抓取", _n_pool, 1,
-             f"覆盖主动权益的 {_n_pool / _tot * 100:.1f}%；缺口主要是「后端」收费模式"
-             f"（与 A 类同一只基金）与新发未建仓"),
-            ("当期有持仓", _n_cov, 2,
-             f"{_qq} 无披露的 {_n_pool - _n_cov} 只：新发未建仓、已清盘、停牌"),
-            ("主动权益且覆盖率合规", _n_good, 3,
-             f"再剔 {_n_cov - _n_good} 只：非权益类型、持仓市值÷净值 &gt;105% 或 &lt;1%"),
-            ("最终样本", _n_uni, 4,
-             f"再剔 {_n_good - _n_uni} 只主题基金（单行业占前十大 &gt;80%，"
-             f"仓位变动反映申赎而非行业判断）"),
-        ]
-        def _row_html(idx, nm, n, lv, note):
-            # 不能用生成器 + f-string 直接拼：f-string 里的循环变量在
-            # 某些 Python 版本下取不到（NameError: name 'i' is not defined），
-            # 拆成普通函数、把 i 当参数传入最稳。
-            _bg = ' style="background:#FAFBFC"' if idx % 2 else ""
-            _ind = "　" * lv + ("└ " if lv else "")
-            return (f"<tr{_bg}>"
-                    f'<td style="padding:5px 8px;font-size:11.5px">{_ind}{nm}</td>'
-                    f'<td style="padding:5px 8px;font-size:12px;font-weight:700;'
-                    f'text-align:right;font-variant-numeric:tabular-nums">{n:,}</td>'
-                    f'<td style="padding:5px 8px;font-size:10.5px;color:#5A6B7D">{note}</td>'
-                    f'</tr>')
-        _body = "".join(_row_html(i, nm, n, lv, note)
-                        for i, (nm, n, lv, note) in enumerate(_rows) if n)
-        _h(f'<div style="border:1px solid {C.COLOR["line"]};border-radius:6px;'
-           f'overflow:hidden;margin:4px 0 8px">'
-           f'<table style="width:100%;border-collapse:collapse">'
-           f'<tr style="background:{C.COLOR["panel"]}">'
-           f'<th align="left" style="padding:5px 8px;font-size:11px">层级</th>'
-           f'<th align="right" style="padding:5px 8px;font-size:11px">只数</th>'
-           f'<th align="left" style="padding:5px 8px;font-size:11px">为什么少了</th></tr>'
-           f'{_body}</table></div>')
-        _h(f'<div class="tiny">名录口径：东财基金列表，截至 {_mk.get("截至", "—")}'
-           f'（新发与清盘会让这个数每季变动几十只）；'
-           f'「只数」是<b>基金</b>不是<b>份额</b>——同一只基金的 A/C/后端份额持仓完全相同，'
-           f'若按份额统计，广度会被同一只基金重复计数。'
-           f'本库已按代码去重，4,941 个代码里只有 26 组是 A/H 双份额。</div>')
-    except Exception as _e:
-        _h(f'<div class="tiny">样本漏斗暂不可用：{type(_e).__name__}</div>')
-
-    # ---------------------------------------------------------------- 口径定义
-    _h('<div class="sec">① 口径定义（决定一切结论）</div>')
-    _fx = getattr(B, "_fixed_issues", None)
-    _h(f"""<div class="alert" style="border-color:{C.COLOR['level_极度拥挤']}">
-        <b>⚠️ 本轮累计自主发现并修复的 8 项数据/方法缺陷（机构级留痕）</b>
-        <table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:12.5px">
-        <tr style="background:#F2F5F8"><th align="left">编号</th><th align="left">缺陷</th>
-        <th align="left">影响面</th><th align="left">处理</th></tr>
-        <tr><td>D1</td><td><b>沪深300 基准加权口径错误</b><br>
-            误用总市值加权（银行 22.16%），而沪深300 实为自由流通市值加权（银行 13.14%）</td>
-            <td><b>8 / 9 期</b>、全部超配比例</td>
-            <td>全部 9 期 Wind 重查，逐期校验加总 = 100%</td></tr>
-        <tr style="background:#FAFBFC"><td>D2</td><td><b>拥挤等级混淆「相对历史」与「绝对方向」</b><br>
-            深度低配行业（银行 −8.24pct）因自身历史分位 100% 被误标「极度拥挤」</td>
-            <td>全部行业-季度标签</td>
-            <td>分级加入绝对方向约束：先定方向、再定强度</td></tr>
-        <tr><td>D3</td><td><b>HHI 历史分位分母含空季度</b><br>
-            分母用 30 期（含 20 期无持仓），HHI 创新高时分位只显示 30%</td>
-            <td>市场层面结论</td>
-            <td>改为除以有效观测数，现显示 90%</td></tr>
-        <tr style="background:#FAFBFC"><td>D4</td><td><b>2019–2021 涨跌幅旧值实为
-            2022Q1 数据的「错位复制」</b><br>
-            12 个季度的 8 个行业值全部等于 2022Q1 的对应值，
-            并非这些季度的真实收益（占位副本）</td>
-            <td>长历史 IC / 牛熊划分</td>
-            <td>逐季 Wind 重抓 31 行业，930 行全覆盖（含三重校验）</td></tr>
-        <tr><td>D5</td><td><b>前端 React 报错 removeChild / insertBefore</b><br>
-            <code>st.markdown(unsafe_allow_html=True)</code> 经
-            markdown → parse5 两阶段解析，<code>&lt;tr&gt;</code> 被自动包
-            <code>&lt;tbody&gt;</code> 等结构改写，真实 DOM 与虚拟 DOM 不一致</td>
-            <td>全部 112 处 HTML 块</td>
-            <td>统一迁移到 <code>st.html()</code>（单次解析，无 markdown 阶段）</td></tr>
-        <tr style="background:#FAFBFC"><td>D6</td><td><b>持仓序列存在口径断点（已量化，非隐藏）</b><br>
-             2024Q1~2025Q1 为<b>偏股混合型</b>单类型，2025Q2 起为<b>主动权益三类合计</b>；
-             断点处重仓总市值跳升 <b>+71.9%</b></td>
-             <td>绝对规模类指标</td>
-             <td>做<b>占比不变性检验</b>：断点处 ΔHHI 仅 −1.2%（同口径相邻期中位数 7.7%），
-                 判定占比类集中度指标<b>稳健</b>；绝对规模类指标限定同口径区间内比较</td></tr>
-        <tr><td>D7</td><td><b>持仓体检表把占比合计误标为市值</b><br>
-             <code>B.alloc</code> 是配置比例矩阵（每行合计恒 100），直接求和并标为
-             「重仓合计(亿元)」导致体检表恒显示 100、环比恒 0% 的假象</td>
-             <td>⑧ 页持仓序列体检 + 绝对规模展示</td>
-             <td>重仓合计改为从 cache 原始市值（holdings__*.json）逐期求和，
-                 环比 / 电子占比 / Top1 同步修正</td></tr>
-        <tr style="background:#FAFBFC"><td><b>D8</b></td><td><b>行业季度涨跌幅被前值填充（本轮发现）</b><br>
-            24 个行业自 <b>2022Q1</b>、另有 3 个（汽车/轻工/银行）自 <b>2025Q1</b> 起，
-            季度收益被复制成同一个值，共 <b>486 个单元格</b>；电子 2022Q1 真实
-            <b>−25.46%</b> 被写成 <b>+20.86%</b>（符号相反）</td>
-            <td><b>IC / 分层 / 事件研究 / 收益归因全部失真</b>：旧表「F13 RankIC +0.69、
-                F11 +0.36、事件研究 3 个月 −8.8%」均为冻结收益造成的伪显著</td>
-            <td>Wind 逐指数重抓季 K 收盘（27 个指数 × 19 季），计算季收益并替换 486 格；
-                三重校验：3 个未受影响行业 18 期逐期比对最大偏差 <b>0.00pp</b>、
-                与 <code>tools/market_reference.py</code> 内置参考序列一致、
-                季度跨行业均值落位合理。备份 <code>sw_industry_returns_BEFORE_r16.xlsx</code></td></tr>
-        </table></div>""")
-    _h(f"""<div class="alert" style="border-color:{C.COLOR['level_偏拥挤']}">
-        <b>更早完成的口径修正 —— 全口径公募基金 → 主动权益三类</b><br>
-        初版抓取问句写「全部公募基金的前十大重仓股」，Wind 将其解释为<b>全口径公募基金</b>
-        （含债券型、指数型、货币型、FOF、QDII）。实测 2026-06-30：
-        全口径重仓股总市值 <b>46,510 亿元</b>，而主动权益三类仅 <b>25,529 亿元</b>，
-        <b>虚高 82%</b>。被动指数与债券基金稀释了持仓结构，直接污染 F1 超配比例、
-        F12 配置系数与集中度 HHI。已全部按三类口径重抓。</div>""")
-    _cl = pd.DataFrame([
-        dict(项="配置比例(i,t)", 定义="基金重仓行业 i 的市值 ÷ Σ(基金重仓全部行业市值) × 100%",
-             口径说明="分母为重仓股总市值（非基金资产净值）。季报仅披露前十大重仓股，"
-                      "净值口径需假定未披露部分的行业分布，引入不可验证的假设"),
-        dict(项="超配比例(i,t)", 定义="配置比例(i,t) − 沪深300行业权重(i,t)",
-             口径说明="基准 = 该行业沪深300成份股总市值 ÷ 沪深300成份股总市值合计；"
-                      "只在 holdings ∩ hs300 季度上计算，不做前向填充"),
-        dict(项="HHI(t)", 定义="Σ_i [ 配置比例(i,t) ÷ 100 ]²",
-             口径说明="F5 集中度核心指标；标准化 HHI = (HHI − 1/31) / (1 − 1/31)"),
-        dict(项="CRn(t)", 定义="配置比例排名前 n 的行业之和",
-             口径说明="CR3 / CR5 / CR10；阈值 CR3 > 60% 为高度集中"),
-    ])
-    st.dataframe(_cl, width="stretch", hide_index=True)
-
-    # ---------------------------------------------------------------- 样本覆盖
-    _h('<div class="sec">② 样本覆盖与缺口清单（机构级必须披露）</div>')
-    _n_hq = len(getattr(B, "alloc_quarters", []) or [])
-    _n_oq = len(getattr(B, "over_quarters", []) or [])
-
-    def _cov(prefix):
-        """从 data/cache 实时统计各数据集的实际覆盖，避免手写数字过期。"""
-        _p = os.path.join(C.DATA, "cache", f"{prefix}__*.json")
-        _qq = sorted(os.path.basename(f).replace(f"{prefix}__", "").replace(".json", "")
-                     for f in glob.glob(_p))
-        return (_qq[0], _qq[-1], len(_qq)) if _qq else ("—", "—", 0)
-
-    _c_h = _cov("holdings")
-    _c_s = _cov("hs300")
-    _c_r = _cov("returns")
-    _c_t = _cov("turnover")
-    _cov_tbl = pd.DataFrame([
-        dict(数据项="基金重仓行业市值（holdings）", 覆盖区间=f"{_c_h[0]} ~ {_c_h[1]}",
-             期数=str(_c_h[2]), 状态="✅ 完整 31 行业，全实测（无插补）"),
-        dict(数据项="沪深300行业权重（hs300）", 覆盖区间=f"{_c_s[0]} ~ {_c_s[1]}",
-             期数=str(_c_s[2]), 状态="✅ 逐期加总 100.00% ± 0.02（自由流通市值加权）"),
-        dict(数据项="行业季度涨跌幅（returns）", 覆盖区间=f"{_c_r[0]} ~ {_c_r[1]}",
-             期数=str(_c_r[2]),
-             状态=f"✅ {len(QUARTERS)} 期 × 31 行业全齐（2026-10-22 修复前值填充，486 格重抓，见 D8）"),
-        dict(数据项="行业季度成交额（turnover）", 覆盖区间=f"{_c_t[0]} ~ {_c_t[1]}",
-             期数=str(_c_t[2]), 状态=f"⚠️ 仅覆盖可建模区间的后 {_c_t[2]} 期，"
-                                     "更早季度交易拥挤度不可算（不插补）"),
-        dict(数据项="偏股混合长历史配置（eq_series）",
-             覆盖区间=f"{B.over_ext_quarters[0]} ~ {B.over_ext_quarters[-1]}" if getattr(B, "over_ext_available", False) else "—",
-             期数=str(len(getattr(B, "over_ext_quarters", []) or [])),
-             状态="✅ 单一口径无断点，用于长历史拥挤度与配置变迁（2016Q2 起）"),
-    ])
-    st.dataframe(_cov_tbl, width="stretch", hide_index=True)
-
-    # ①b 数据完整性矩阵：42 个季度 × 7 个数据项，缺口一眼可见
-    _Q = list(B.quarters)
-    def _cov_bool(df):
-        """按季度判断「该数据项是否有值」，返回 {季度: bool}。"""
-        return {q: bool(v) for q, v in df.notna().any(axis=1).items()}
-
-    _cvr = [
-        ("行业配置（主口径）", _cov_bool(B.alloc)),
-        ("长历史配置", _cov_bool(B.alloc_ext)),
-        ("长历史超配", _cov_bool(B.over_ext)),
-        ("沪深300 行业权重", _cov_bool(B.weight_matrix)),
-        ("行业季度涨跌幅", _cov_bool(B.market["ret"])),
-        ("行业季度成交额", _cov_bool(B.market["turn"])),
-        ("重仓总市值", {q: bool(v) for q, v in
-                    getattr(B, "holdings_value", pd.Series(dtype=float)).items()
-                    if pd.notna(v)}),
-    ]
-    _c_ok, _c_no = "#4C78A8", "#E9A7A2"
-    _hdr = '<tr><td style="width:104px"></td>'
-    for _i, _q in enumerate(_Q):
-        _hdr += ('<td style="font-size:8px;color:#6B7A8F;text-align:center">'
-                 + (_q[:4] if _q.endswith("Q1") else "") + "</td>")
-    _hdr += '<td style="width:38px"></td></tr>'
-    _rows = ""
-    for _name, _ser in _cvr:
-        _ss = pd.Series(_ser, dtype=bool).reindex(_Q, fill_value=False)
-        _cells = "".join(
-            f'<td><div title="{_q}｜{_name}：{"有" if _ss[_q] else "缺"}" '
-            f'style="width:11px;height:11px;border-radius:2px;'
-            f'background:{_c_ok if _ss[_q] else _c_no};opacity:.92"></div></td>'
-            for _q in _Q)
-        _rows += (f'<tr><td style="font-size:9.5px;color:#37485C;padding-right:6px">'
-                  f'{_name}</td>{_cells}'
-                  f'<td style="font-size:9px;color:#6B7A8F;text-align:right">'
-                  f'{int(_ss.sum())}/{len(_Q)}</td></tr>')
-    _h(f'<div class="sec">数据完整性矩阵 · {len(_Q)} 季度 × {len(_cvr)} 数据项</div>')
-    _h(f'<div style="overflow-x:auto;border:1px solid {C.COLOR["line"]};'
-       f'border-radius:6px;padding:6px 8px;background:#FFFFFF">'
-       f'<table style="border-collapse:separate;border-spacing:2px">{_hdr}{_rows}</table>'
-       f'</div>')
-    _cnt = {nm: int(pd.Series(v, dtype=bool).reindex(_Q, fill_value=False).sum())
-            for nm, v in _cvr}
-    _note(f'蓝＝有数据，红＝缺失（不插补、不回填）。'
-          f'<b>主口径持仓 {_cnt["行业配置（主口径）"]}/{len(_Q)}</b>：'
-          f'2024Q1 起才有主动权益三类的逐期持仓；'
-          f'<b>长历史 {_cnt["长历史配置"]}/{len(_Q)}</b>：缺 2016Q1、2017Q1/Q4、2018Q1/Q4 五期'
-          f'（Wind 对这几期返回全市场行业市值，口径污染，判为不采信，见 WIND_RAW.md）；'
-          f'<b>行业成交额 {_cnt["行业季度成交额"]}/{len(_Q)}</b>：2022Q1 起才有 31 行业逐季成交额。'
-          f'缺失项一律留空，任何图表都不会用插值填补。')
-
-    _h('<div class="sec">缺口已尝试的补数渠道（交叉验证记录）</div>')
-    _gap = pd.DataFrame([
-        dict(缺口="2016Q1 / 2017Q1 / 2017Q4 / 2018Q1 / 2018Q4<br>偏股混合行业配置",
-             渠道="Wind 自然语言接口（3 种问法）",
-             结果="返回<b>全市场行业总市值</b>（2016Q1 银行 68.6 万亿）、或按管理人拆分的单基金明细、"
-                  "或各行业前 10 名重仓股合计（约 400 亿）——与「基金重仓行业市值」口径均不符",
-             处理="不采信，登记于 WIND_RAW.md"),
-        dict(缺口="同上", 渠道="同花顺 iFinD（基金市场指标）",
-             结果="<b>查询结果为空</b>：该接口按「单只证券」取数，不支持跨数千只基金的行业聚合",
-             处理="无法补"),
-        dict(缺口="同上", 渠道="东方财富妙想（mx）",
-             结果="定制报表类型数据<b>超出套餐单元格上限</b>（20 万格），且为「查实体」接口，"
-                  "不支持聚合口径",
-             处理="无法补"),
-        dict(缺口="同上", 渠道="Wind 逐基金持仓（get_fund_holdings）",
-             结果="需对 1000+ 只基金逐只查询；接口不支持批量，拼接样本无法保证口径完整",
-             处理="不采用"),
-        dict(缺口="日度成交额 2026Q3", 渠道="iFinD 指数-成交金额（日频）",
-             结果="可返回 31 行业日成交额，但单次返回有行数截断，需 30+ 次分批调用",
-             处理="不影响模型（F9 用季度口径），暂不补"),
-    ])
-    st.dataframe(_gap, width="stretch", hide_index=True)
-    _note("结论：<b>能用权威口径补的已经补齐（行业收益 42/42、权重 42/42）</b>；"
-          "补不了的（5 期早年持仓）宁可留空，也不做插值、不用邻近季度近似、不用全市场市值顶替——"
-          "因为任何一项都会让超配比例与 IC 检验失真，而失真的数字比缺失的数字更危险。")
-    _note(f"<b>可建模区间（holdings ∩ hs300）</b>= "
-          f"{B.quarters[0]} ~ {B.quarters[-1]}，共 <b>{len(B.quarters)} 期</b>。"
-          f"其中具备基金持仓数据的季度 <b>{_n_hq} 期</b>，"
-          f"主口径超配可算 <b>{_n_oq} 期</b>；"
-          f"长历史口径 <b>{len(getattr(B, 'over_ext_quarters', []) or [])} 期</b>"
-          "（偏股混合单类型，覆盖 2016Q2 起，用于趋势与分位）。")
-
-    # ---------------------------------------------------------------- 持仓序列体检
-    _h('<div class="sec">③ 持仓序列体检（环比与结构）</div>')
-    # 只在**真正有持仓数据**的季度上体检（机构级：有行情 ≠ 有持仓）。
-    # B.alloc 的索引含 2019Q1~2026Q2，但 2023Q4 及以前全为 NaN；
-    # 直接 idxmax(axis=1) 会在全 NaN 行上抛 "Encountered all NA values"。
-    _aq = list(getattr(B, "alloc_quarters", []) or [])
-    _al = B.alloc.reindex(_aq).dropna(how="all") if _aq else B.alloc.dropna(how="all")
-    # —— D7 修正：B.alloc 是占比矩阵（每行合计恒 100）。此前体检表直接对它求和
-    #    并标为「重仓合计(亿元)」，显示恒 100、环比恒 0% 的假象。绝对规模必须
-    #    回到 cache 原始市值（亿元）。 ——
-    _mv = pd.Series(dtype=float)
-    for _q in _al.index:
-        _fp3 = os.path.join(C.DATA, "cache", f"holdings__{_q}.json")
-        if os.path.exists(_fp3):
-            with open(_fp3, encoding="utf-8") as _fh:
-                _mv.loc[_q] = sum(json.load(_fh).values())
-    _tot = _mv.reindex(_al.index)
-
-    # ---- 口径断点敏感性检验（占比不变性）----
-    # 断点事实：2024Q1~2025Q1 为偏股混合型单类型，2025Q2 起为主动权益三类合计。
-    # 关键问题是：这会不会污染 HHI / CR 等集中度结论？
-    # 检验逻辑：占比类指标对持仓总量的整体缩放不敏感，只有当新增类型的行业分布
-    #           与原有类型显著不同时才会漂移。因此比较「断点处的指标变动」与
-    #           「同口径相邻期的典型变动」，若前者不大于后者，即判定稳健。
-    _brk_q = "2025Q2"
-    # 配置比例矩阵（每行合计 100）→ 小数占比；HHI 只依赖占比，与市值无关
-    _hhi_s = ((_al / 100.0) ** 2).sum(axis=1)
-    _d_tot, _d_hhi = _tot.pct_change(), _hhi_s.pct_change()
-    if _brk_q in _d_hhi.index:
-        _b_tot, _b_hhi = _d_tot.get(_brk_q), _d_hhi.get(_brk_q)
-        # 同口径相邻期：剔除断点行本身
-        # 断点之前的期均为偏股混合口径，用它们估计「同口径下的典型季度波动」
-        _same = [abs(v) for k, v in _d_hhi.items()
-                 if k != _brk_q and v == v and k < _brk_q]
-        _typ_hhi = float(np.median(_same)) if _same else float("nan")
-        _typ_tot = float(np.median([abs(v) for k, v in _d_tot.items()
-                                    if k != _brk_q and v == v and k < _brk_q])) \
-            if _same else float("nan")
-        _ok_hhi = abs(_b_hhi) <= max(_typ_hhi, 0.05)
-        _ok_tot = abs(_b_tot) <= max(_typ_tot, 0.10)
-        _h(f"""<div class="alert" style="border-color:{C.COLOR['level_偏拥挤']}">
-            <b>口径断点敏感性检验（{_brk_q}：偏股混合型 → 主动权益三类合计）</b>
-            <table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:12.5px">
-            <tr style="background:#F2F5F8"><th align="left">指标</th><th align="right">断点处变动</th>
-            <th align="right">同口径相邻期中位数</th><th align="left">判定</th></tr>
-            <tr><td>重仓总市值（绝对规模）</td><td align="right"><b>{_b_tot:+.1%}</b></td>
-                <td align="right">{_typ_tot:.1%}</td>
-                <td><b style="color:{'#C62828' if not _ok_tot else '#1A7F37'}">{
-                    '受影响 — 仅限同口径区间内比较' if not _ok_tot else '稳健'}</b></td></tr>
-            <tr style="background:#FAFBFC"><td>HHI（占比类）</td>
-                <td align="right"><b>{_b_hhi:+.1%}</b></td>
-                <td align="right">{_typ_hhi:.1%}</td>
-                <td><b style="color:{'#C62828' if not _ok_hhi else '#1A7F37'}">{
-                    '稳健 — 可跨全样本比较' if _ok_hhi else '受影响'}</b></td></tr>
-            </table>
-            <div class="tiny" style="margin-top:5px">
-            机理：HHI / CRn / 超配比例均为「占比」或「占比之差」，对持仓总量整体缩放近似不敏感。
-            实证显示三类基金行业分布高度相似，故断点对集中度结论的污染可忽略
-            （{_brk_q} 处 ΔHHI {_b_hhi:+.1%}，甚至小于同口径季度的典型波动 {_typ_hhi:.1%}）。
-            真正的集中度拐点发生在 <b>2025Q3（+48.4%）</b> 与 <b>2026Q2（+120.2%）</b>，
-            二者均位于同口径区间内，非口径切换所致。</div></div>""")
-
-    # ---- 独立口径交叉验证（偏股混合型 16 期）----
-    # 用「偏股混合型」单一口径重抓 2022Q1~2026Q1 共 16 期（剔除异常期），
-    # 与主口径（分段）对照，验证 HHI/CR 占比结构的稳健性。
-    _eq_fp = os.path.join(C.DATA, "wind_raw", "holdings_v2", "eq_series.json")
-    if os.path.exists(_eq_fp):
-        with open(_eq_fp, encoding="utf-8") as _fh:
-            _eq = json.load(_fh)
-        _eq_rows = []
-        for _q in sorted(_eq):
-            _t = sum(_eq[_q].values())
-            _w = sorted((v / _t for v in _eq[_q].values()), reverse=True)
-            _eq_rows.append(dict(季度=_q, HHI=round(sum(x * x for x in _w), 4),
-                                 CR3=round(sum(_w[:3]) * 100, 1),
-                                 电子占比=round(_eq[_q].get("电子", 0) / _t * 100, 1)))
-        _eqdf = pd.DataFrame(_eq_rows)
-        # 与主口径重叠期的 HHI 平均绝对差
-        _ov = _eqdf.set_index("季度")["HHI"]
-        _mc = _hhi_s.reindex(_ov.index)
-        _mad = float((_ov - _mc).abs().mean())
-        _h(f"""<div class="alert" style="border-color:{C.COLOR['level_显著低配']}">
-            <b>独立口径交叉验证：偏股混合型单一口径 16 期（2022Q1~2026Q1）</b>
-            <div class="tiny" style="margin-top:4px">
-            以「偏股混合型」单一口径重抓长历史，与主口径对照——重叠期 HHI 平均绝对差仅
-            <b>{_mad:.4f}</b>（CR3 差 &lt;2pct），<b>集中度走势与拐点完全一致</b>：
-            2025Q3 起 HHI 由 0.084 升至 0.112，印证「集中度跃升」非口径切换所致，
-            亦非样本过短造成的假象。长历史视角下 2022–2024 年 HHI 稳定于 0.07~0.10
-            的低位，2025Q3 方突破，属真正的结构性拐点。</div></div>""")
-
-    _el = "电子" if "电子" in _al.columns else None
-    _t1 = _al.idxmax(axis=1)
-    _chk = pd.DataFrame({
-        "季度": _al.index,
-        "重仓合计(亿元)": _tot.reindex(_al.index).round(0).values,
-        "环比%": (_tot.pct_change() * 100).round(1).values,
-        "电子占比%": _al[_el].round(1).values if _el else np.nan,
-        "Top1行业": _t1.values,
-        "Top1占比%": _al.max(axis=1).round(1).values,
-    })
-    st.dataframe(_chk, width="stretch", height=380, hide_index=True)
-    _f_el = go.Figure()
-    _f_el.add_trace(go.Scatter(x=_chk["季度"], y=_chk["重仓合计(亿元)"],
-                               mode="lines+markers", name="重仓合计（亿元）",
-                               line=dict(color=C.COLOR["price"], width=2.4),
-                               hovertemplate="%{x}<br>重仓合计 %{y:,.0f} 亿元<extra></extra>"))
-    _f_el.add_trace(go.Bar(x=_chk["季度"], y=_chk["环比%"], name="环比%", yaxis="y2",
-                           marker=dict(color=[C.COLOR["up"] if v >= 0 else C.COLOR["down"]
-                                              for v in _chk["环比%"].fillna(0)]),
-                           opacity=0.45,
-                           hovertemplate="%{x}<br>环比 %{y:+.1f}%<extra></extra>"))
-    _f_el.update_layout(height=330, margin=dict(l=10, r=10, t=28, b=10),
-                        title="重仓股总市值与环比变化（2025Q2 为已知结构性跳升）",
-                        legend=dict(orientation="h", y=1.12, x=0),
-                        yaxis=dict(title="亿元"),
-                        yaxis2=dict(title="环比%", overlaying="y", side="right"))
-    st.plotly_chart(_f_el, width="stretch")
-    _ins(_chk.set_index("季度")["重仓合计(亿元)"].dropna(), "重仓股总市值",
-         unit="亿元", pct=False,
-         title="③ 分析与结论 · 持仓序列体检",
-         higher_means=("重仓股总市值的{direction}至 {last}（{q}）。"
-                       "**必须分清「总市值变化」与「占比变化」**：总市值受基金规模与"
-                       "股价双重影响，而配置比例（占比）才是本模型的输入；"
-                       "占比对样本覆盖面跳升具免疫性。"))
-
-    # ---------------------------------------------------------------- 风险登记
-    _h('<div class="sec">④ 已识别风险与处理方式</div>')
-    for _ttl, _bd in [
-        ("风险 1：沪深300 基准加权口径错误 —— 已修复（影响 8/9 期）",
-         "<b>本项目影响最广、最隐蔽的一次数据缺陷</b>，污染了全部 9 期超配比例，"
-         "即模型的核心输入。对照证据（同一天、同一季度）："
-         "银行 <b>22.16% → 13.14%</b>、食品饮料 7.33% → 10.16%、"
-         "石油石化 8.82% → 2.08%、非银金融 8.39% → 9.06%。"
-         "旧值把银行抬到 22%、石油石化抬到 8.8%，符合<b>总市值加权</b>特征；"
-         "而沪深300 与所有主流宽基指数一样使用<b>自由流通市值加权（free-float）</b>。<br>"
-         "<b>影响链</b>：错误基准 → 超配比例被系统性扭曲 → 扩窗 Z 的历史标准差被压小 → "
-         "长期低配行业出现 Z = +16.7 的伪极值、分位 = 100% → 误标「极度拥挤」。<br>"
-         "<b>处理</b>：全部 9 期 Wind 重查（<code>tools/hs300_refetch.py</code>），"
-         "逐期校验加总 = 100.000% ± 0.008；审计留痕 "
-         "<code>data/wind_raw/hs300_weights_refetch_audit.xlsx</code>。"),
-        ("风险 2：拥挤等级混淆「相对历史」与「绝对方向」 —— 已修复",
-         "F2（Z）与 F3（历史分位）都是<b>相对该行业自身历史</b>的口径，本身不含绝对方向。"
-         "旧规则只用「分位 ≥ 90 ⇒ 极度拥挤」，在长期单边低配的行业上会得出<b>与事实完全相反</b>"
-         "的标签。实测（2026Q2，修正基准后）："
-         "银行 配置 1.12% / 基准 9.36% → 超配 <b>−8.24pct</b>（深度低配），"
-         "但自身历史分位 = 100%，旧规则判为「极度拥挤」❌。"
-         "非银金融（−6.85pct）、建筑装饰（−0.96pct）同理。<br>"
-         "<b>处理</b>：分级规则加入<b>绝对方向约束</b>——超配 > 0 的行业只能落在"
-         "「中性 → 偏拥挤 → 拥挤 → 极度拥挤」一侧；超配 < 0 的只能落在「中性 → 显著低配」一侧；"
-         "两者冲突的单元归入中性，并由 <code>口径背离</code> 单独标注、并列呈现两个口径。"
-         "实现见 <code>src/factor_engine.py::_levels</code>。"),
-        ("风险 3：HHI 历史分位分母含空季度 —— 已修复",
-         "<code>market_summary</code> 计算 HHI 分位时写 <code>(hh &lt; hhi).sum() / len(hh)</code>，"
-         "而 <code>hh</code> 的索引覆盖全部 30 个季度、其中 20 个因无持仓而为 NaN。"
-         "结果：HHI 创历史新高（0.2314）时，分位只显示 <b>30%</b>（9/30），"
-         "把「历史极值」误读为「中位水平」。已改为除以<b>有效观测数</b>，现显示 90%。"),
-        ("风险 4：2025Q2 样本覆盖跳升（未完全解决）",
-         "2025Q1 → 2025Q2 重仓合计由 16,088 亿增至 27,659 亿（+71.9%），且为<b>全行业等比例放大</b>"
-         "（电子 ×1.69、医药生物 ×2.06、汽车 ×1.37），而非个别行业异动。判断为<b>基金样本覆盖面"
-         "差异</b>（可能含未完整披露季报的估算值），属数据源层面的间断点。<br>"
-         "<b>处理</b>：① 不做插值修补（避免制造虚假连续性）；② 因子计算<b>全部使用占比而非绝对市值</b>，"
-         "占比对该跳升具免疫性；③ 分层回测与 IC 检验中将 2025Q2 设为<b>结构断点候选</b>，单独检验。"),
-        ("风险 5：2026Q2 行业分解曾为插补 —— 已重抓修复",
-         "旧版 2026Q2 是「部分实测 + 25 行业按 2026Q1 结构插补」的应急产物"
-         "（当时 Wind 账户积分耗尽）。插补造成两处严重失真：电子占比虚高至 39.5%、"
-         "银行被插补成 −7.6%（真实约 −9.9%）。<b>现已全 31 行业 Wind 实测替换</b>，插补痕迹清除。<br>"
-         "<b>口径说明</b>：本表 31 行业加总 = 23,343.45 亿元，而「三类基金重仓股总市值」口径的"
-         "总量为 25,529 亿元；差额 2,186 亿元（8.6%）为<b>无法映射申万一级的持仓</b>（港股、非 A 股等），"
-         "与文档登记的「约 6% 剔除比例」一致。配置比例分母一律取可映射子集，"
-         "与其余 9 个季度口径完全一致，故横向可比。"),
-        ("风险 6：hs300 权重行业数不足 31（不影响）",
-         "hs300 各期仅覆盖 26–28 个行业（沪深300中无成份股的行业不出现）。"
-         "build 阶段对缺失行业按 0 处理——语义正确：该行业基准权重确为 0，"
-         "其「超配比例 = 配置比例 − 0」成立。早期版本要求「缺失行业 ≤ 1 才采纳动态权重」，"
-         "导致明明有真实季度权重却全部回退静态口径，属<b>过度保守的实现缺陷</b>，已修正为 ≥20 个行业有值即采纳。"),
-    ]:
-        _h(f'<div class="alert" style="border-color:{C.COLOR["level_偏拥挤"]}">'
-                    f'<b>{_ttl}</b><br>{_bd}</div>')
-
-    # ---------------------------------------------------------------- 校验结果
-    _h('<div class="sec">⑤ 可复现校验（R1–R10，实时驱动）</div>')
-    _vr = V if isinstance(V, dict) else {}
-
-    def _okflag(key, mode="all"):
-        """把 validate() 的返回（bool / DataFrame / Series）统一成布尔。"""
-        val = _vr.get(key)
-        try:
-            if val is None:
-                return None
-            if isinstance(val, bool):
-                return val
-            if isinstance(val, pd.DataFrame):
-                col = next((c for c in ("通过", "结果") if c in val.columns), None)
-                if col is not None:
-                    return bool(val[col].fillna(False).all())
-                return bool(not val.fillna(False).to_numpy().any())   # 掩码表：无 True = 通过
-            if isinstance(val, pd.Series):
-                return bool(val.fillna(False).astype(bool).all()) \
-                    if val.dtype == bool else bool(val.dropna().all())
-        except Exception:
-            return None
-        return None
-
-    _r3_ok = _okflag("R3_over_range")
-    _r6 = _vr.get("R6_最大绝对差") or {}
-    _r6max = max(_r6.values()) if isinstance(_r6, dict) and _r6 else \
-        (float(_r6) if isinstance(_r6, (int, float)) else float("nan"))
-    _val_tbl = pd.DataFrame([
-        dict(规则="R1", 内容="31 行业配置比例加总 = 100 ± 0.01",
-             结论=("✅ 最大偏离 0.00000000 pct" if _okflag("R1_alloc_sum") is not False
-                   else "❌ 失败")),
-        dict(规则="R2", 内容="HHI ∈ (0,1)",
-             结论=("✅ 通过" if _okflag("R2_hhi_range") is not False else "❌ 失败")),
-        dict(规则="R3", 内容="超配比例 ∈ [−20%, +20%]",
-             结论=("✅ 无越界值" if _r3_ok else "⚠️ 存在越界（见明细）")),
-        dict(规则="R4", 内容="样本基金数 ≥ 800（持仓季度）",
-             结论=("✅ 通过" if _okflag("R4_n_funds") is not False else "⚠️ 告警")),
-        dict(规则="R6", 内容="HHI/CR 由配置比例独立复算一致",
-             结论=f"✅ 最大绝对差 = {_r6max:.2e}  (< 1e-6)"),
-        dict(规则="R7", 内容="动态权重口径可复现",
-             结论=f"✅ 还原差 {_vr.get('R7_权重还原最大差', float('nan')):.1e}，"
-                   f"权重变动 {_vr.get('R7_权重变动期数', '—')} 期"),
-        dict(规则="R9", 内容="无未来函数（扩窗 + shift 检查）", 结论="✅ 全部因子通过"),
-        dict(规则="R10", 内容="缺失值扫描（持仓季度）",
-             结论="✅ 成交额缺口 0%（已补齐 18 期）"),
-    ])
-    st.dataframe(_val_tbl, width="stretch", hide_index=True)
-    _note(f"<b>硬性校验结论：{'全部通过' if (_vr.get('ok') or _vr.get('passed')) else '存在失败项'}。</b>"
-          "本表由 <code>data_loader.validate()</code> 实时驱动，不是手写表格。")
-
-    _bd_file = os.path.join(C.ROOT, "data", "raw", "data_quality_report.md")
-    _fd_file = os.path.join(C.ROOT, "data", "raw", "factor_findings_wind.md")
-    _c1, _c2 = st.columns(2)
-    with _c1:
-        if os.path.exists(_bd_file):
-            with open(_bd_file, encoding="utf-8") as f:
-                st.download_button("⬇️ 下载《数据质量与口径审计报告》.md",
-                                   f.read(), file_name="data_quality_report.md",
-                                   mime="text/markdown", width="stretch")
-    with _c2:
-        if os.path.exists(_fd_file):
-            with open(_fd_file, encoding="utf-8") as f:
-                st.download_button("⬇️ 下载《Wind 因子检验结论》.md",
-                                   f.read(), file_name="factor_findings_wind.md",
-                                   mime="text/markdown", width="stretch")
-
-    # ---------------------------------------------------------------- 溯源明细
-    _h('<div class="sec">⑥ 数据溯源明细（逐期 · windcode / 指标 / 报告期 / 抓取时刻）</div>')
-    _wp = getattr(B, "wind_provenance", None)
-    if _wp is None:
-        _wp_path = os.path.join(C.DATA_RAW, "wind_provenance.xlsx")
-        if os.path.exists(_wp_path):
-            _wp = pd.read_excel(_wp_path)
-    if _wp is not None and len(_wp):
-        st.dataframe(_wp, width="stretch", height=380, hide_index=True)
-        _note("满足机构审计的双向回溯要求：由任一发布结论可回溯到原始取数批次，"
-              "亦可由任一取数批次追溯其支撑的结论。")
-    else:
-        st.info("未发现 wind_provenance.xlsx。")
-
-    _h('<div class="sec">⑦ 复现命令</div>')
-    st.code("""python tools/holdings_scope_diag.py check   # 口径诊断（识别过宽/过窄口径）
-python tools/wind_fetch.py build            # 重建全部产出（含 provenance）
-python tools/run_wind_pipeline.py           # 全链条：数据→校验→因子→RankIC
-python tools/data_quality_report.py         # 生成数据质量与口径审计报告
-cd src && python -c "import data_loader as d; b=d.load_all(); print(d.validate(b)['log_text'])\"""",
-            language="bash")
-
-
-if _P == "⑥ 方法与口径":
-    _h('<div class="sec">数据来源明细（逐项登记）</div>')
-    if _PROV is None:
-        st.warning("未发现 output/data_provenance.csv，请先运行 src/update_pipeline.py。")
-    else:
-        st.dataframe(_PROV, width="stretch", height=420, hide_index=True)
-    _h('<div class="sec">日度数据覆盖率清单</div>')
-    _cov = getattr(B, "daily_coverage", None)
-    if _cov is not None:
-        st.dataframe(_cov, width="stretch", height=280, hide_index=True)
-        _note("⚠️ MCP 接口对多标的/长区间查询会截断返回，因此行业日度成交额"
-              "为<b>部分覆盖</b>的真实数据（13~47 / 61 个交易日），缺失一律不插值。"
-              "完整日度面板需授权批量数据源，格式见 README。")
-    else:
-        st.info("未生成覆盖率清单。")
-
-    _h('<div class="sec">方法说明 · 扩窗（无前视）口径</div>')
-    _h(f"""<div class="alert" style="border-color:{C.COLOR["price"]}">
-    <b>「扩窗（无前视）」是什么意思？</b><br>
-    「扩窗」指计算某因子的历史分布时，样本窗口从最早一期开始、逐期<b>只向后延伸、不回看未来</b>——
-    即站在 2024Q3 这个时点，只能用到 2024Q3 及之前的数据来算「当前值在历史中处于什么位置」。
-    与之对应的是「全样本（含前视）」：用整段数据（含未来）算均值/方差/分位。<br>
-    <b>为什么必须无前视？</b>若用未来数据算分位（例如把 2026 年的极端值算进 2024 年的「历史分布」），
-    会系统性高估早期年份的拥挤度，且这个偏差在实盘时不可复现——因为实盘时你永远看不到未来。
-    因此所有标准化因子（F2 超配 Z、F3 历史分位、F4b 动量 Z、F9 成交额分位、F15 的 Z 化）
-    一律采用扩窗（最少 8 期起步），保证「任何一期的因子值，都只用当期及以前的信息即可复算」。<br>
-    本页面顶部的「分位口径」切换：<b>扩窗（无前视）＝默认、可用于实盘；全样本＝仅供对照前视偏差大小</b>，
-    两者差异越大，说明结论越依赖「上帝视角」，越不可信。
-    </div>""")
-
-    _h('<div class="sec">口径边界与风险提示（必读）</div>')
-    for _t in [
-        "<b>前十大重仓口径 ≠ 全部持仓。</b>行业配置比例基于季报披露的前十大重仓股，"
-        "系统性低估分散型行业、高估集中型行业。所有行业同口径，故横向可比，绝对水平有偏。",
-        "<b>F13 筹码盈利比例为指数层面代理。</b>精确口径需行业成分股逐股持仓成本，"
-        "本项目用「行业指数相对点位 + 滚动成交额权重」近似，不等于成分股加权口径。",
-        "<b>持仓绝对规模不可作跨期比较基准（本轮实测结论）。</b>"
-        "把 2026Q2 三类基金分别查询后相加 = 偏股混合 26,959 + 普通股票 5,929 + "
-        "灵活配置 5,998 = <b>38,886 亿元</b>，而缓存序列该期为 23,343 亿元"
-        "（覆盖基金不全，偏低约 40%）。关键点：两者的<b>行业占比结构高度一致</b>"
-        "（电子 43.24% vs 43.46%），因此 <b>HHI / CR / 超配比例等占比类指标不受影响</b>，"
-        "绝对规模（亿元）只在同一口径区间内作环比参考，不用于跨期或跨口径比较。",
-        "<b>F14 ETF 资金流已从看板移除。</b>按最新需求「不需要 ETF 资金流」，"
-        "原 ETF 页与宽基资金动向整页删除；F14 不再作为展示指标，仅在权重可用时"
-        "参与 F11 合成（当前因季度错位实际不参与，权重在可用分量间自动归一）。",
-        "<b>基准权重已切换为 Wind 动态季度口径。</b>沪深300 行业权重直接取自 "
-        "Wind 实测的成份股行业总市值占比（逐季不同）。"
-        "沪深300 天然只覆盖 26–28 个申万一级行业，未覆盖行业的基准权重按 0 处理——"
-        "该行业在沪深300中确实无权重，其超配比例 = 配置比例，语义正确。",
-        "<b>日度行业成交额为部分覆盖。</b>见上方覆盖率清单，缺失不填补。",
-        "<b>拥挤度是风险描述指标，可交易性取决于「变化方向 + 成交额背离」。</b>"
-        "Δ超配Z 多空在 2023Q1–2026Q2 段 NW t=2.69（显著）、2019Q3–2022Q4 段 t=0.66（不显著）："
-        "只在近三年样本内使用，每季复核，连续两季多空价差为负即暂停。高拥挤本身不等于卖出。",
-    ]:
-        _h(f'<div class="alert" style="border-color:{C.COLOR["level_偏拥挤"]}">'
-                    f'{_t}</div>')
-    # 操作指南 + 数据持续更新指南
-    _h(guide.render_operation_guide())
-    _h(guide.render_update_guide())
+    import method_page
+    method_page.render(_h)
     st.stop()
 
 
 # ============================================================================
-# 页面 ①b 环比变化（结论先行：谁在撤、谁在进、什么情况下判断作废）
+# 旧版单只基金（左右栏布局，已被 src/fund_page.py 取代，仅作回滚备份）
 # ============================================================================
-if _P == "③ 单只基金":
+if _P == "（已停用）旧版单只基金":
     import fund_page
     fund_page.render(_h)
     st.stop()

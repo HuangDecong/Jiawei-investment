@@ -24,6 +24,7 @@ import streamlit as st
 import canon as cn
 import config as C
 import report_charts as rc
+import ui
 
 
 def _base(fig, title, h=420, legend=False):
@@ -40,13 +41,9 @@ def _base(fig, title, h=420, legend=False):
     return fig
 
 
-def _read(h, read: str, concl: str) -> None:
-    """统一的「读图 + 结论」块——每张图都必须有。"""
-    h(f'<div style="background:{C.COLOR["panel"]};border-left:3px solid {C.COLOR["price"]};'
-      f'padding:9px 12px;border-radius:0 6px 6px 0;margin:4px 0 14px">'
-      f'<div style="font-size:12px;line-height:1.9"><b>读图</b>：{read}</div>'
-      f'<div style="font-size:12.5px;line-height:1.9;margin-top:5px">'
-      f'<b style="color:{C.COLOR["threshold"]}">结论</b>：{concl}</div></div>')
+def _read(h, fact: str, econ: str, invest: str = "") -> None:
+    """图下方的三段式分析：事实 → 经济含义 → 投资含义。"""
+    ui.analysis(h, fact, econ, invest)
 
 
 @st.cache_data(show_spinner=False)
@@ -216,8 +213,7 @@ def render(h) -> None:
         _bl.append(
             f'<b>最新一季</b>（{_q_tbl.attrs["q_prev"]}→{_q_tbl.attrs["q"]}）：'
             f'它把 {_ind} 调了 {_mv:+.2f}pp，同行平均 {_pv:+.2f}pp——' + _rel)
-    h('<div class="cg-note" style="line-height:1.9">'
-      + "<br>".join(f"{i}. {x}" for i, x in enumerate(_bl, 1)) + "</div>")
+    h(ui.concl_board(_bl))
     h(f'<div class="tiny">比较基准：<b>{bench}</b>　风格标签：<b>{style}</b>。'
       f'基准只用于判断「它该买什么」，本页的偏离度是与<b>同行平均</b>比，'
       f'不是与基准比（基准权重不在本库内）。</div>')
@@ -232,15 +228,21 @@ def render(h) -> None:
     Mkt = cn.level_matrix("top10")
     cmp_m = cn.compare_periods()
     if not Mkt.empty:
+        _mk_mode = st.radio("显示方式", ["前 10 大行业 + 其他", "全部 31 个行业"],
+                            horizontal=True, key="mkt_struct_mode",
+                            help="31 个色块叠加时后 20 个只有 1–3pp，默认合并显示")
+        _mk_last = Mkt.iloc[-1]
+        _mk_chg_all = (Mkt.iloc[-1] - Mkt.iloc[0]).dropna()
+        _mk_ord = _mk_last.sort_values(ascending=False).index.tolist()
         st.plotly_chart(
             rc.fig_ind_structure(
                 Mkt, f"全市场行业结构（{Mkt.index[0]}–{Mkt.index[-1]}，前十大等权平均）",
-                residual_label="其他（港股/未映射）", label_top=4),
+                residual_label="其他（港股/未映射）", label_top=4,
+                max_items=10 if _mk_mode.startswith("前 10") else None),
             width="stretch", config={"displayModeBar": False})
-        h(rc.ind_legend_html(list(Mkt.columns)))
-        _mk_last = Mkt.iloc[-1]
+        h(rc.ind_legend_html(_mk_ord, _mk_last, _mk_chg_all, cols=4))
         _mk_top = _mk_last.nlargest(4)
-        _mk_chg = (Mkt.iloc[-1] - Mkt.iloc[0]).dropna().sort_values()
+        _mk_chg = _mk_chg_all.sort_values()
         _read(h,
               f'最新一期全市场前四大行业：'
               + "、".join(f"{i} {v:.1f}%" for i, v in _mk_top.items())
@@ -249,9 +251,17 @@ def render(h) -> None:
               + "、".join(f"{i} {v:+.1f}pp" for i, v in _mk_chg.tail(2).iloc[::-1].items())
               + f'，让位最多的是 '
               + "、".join(f"{i} {v:+.1f}pp" for i, v in _mk_chg.head(2).items()) + '。',
+              f'全市场的行业结构，是几千只基金各自决策加总的结果，'
+              f'所以它变化得很慢——一年下来前四大行业通常只换一到两个。'
+              f'这种慢，恰恰说明它是<b>产业结构的映射</b>：A 股上市公司的行业构成、'
+              f'各行业的盈利占比在变化，基金持仓只是跟着走。'
+              f'当某一层的厚度在两年里翻倍，背后往往是这个行业的<b>市值占比与盈利占比</b>'
+              f'同时上升，而不是单纯的资金推动。',
               f'这张图是「基准答案」：<b>先知道全市场在往哪挪，再判断一只基金是顺应还是逆行。</b>'
-              f'如果一只基金的行业变化和这张图的形状一致，它只是随大流；'
-              f'形状明显不同，才是它的主动选择。')
+              f'如果一只基金的行业变化形状和它一致，说明它只是随大流，你买它拿到的是行业贝塔；'
+              f'形状明显不同，才是基金经理的主动选择，这时才需要判断他的判断对不对。'
+              f'还有一个用法：当某行业在全市场的占比创了新高，说明它已经成为「系统性重要」'
+              f'的板块——它的波动会直接影响指数，也会影响其他基金的净值。')
 
     # ---------------- 指标条形图：31 个行业，悬停即见数值 ----------------
     if not cmp_m.empty:
@@ -318,9 +328,12 @@ def render(h) -> None:
                                        name=nm, line=dict(color=C.COLOR["price"], width=2),
                                        marker=dict(size=4),
                                        hovertemplate="%{x}　本基金 %{y:.2f}%<extra></extra>"))
-        _fig2.update_yaxes(title_text="占前十大 %")
-        _fig2.update_xaxes(tickangle=-45)
-        st.plotly_chart(_base(_fig2, f"{_ind}：全市场 vs {nm}", 340, legend=True),
+        _fig2.update_yaxes(title_text="占前十大 %", tickfont=dict(size=11))
+        # 31 个季度标签全标会糊成一片，只标每年 Q1 + 末期
+        _tk2 = [x for x in _m.index if str(x).endswith("Q1")] + [list(_m.index)[-1]]
+        _fig2.update_xaxes(tickmode="array", tickvals=_tk2, ticktext=_tk2,
+                           tickangle=-45, tickfont=dict(size=10))
+        st.plotly_chart(_base(_fig2, f"{_ind}：全市场 vs {nm}", 360, legend=True),
                         width="stretch", config={"displayModeBar": False})
         _mf, _mm = (float(_f.iloc[-1]) if len(_f) else np.nan), (float(_m.iloc[-1]) if len(_m) else np.nan)
         _hist_note = ""
@@ -366,39 +379,77 @@ def render(h) -> None:
     # ② 这只基金：全部行业的结构漂移
     # =====================================================================
     h('<div class="sec">② 再看这一只：它的 31 个行业结构漂移</div>')
+    _c1, _c2 = st.columns([0.72, 0.28], gap="small")
+    with _c1:
+        _maxi = st.radio("显示方式", ["前 10 大行业 + 其他", "全部 31 个行业"],
+                         horizontal=True, key="fund_struct_mode",
+                         help="31 个色块叠在一起时，后面 20 个只有 1–3pp，看不清；"
+                              "默认合并成「其他 N 个行业」")
+    with _c2:
+        _qsel = st.selectbox("看哪一季的全部行业", list(hist.index)[::-1],
+                             index=0, key="fund_q_pick")
+    _mi = 10 if _maxi.startswith("前 10") else None
     fig = rc.fig_ind_structure(
         hist, f"{nm}　行业结构（{hist.index[0]}–{hist.index[-1]}，"
               f"{'前十大内部占比' if basis == 'top10' else '占净值比'}）",
         residual_label=("其他（港股/未映射）" if basis == "top10"
                         else "现金/债券/港股及其他"),
-        label_top=4)
+        label_top=4, max_items=_mi)
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-    h(rc.ind_legend_html(list(hist.columns)))
 
+    # 图例即表格：色块 + 行业 + 最新占比 + 相对首期变化
     _first, _last = hist.iloc[0], hist.iloc[-1]
+    _chg_all = (_last - _first).dropna()
+    _ord = _last.sort_values(ascending=False).index.tolist()
+    h(rc.ind_legend_html(_ord, _last, _chg_all, cols=4))
+    h('<div class="tiny" style="margin:-4px 0 8px">图例右侧：'
+      '<b>黑字</b>＝最新一期占比；<b>红/绿小字</b>＝相对 '
+      f'{hist.index[0]} 的变化（pp）。按最新占比降序。</div>')
+
+    # ---- 同季度横向：这一季 31 个行业各占多少，一次全看到 ----
+    h('<div style="font-size:14px;font-weight:700;margin:12px 0 4px">'
+      f'{_qsel}：这只基金全部行业的占比（一次列全，不用逐个悬停）</div>')
+    _row = hist.loc[_qsel].dropna().sort_values(ascending=False)
+    _row = _row[_row >= 0.05]
+    _fig_bar = go.Figure(go.Bar(
+        y=list(_row.index)[::-1], x=list(_row.values)[::-1], orientation="h",
+        marker_color=[rc.ind_color(i) for i in list(_row.index)[::-1]],
+        text=[f"{v:.1f}%" for v in list(_row.values)[::-1]], textposition="outside",
+        textfont=dict(size=10.5),
+        hovertemplate="<b>%{y}</b><br>%{x:.2f}%<extra></extra>"))
+    _fig_bar.update_xaxes(title_text="占前十大 %" if basis == "top10" else "占净值 %",
+                          range=[0, max(5, float(_row.max()) * 1.18)],
+                          tickfont=dict(size=11))
+    _fig_bar.update_yaxes(tickfont=dict(size=11))
+    st.plotly_chart(_base(_fig_bar, "", max(320, 22 * len(_row))),
+                    width="stretch", config={"displayModeBar": False})
+
     _up = (_last - _first).dropna().sort_values()
     _big_up, _big_dn = _up.tail(2).iloc[::-1], _up.head(2)
     _share_last = _last.nlargest(4)
     _read(h,
-          f'图里每一层是一个行业，层越厚＝在组合里占比越高；'
-          f'按 {len(hist)} 期的均值从大到小排，所以下面的层是它的「基本盘」。'
           f'最新一期（{hist.index[-1]}）前四大是 '
           + "、".join(f"{i} {v:.1f}%" for i, v in _share_last.items())
-          + f'，合计 {_share_last.sum():.1f}%。'
-          f'从首期到现在，抬升最多的是 '
-          + "、".join(f"{i} {v:+.1f}pp" for i, v in _big_up.items())
-          + f'，让位最多的是 '
-          + "、".join(f"{i} {v:+.1f}pp" for i, v in _big_dn.items()) + '。',
-          f'<b>结构图看三件事</b>：① 有没有一层越来越厚——那是它在持续加注的方向；'
-          f'② 有没有一层突然消失——那是清仓式换仓；③ 总面积（全持仓口径）有没有变——'
-          f'那是仓位升降。<b>本期这只基金</b>：'
+          + f'，合计 {_share_last.sum():.1f}%；从首期（{hist.index[0]}）到现在，'
+          f'抬升最多的是 ' + "、".join(f"{i} {v:+.1f}pp" for i, v in _big_up.items())
+          + f'，让位最多的是 ' + "、".join(f"{i} {v:+.1f}pp" for i, v in _big_dn.items())
+          + f'。结构半周转量 {_drift:.0f}pp（'
+          + ("换过风格" if _drift > 25 else "基本稳定") + '）。',
+          f'基金的行业结构变化，只有两种来源：<b>主动调仓</b>与<b>价格漂移</b>。'
+          f'主动调仓反映基金经理对景气的判断，会持续 2–4 个季度；价格漂移是行业涨跌'
+          f'自动改变权重，一个季度 1–2pp 的变动大多来自它。分辨方法很简单：'
+          f'看这一层是不是<b>连续三期同向变厚/变薄</b>——连续才是调仓，单季跳动多是价格。'
+          f'结构半周转量 {_drift:.0f}pp 衡量的是「这些年它换了多少赛道」，'
+          f'数值越大，说明你买它时的理由越可能已经不成立。',
+          f'这只基金前四大占 {_share_last.sum():.0f}%，'
+          + ("集中度偏高——它的涨跌基本由这四个行业决定，"
+             "买它就等于同时押这四个方向，不要再叠加同方向的行业基金，否则是重复下注。"
+             if _share_last.sum() > 55 else
+             "集中度适中，行业之间有对冲，单一行业回调对净值的冲击相对小。")
           + (f'结构半周转量 {_drift:.0f}pp，属于'
-             + ("「换过风格」" if _drift > 25 else "「基本稳定」")
-             + f'；' if np.isfinite(_drift) else '')
-          + (f'前四大占 {_share_last.sum():.0f}%，集中度'
-             + ("偏高，行业风险大于个股风险" if _share_last.sum() > 55 else "适中")
-             + '。')
-          + ' 单季 1–2pp 的波动多是价格漂移，连续 3 期同向才是真的调结构。')
+             + ("「换过风格」——你当初买它的理由可能已不成立，要按它现在的行业逻辑重新评估。"
+                if _drift > 25 else "「基本稳定」——它更像一个行业贝塔工具，按行业逻辑用即可。")
+             if np.isfinite(_drift) else ''))
 
     # ---------------- 上期 / 本期 / 上年同期 台账 ----------------
     if not _q_tbl.empty:

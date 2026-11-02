@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
-"""⑤ 因子检验：季报因子的标准流程——定义、计算、IC、显著性、分层、结论。
+"""⑤ 因子检验：每个季报因子「衡量什么、怎么算、什么情况下失灵」。
 
 页面原则
 --------
-1. **先给结论**：9 个因子里有几个能用、几个不能用、为什么；
-2. **每一步都可复核**：公式、期数、样本、阈值全部写出；
-3. **不藏坏结果**：被证伪的因子照样展示，并写清「所以前面的判断要怎么改」。
+读者要的不是「怎么看 IC 柱状图」，而是：
 
-数据来自 data/derived/factor_test.json（由 tools/run_factor_test.py 生成）：
-现算要 60–80 秒，页面读 JSON 不到 10ms。页面上有「重算」按钮可临时现算。
+    这个因子对应现实里的什么行为 → 为什么值得看 → 怎么算（可复算）
+    → 阈值多少、阈值哪来的 → 什么情况下失效 → 有什么风险 → 检验结果如何
+
+所以本页以「因子说明书」为主体，检验数字放在每个因子的卡片里，
+不再单独用大段文字讲统计流程。
+
+数据来自 data/derived/factor_test.json（tools/run_factor_test.py 生成）：
+现算要 60–80 秒，读 JSON 不到 10ms。
 """
 from __future__ import annotations
 
@@ -22,6 +26,8 @@ import streamlit as st
 
 import config as C
 import report_charts as rc
+import ui
+from factor_doc import DOC
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JSON_PATH = os.path.join(ROOT, "data", "derived", "factor_test.json")
@@ -29,6 +35,21 @@ JSON_PATH = os.path.join(ROOT, "data", "derived", "factor_test.json")
 _VERDICT_COLOR = {"强": C.COLOR["up"], "可用": C.COLOR["up"], "仅辅助": "#E8710A",
                   "反向": C.COLOR["accent"], "无效": C.COLOR["text_dim"],
                   "样本不足": "#C3CBD4"}
+
+# 速查表用的一句话（详细解释放在下方的因子说明书里）。
+# 表格里的长文本列在 1080px 宽度下必然被截断，与其让读者去点开，
+# 不如给一句能读完的定义。
+_BRIEF = {
+    "breadth": "多少基金在加（共识度）",
+    "active_q": "剥离价格后的净买入",
+    "delta_q": "一季的配置结构移动",
+    "delta_y": "一年的配置意图",
+    "cfg_pct": "押注在自身历史的位置",
+    "idx_pct": "价格相对自身历史贵不贵",
+    "csi": "配置＋价格＋资金的综合拥挤",
+    "dispersion": "基金之间的分歧有多大",
+    "active_h": "半年报口径的真加仓",
+}
 
 
 def _load() -> dict:
@@ -43,7 +64,6 @@ def _load() -> dict:
 
 def _recompute() -> dict:
     """现算一次并写回 JSON（页面按钮触发，约 60–80 秒）。"""
-    import canon as cn
     import factor_test as ft
     tab = ft.run_all()
     out = _load() or {}
@@ -82,24 +102,26 @@ def _ic_fig(d: dict) -> go.Figure:
     s = pd.Series({k: v for k, v in d.get("ic_series", {}).items() if v is not None})
     if s.empty:
         return rc._base(go.Figure(), "无 IC 序列")
-    s.index = list(s.index)
     fig = go.Figure()
     fig.add_trace(go.Bar(x=list(s.index), y=s.values, name="单期 IC",
                          marker_color=[C.COLOR["up"] if v > 0 else C.COLOR["down"]
-                                       for v in s.values], opacity=0.75,
+                                       for v in s.values], opacity=0.8,
                          hovertemplate="%{x}　IC %{y:+.3f}<extra></extra>"))
     fig.add_trace(go.Scatter(x=list(s.index), y=s.cumsum().values, name="累计 IC",
                              mode="lines+markers", line=dict(color=C.COLOR["price"], width=2),
                              yaxis="y2",
                              hovertemplate="%{x}　累计 %{y:+.3f}<extra></extra>"))
     fig.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1))
+    _tk = [q for q in s.index if str(q).endswith("Q1")] + [s.index[-1]]
     fig.update_layout(yaxis2=dict(overlaying="y", side="right", showgrid=False,
-                                  title="累计 IC", tickfont=dict(size=9)),
-                      yaxis=dict(title="单期 IC", gridcolor=C.COLOR["grid"]),
-                      xaxis=dict(tickangle=-45, tickfont=dict(size=9)),
-                      legend=dict(orientation="h", y=1.12, font=dict(size=9)))
-    fig = rc._base(fig, "", 330, legend=True)
-    fig.update_layout(margin=dict(l=48, r=48, t=34, b=30))
+                                  title="累计 IC", tickfont=dict(size=10)),
+                      yaxis=dict(title="单期 IC", gridcolor=C.COLOR["grid"],
+                                 tickfont=dict(size=10)),
+                      xaxis=dict(tickmode="array", tickvals=_tk, ticktext=_tk,
+                                 tickangle=-45, tickfont=dict(size=10)),
+                      legend=dict(orientation="h", y=1.14, font=dict(size=10)))
+    fig = rc._base(fig, "", 320, legend=True)
+    fig.update_layout(margin=dict(l=48, r=48, t=34, b=34))
     return fig
 
 
@@ -108,28 +130,37 @@ def _layer_fig(d: dict) -> go.Figure:
     L = d.get("layers") or {}
     if not L:
         return rc._base(go.Figure(), "无分层数据")
-    xs = [f"Q{int(k)+1}" for k in sorted(L, key=lambda x: int(x))]
-    ys = [L[k] for k in sorted(L, key=lambda x: int(x))]
+    ks = sorted(L, key=lambda x: int(x))
+    xs = [f"Q{int(k)+1}" for k in ks]
+    ys = [L[k] for k in ks]
     fig = go.Figure(go.Bar(x=xs, y=ys,
                            marker_color=[C.COLOR["down"] if v < 0 else C.COLOR["up"]
                                          for v in ys],
                            text=[f"{v:+.2f}%" for v in ys], textposition="outside",
-                           textfont=dict(size=9.5),
+                           textfont=dict(size=10),
                            hovertemplate="%{x}　次期平均 %{y:+.2f}%<extra></extra>"))
     fig.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1))
     fig.update_yaxes(title_text="次期平均收益 %")
-    fig.update_xaxes(title_text="按因子值五等分（Q1 最低 → Q5 最高）")
+    fig.update_xaxes(title_text="按因子值五等分（Q1 低 → Q5 高）")
     fig = rc._base(fig, "", 300)
-    fig.update_layout(margin=dict(l=48, r=16, t=22, b=36))
+    fig.update_layout(margin=dict(l=48, r=16, t=22, b=42))
     return fig
+
+
+def _field(label: str, text: str, color: str) -> str:
+    return (f'<div style="display:flex;gap:10px;padding:7px 0;'
+            f'border-top:1px solid {C.COLOR["grid"]}">'
+            f'<div style="flex:0 0 84px;font-size:12.5px;font-weight:700;'
+            f'color:{color};line-height:1.85">{label}</div>'
+            f'<div style="flex:1;font-size:13.5px;line-height:1.95;color:#26374A">'
+            f'{text}</div></div>')
 
 
 def render(h, B=None, IND=None) -> None:
     d = _load()
     if not d:
         h('<div class="cg-note">尚未生成因子检验结果。运行 '
-          '<span class="mono">python tools/run_factor_test.py</span> 生成 '
-          '<span class="mono">data/derived/factor_test.json</span>。</div>')
+          '<span class="mono">python tools/run_factor_test.py</span> 生成。</div>')
         if st.button("现在现算（约 60–80 秒）", key="ft_calc0"):
             with st.spinner("正在检验 9 个因子…"):
                 d = _recompute()
@@ -145,199 +176,98 @@ def render(h, B=None, IND=None) -> None:
     _rev = [f for f in F if f["verdict"] == "反向"]
     _no = [f for f in F if f["verdict"] in ("无效", "样本不足")]
     _aux = [f for f in F if f["verdict"] == "仅辅助"]
-
-    # =====================================================================
-    # 本页结论
-    # =====================================================================
-    h('<div class="sec">本页结论：9 个季报因子，能用的有几个</div>')
     _best = max(F, key=lambda x: abs(x.get("ic_mean") or 0))
-    h(f'<div style="background:{C.COLOR["panel"]};border-left:3px solid '
-      f'{C.COLOR["threshold"]};border-radius:0 6px 6px 0;padding:10px 13px;'
-      f'font-size:12.5px;line-height:1.95">'
-      f'把 9 个因子按标准流程（扩张窗口分位、Spearman IC、Newey-West t、五分层）'
-      f'在 {d["sample"]["q0"]}–{d["sample"]["q1"]} 的 {len(F)} 组面板上跑一遍，结论是：'
-      f'<b>没有一个是「正向可用」的</b>——{len(_ok)} 个可用、{len(_aux)} 个仅辅助、'
-      f'{len(_rev)} 个反向、{len(_no)} 个无效。<br>'
-      f'唯一接近显著的是 <b>{_best["name"]}</b>（IC {_best["ic_mean"]:+.3f}、'
-      f't {_best["t"]:+.2f}、p {_best["p"]:.3f}），但方向是<b>负</b>的：'
-      f'加仓越一致的行业，次季反而越弱。<br>'
-      f'<b>所以这套系统的定位必须说清楚</b>：它是「读懂季报、识别拥挤、分配仓位」的工具，'
-      f'<b>不是收益预测模型</b>。前面页面上的「可以跟」＝机构在做 + 赔率不差，'
-      f'不等于「会涨」。</div>')
 
+    # =====================================================================
+    # 结论
+    # =====================================================================
+    h('<div class="sec">一、结论：这些因子能干什么、不能干什么</div>')
+    h(ui.concl_board([
+        f'<b>9 个季报因子，没有一个能预测次季收益。</b>'
+        f'按标准流程（扩张窗口分位、Spearman IC、Newey-West t、五分层）在 '
+        f'{d["sample"]["q0"]}–{d["sample"]["q1"]} 上检验：'
+        f'{len(_ok)} 个可用、{len(_aux)} 个仅辅助、{len(_rev)} 个反向显著、'
+        f'{len(_no)} 个无效。',
+        f'<b>唯一接近显著的是「{_best["name"]}」，但方向是负的</b>'
+        f'（IC {_best["ic_mean"]:+.3f}、t {_best["t"]:+.2f}、p {_best["p"]:.3f}）：'
+        f'加仓越一致的行业，次季反而越弱。这不是模型坏了，'
+        f'而是<b>「共识形成」本身就意味着边际买家已经不多</b>——这是行为金融里的典型现象。',
+        f'<b>所以这套系统的定位是「读季报」，不是「选行业」。</b>'
+        f'因子在这里的作用有三个：描述机构在做什么（广度/主动净额）、'
+        f'度量风险积累到什么程度（CSI/分位）、约束仓位（拥挤度惩罚）。'
+        f'它们不产生买入信号。',
+    ]))
     h(_kpis([
-        ("检验因子", f"{len(F)} 个", "9 个季报指标"),
+        ("检验因子", f"{len(F)} 个", "覆盖季报可算的全部指标"),
         ("正向可用", f"{len(_ok)} 个", "IC≥0.05 且 t≥1.96"),
         ("反向显著", f"{len(_rev)} 个", "方向与定义相反"),
-        ("无效", f"{len(_no)} 个", "t<1.64"),
-        ("最短样本", f'{min(f["n"] for f in F)} 期', "半年频因子受限"),
+        ("无效", f"{len(_no)} 个", "|t|<1.64"),
+        ("样本", f'{d["sample"]["quarters"]} 期', f'{d["sample"]["industries"]} 行业 × '
+                                                f'{d["sample"].get("n_funds", "—")} 只基金'),
     ]))
-    h(f'<div class="tiny">结果生成于 {d.get("generated", "—")}，'
-      f'样本 {d["sample"]["quarters"]} 期 × {d["sample"]["industries"]} 行业，'
-      f'最新期基金数 {d["sample"].get("n_funds", "—")}。'
-      f'阈值：{"、".join(f"{k}={v}" for k, v in d.get("thresholds", {}).items())}。</div>')
 
     # =====================================================================
-    # 标准流程
+    # 速查表
     # =====================================================================
-    # =====================================================================
-    # 一、为什么换因子
-    # =====================================================================
-    h('<div class="sec">一、为什么换掉旧因子（F1 / F2 / F11 那一套）</div>')
-    h('<div class="cg-note" style="line-height:1.9">'
-      '本库早期用的是另一套因子：<b>F1 超配比例</b>（基金配置 − 基准权重）、'
-      '<b>F2 超配 Z</b>、<b>F3 超配分位</b>、<b>F11 综合拥挤度</b>（多分量加权）、'
-      '<b>F15 拥挤背离</b>。它们来自 Wind 持仓 + 基准权重 + 成交额占比，43 期。'
-      '这一版把它们换掉，不是为了「新」，是四个具体问题：</div>')
-    _why = [
-        ("① 两套口径打架", "旧因子的「超配」要用沪深300/中证800 的行业权重，"
-         "而页面上其他数字来自东财持仓。同一个行业会出现「东财口径超配 X%、"
-         "Wind 口径超配 Y%」，读者不知道信哪个。新因子全部从 canon 一套数据算，"
-         "行业配置、广度、分位、CSI 指向同一个分子分母。"),
-        ("② 复现不了", "F11 是「推荐权重」复合因子：多个分量按拟合/IC 加权，"
-         "权重写在代码里但没有样本外验证。外人拿到数据也算不出同一个数。"
-         "新因子每个都是单一公式（广度＝加仓÷(加仓+减仓)，CSI＝三个分位平均），"
-         "任何人都能逐期复算。"),
-        ("③ 含价格漂移", "旧 F1 超配比例 = 配置变化 − 基准变化，"
-         "配置本身含价格涨跌：行业涨了没人买，超配也会上升。"
-         "新加仓占比用「什么都不做的反事实」剥离价格（实测 ρ 从 0.73 降到 0.18）。"),
-        ("④ 依赖外部授权", "旧因子要 Wind 批量接口取持仓与成交额，"
-         "接口会截断、更新慢、换机器就跑不了。新因子只依赖东财公开披露，"
-         "29 万行明细可完整重建，线上无数据库时用压缩快照也能跑。"),
-    ]
-    h('<div style="display:flex;gap:6px;flex-wrap:wrap">' + "".join(
-        f'<div style="flex:1 1 300px;min-width:280px;background:#FFFFFF;'
-        f'border:1px solid {C.COLOR["line"]};border-top:3px solid {C.COLOR["price"]};'
-        f'border-radius:6px;padding:7px 9px">'
-        f'<div style="font-size:11.5px;font-weight:700;margin-bottom:3px">{a}</div>'
-        f'<div style="font-size:10.5px;line-height:1.75;color:#37485C">{b}</div></div>'
-        for a, b in _why) + '</div>')
-
-    _map = pd.DataFrame([
-        dict(旧因子="F1 超配比例", 衡量="相对基准押重了多少", 新因子="当期主动净额（价格中性）",
-             改进="剥离价格；不需要基准权重"),
-        dict(旧因子="F2 超配 Z", 衡量="超配相对自身历史的偏离", 新因子="配置分位",
-             改进="用分位不用 Z：不假设正态，抗极端值"),
-        dict(旧因子="F3 超配分位", 衡量="超配在历史中的位置", 新因子="配置分位 + 横截面分位",
-             改进="两把尺子分开：相对自己 vs 相对同行"),
-        dict(旧因子="F11 综合拥挤度", 衡量="多分量加权的拥挤", 新因子="CSI（配置/价格/资金三维等权）",
-             改进="权重等权、可解释；不再拟合"),
-        dict(旧因子="F15 拥挤背离", 衡量="配置与超配 Z 的背离", 新因子="离散度 + 广度 × 净额",
-             改进="两个轴真正独立，不再是同一根线"),
-        dict(旧因子="（无）", 衡量="—", 新因子="加仓广度 / 价格分位 / 半年主动",
-             改进="新增：共识度、价格位置、GK 主动"),
-    ])
-    st.dataframe(_map, width="stretch", hide_index=True, height=250,
-                 column_config={"旧因子": st.column_config.TextColumn(width="small"),
-                                "衡量": st.column_config.TextColumn(width="medium"),
-                                "新因子": st.column_config.TextColumn(width="medium"),
-                                "改进": st.column_config.TextColumn(width="large")})
-    h('<div class="cg-note" style="line-height:1.9">'
-      '<b>换完之后得到了什么</b>：① 31 期 × 31 行业 × 4,939 只基金全部可复算；'
-      '② 每个因子只有一个公式，改一处全站同步；③ 与页面上的行业配置、拥挤度、'
-      '个股榜共用同一套样本与口径；④ 价格中性，暴跌季不会把「没交易」算成「集体减仓」。'
-      '<br><b>换完之后失去了什么</b>：① 没有基准权重，算不了「相对沪深300 的超配」，'
-      '只能用同行平均作基准；② 期数从 43 期降到 31 期（2019 起），样本外验证更短；'
-      '③ 旧 F11 里的换手率、成交额占比属于「交易拥挤」，新体系衡量的是「持仓拥挤」，'
-      '两者不能互相替代——这是取舍，不是升级。'
-      '<br><b>新因子各自衡量什么</b>：广度＝多少基金在加（共识）；当期主动＝'
-      '价格中性后的净买卖（力度）；环比/同比＝结构移动的速度与方向；配置分位＝'
-      '押注的历史位置；价格分位＝贵不贵；CSI＝三维拥挤；离散度＝基金之间的分歧；'
-      '半年主动＝GK 剥离价格后的真加仓。它们合起来回答一个问题：'
-      '<b>「机构在这个行业上，是共识还是分裂，是刚上车还是已经挤满」</b>。</div>')
-
-
-    h('<div class="sec">二、标准流程：五步，每步都可复核</div>')
-    _steps = [
-        ("① 定义", "说清因子在每个（期, 行业）上取什么值、方向是「越大越看多」还是「越大越看空」。"
-                   "方向必须事前声明，不能等看到结果再改。"),
-        ("② 计算", "只用当期及之前的信息。分位数用<b>扩张窗口</b>（每期只排到当期），"
-                   "不能用全样本排名——那会让 2019 年的分位用上 2026 年的数据，IC 被系统性高估。"),
-        ("③ 单期 IC", "每期在 31 个行业上算 Spearman(因子值, 次期收益)，得到一条 IC 时序。"
-                      "用秩相关是因为收益有极端值，秩相关对异常值稳健。"),
-        ("④ 汇总检验", "IC 均值、IC_IR＝均值/标准差、Newey-West t（修正自相关）、"
-                       "双侧 p 值、胜率。四个数一起看，只看均值会被一两期大赚骗过去。"),
-        ("⑤ 分层", "按因子值五等分，看次期收益是否单调。IC 说「排序相关」，"
-                   "分层说「关系形状」——只有单调的因子才能做打分加权。"),
-    ]
-    h('<div style="display:flex;gap:6px;flex-wrap:wrap">' + "".join(
-        f'<div style="flex:1 1 180px;min-width:170px;background:#FFFFFF;'
-        f'border:1px solid {C.COLOR["line"]};border-top:3px solid {C.COLOR["price"]};'
-        f'border-radius:6px;padding:7px 9px">'
-        f'<div style="font-size:11.5px;font-weight:700;margin-bottom:3px">{a}</div>'
-        f'<div style="font-size:10.5px;line-height:1.7;color:#37485C">{b}</div></div>'
-        for a, b in _steps) + '</div>')
-
-    # =====================================================================
-    # 因子定义表
-    # =====================================================================
-    h('<div class="sec">三、因子定义：衡量什么、怎么算、预期方向</div>')
-    _rows = "".join(
-        f'<tr><td style="padding:4px 6px;border-top:1px solid {C.COLOR["grid"]};'
-        f'font-size:11px;font-weight:600;white-space:nowrap">{f["name"]}</td>'
-        f'<td style="padding:4px 6px;border-top:1px solid {C.COLOR["grid"]};'
-        f'font-size:10.5px">{f["formula"]}</td>'
-        f'<td style="padding:4px 6px;border-top:1px solid {C.COLOR["grid"]};'
-        f'font-size:10.5px;white-space:nowrap">'
-        f'{"越大越看多" if f["direction"] > 0 else "越大越看空"}　{f["freq"]}</td>'
-        f'<td style="padding:4px 6px;border-top:1px solid {C.COLOR["grid"]};'
-        f'font-size:10.5px;color:{C.COLOR["text_dim"]}">{f["expect"]}</td></tr>'
-        for f in F)
-    h(f'<div style="max-height:330px;overflow:auto;border:1px solid {C.COLOR["line"]};'
-      f'border-radius:6px"><table style="width:100%;border-collapse:collapse">'
-      f'<thead style="position:sticky;top:0;background:{C.COLOR["panel"]};z-index:2">'
-      f'<tr><th style="padding:5px 6px;text-align:left;font-size:11px">因子</th>'
-      f'<th style="padding:5px 6px;text-align:left;font-size:11px">计算公式</th>'
-      f'<th style="padding:5px 6px;text-align:left;font-size:11px">方向 / 频率</th>'
-      f'<th style="padding:5px 6px;text-align:left;font-size:11px">为什么预期有效</th>'
-      f'</tr></thead><tbody>{_rows}</tbody></table></div>')
-
-    # =====================================================================
-    # 汇总表
-    # =====================================================================
-    h('<div class="sec">四、检验结果汇总：9 个因子排一排</div>')
-    _t = pd.DataFrame([{
-        "因子": f["name"],
-        "方向": "正" if f["direction"] > 0 else "负",
-        "IC": f["ic_mean"], "IC_IR": f["ic_ir"], "t 值": f["t"], "p 值": f["p"],
-        "胜率%": f["win"], "期数": f["n"],
-        "多空%": f["ls_mean"], "单调性": f["mono"],
-        "结论": f["verdict"],
-    } for f in F]).sort_values("IC", key=lambda s: s.abs(), ascending=False)
-    st.dataframe(
-        _t, width="stretch", hide_index=True, height=340,
-        column_config={
-            "IC": st.column_config.NumberColumn(format="%+.3f"),
-            "IC_IR": st.column_config.NumberColumn(format="%+.2f"),
-            "t 值": st.column_config.NumberColumn(format="%+.2f"),
-            "p 值": st.column_config.NumberColumn(format="%.3f"),
-            "胜率%": st.column_config.NumberColumn(format="%.0f"),
-            "多空%": st.column_config.NumberColumn(format="%+.2f",
-                                                 help="Q5 − Q1 的次期平均收益差"),
-            "单调性": st.column_config.NumberColumn(format="%+.2f",
-                                                 help="五层收益与层序号的秩相关，±1 为完全单调"),
+    h('<div class="sec">二、九个因子一览：各自衡量什么、结论如何</div>')
+    _rows = []
+    for f in F:
+        _doc = DOC.get(f["key"], {})
+        _rows.append({
+            "因子": f["name"],
+            "衡量什么": _BRIEF.get(f["key"], f["name"]),
+            "IC": f.get("ic_mean"), "t": f.get("t"), "p": f.get("p"),
+            "结论": f["verdict"],
         })
-    h(f'<div class="tiny">IC 为 29 期左右的均值；t 用 Newey-West（滞后 4 期）修正自相关；'
-      f'p 为双侧。判定阈值事前固定：|IC|&lt;0.03 或 |t|&lt;1.64 记「无效」；'
-      f'IC 为负且显著记「反向」；|IC|≥0.05 且 IC_IR≥0.5 且 |t|≥1.96 记「可用」。'
-      f'「半年主动净额」只有 14 期样本，统计功效很弱，结论仅供参考。</div>')
+    _t = pd.DataFrame(_rows).sort_values("IC", key=lambda s: s.abs(), ascending=False)
+    st.dataframe(
+        _t, width="stretch", hide_index=True, height=372,
+        column_config={
+            "因子": st.column_config.TextColumn(width="small"),
+            "衡量什么": st.column_config.TextColumn(width="medium"),
+            "IC": st.column_config.NumberColumn(format="%+.3f", width="small"),
+            "t": st.column_config.NumberColumn(format="%+.2f", width="small"),
+            "p": st.column_config.NumberColumn(format="%.3f", width="small"),
+            "结论": st.column_config.TextColumn(width="small"),
+        })
+    h('<div class="tiny">IC＝每期 31 个行业上「因子值 vs 次期收益」的 Spearman 秩相关均值；'
+      't 用 Newey-West（滞后 4 期）修正自相关；p 为双侧。'
+      f'判定阈值事前固定：|IC|&lt;0.03 或 |t|&lt;1.64 记「无效」；'
+      f'IC 为负且显著记「反向」；|IC|≥0.05、IC_IR≥0.5、|t|≥1.96 记「可用」。</div>')
 
     # =====================================================================
-    # 逐因子
+    # 逐因子说明书
     # =====================================================================
-    h('<div class="sec">五、逐因子看：IC 稳不稳、分层单不单调</div>')
+    h('<div class="sec">三、逐个因子：经济内容 → 公式 → 步骤 → 阈值 → 失效 → 风险</div>')
     _opts = [f'{f["name"]}（{f["verdict"]}）' for f in F]
     _pick = st.selectbox("选择因子", _opts, key="ft_pick")
     f = F[_opts.index(_pick)]
+    doc = DOC.get(f["key"], {})
     _c = _VERDICT_COLOR.get(f["verdict"], C.COLOR["text_dim"])
-    h(f'<div style="border:1px solid {C.COLOR["line"]};border-left:3px solid {_c};'
-      f'border-radius:0 6px 6px 0;padding:8px 11px;margin-bottom:6px">'
-      f'<div style="font-size:12px;font-weight:700">{f["name"]}　'
-      f'<span style="color:{_c}">{f["verdict"]}</span>　'
-      f'<span style="font-size:10.5px;font-weight:400;color:{C.COLOR["text_dim"]}">'
-      f'IC {f["ic_mean"]:+.3f}　IC_IR {f["ic_ir"]:+.2f}　t {f["t"]:+.2f}　'
-      f'p {f["p"]:.3f}　胜率 {f["win"]:.0f}%　{f["n"]} 期</span></div>'
-      f'<div style="font-size:11px;line-height:1.75;margin-top:3px">{f["why"]}</div></div>')
+
+    _steps = doc.get("steps") or []
+    _steps_html = "<br>".join(f"{k}. {v}" for k, v in enumerate(_steps, 1)) or "—"
+    _formula_html = ('<span style="font-family:ui-monospace,Consolas,monospace;'
+                     'font-size:12.5px">' + str(f.get("formula", "—")) + "</span>")
+    _card = (
+        f'<div style="border:1px solid {C.COLOR["line"]};border-left:4px solid {_c};'
+        f'border-radius:9px;padding:11px 15px;background:#FFFFFF">'
+        f'<div style="font-size:16px;font-weight:700;color:#16283C">{f["name"]}'
+        f'<span style="font-size:13px;color:{_c};margin-left:9px">{f["verdict"]}</span>'
+        f'<span style="font-size:12.5px;font-weight:400;color:{C.COLOR["text_dim"]};'
+        f'margin-left:10px">IC {f["ic_mean"]:+.3f}　t {f["t"]:+.2f}　'
+        f'p {f["p"]:.3f}　胜率 {f["win"]:.0f}%　{f["n"]} 期</span></div>'
+        + _field("经济内容", doc.get("econ", "—"), C.COLOR["price"])
+        + _field("投资含义", doc.get("invest", "—"), C.COLOR["accent"])
+        + _field("为什么这样算", doc.get("why", "—"), C.COLOR["text_dim"])
+        + _field("公式", _formula_html, C.COLOR["price"])
+        + _field("计算步骤", _steps_html, C.COLOR["text_dim"])
+        + _field("判定阈值", doc.get("standard", "—"), C.COLOR["threshold"])
+        + _field("阈值来源", doc.get("src", "—"), C.COLOR["text_dim"])
+        + _field("失效条件", doc.get("fail", "—"), C.COLOR["level_拥挤"])
+        + _field("使用风险", doc.get("risk", "—"), C.COLOR["threshold"])
+        + '</div>')
+    h(_card)
 
     c1, c2 = st.columns([0.62, 0.38], gap="small")
     with c1:
@@ -346,69 +276,76 @@ def render(h, B=None, IND=None) -> None:
         st.plotly_chart(_layer_fig(f), width="stretch", config={"displayModeBar": False})
 
     _s = pd.Series({k: v for k, v in f.get("ic_series", {}).items() if v is not None})
-    _pos = int((_s > 0).sum())
-    _neg = int((_s < 0).sum())
-    _maxq = _s.abs().idxmax() if len(_s) else "—"
-    h(f'<div class="cg-note"><b>怎么读</b>：左图蓝柱是单期 IC（正＝因子值高的行业次期涨得多），'
-      f'橙线是累计 IC——如果累计线一路向下，说明它长期反向；'
-      f'如果只有一两期贡献，说明不稳定。右图是五分层：'
-      f'<b>严格递增才是好因子</b>。<br>'
-      f'本期该因子：{_pos} 期为正、{_neg} 期为负，绝对值最大的一期是 '
-      f'<b>{_maxq}</b>（{_s.get(_maxq, float("nan")):+.3f}）。'
-      + (f' 分层从 Q1 {f["layers"]["0"]:+.2f}% 到 Q5 {f["layers"]["4"]:+.2f}%，'
-         f'单调性 {f["mono"]:+.2f}。' if f.get("layers") else '')
-      + '</div>')
+    if len(_s):
+        _pos, _neg = int((_s > 0).sum()), int((_s < 0).sum())
+        _maxq = _s.abs().idxmax()
+        h(f'<div class="tiny">左图：每根柱是一期的 IC，橙线是累计 IC——'
+          f'累计线一路向下说明长期反向，只靠一两期撑起说明不稳定。'
+          f'右图：按因子值五等分，Q1→Q5 严格递增才是好因子。<br>'
+          f'本期该因子 {_pos} 期为正、{_neg} 期为负，绝对值最大的一期是 '
+          f'<b>{_maxq}</b>（{_s.get(_maxq, float("nan")):+.3f}）。'
+          + (f' 分层从 Q1 {f["layers"]["0"]:+.2f}% 到 Q5 {f["layers"]["4"]:+.2f}%，'
+             f'单调性 {f["mono"]:+.2f}。' if f.get("layers") else '') + '</div>')
 
     # =====================================================================
-    # 结论怎么影响前面的判断
+    # 为什么不用旧因子
     # =====================================================================
-    h('<div class="sec">六、这些结果怎么反过来影响「结论总览」</div>')
-    h('<div class="cg-note" style="line-height:1.95">'
-      '· <b>「可以跟」不是「会涨」</b>：规则筛的是「机构在做 + 多数在加 + 价格不贵」，'
-      '这是<b>赔率与风险的组合</b>，不是收益预测。因子检验已经证明，'
-      '这些指标对次季收益没有稳定预测力。<br>'
-      '· <b>广度只能用来判断共识是否成立</b>，不能用来追涨。'
-      '它的 IC 是负的（−0.04，10% 显著），意味着「大家一窝蜂加」之后往往跑输——'
-      '这恰好支持「在拥挤处减仓、在冷门处观察」的做法，而不是「跟着加」。<br>'
-      '· <b>配置分位、价格分位、CSI 都不显著</b>：分层方向与「拥挤即风险」一致（配置分位 Q1 +2.39% → Q5 +0.51%），但 t 值只有 −0.83、p=0.42，且不单调，所以只能当风险提示，不能当卖出信号。'
-      '页面保留拥挤度，是为了<b>控制仓位大小</b>（挤的地方少放钱），'
-      '不是因为它能预测下跌。<br>'
-      '· <b>真正有用的信息不是「预测」，而是「约束」</b>：'
-      '知道机构在撤（没人接）就不要抄底，知道仓位已在历史高位就不要满仓——'
-      '这些不提高收益，但能显著降低踩踏的概率。</div>')
+    with st.expander("附：为什么换掉早期那套因子（F1 / F2 / F11）", expanded=False):
+        h('<div class="cg-note" style="font-size:12.5px">'
+          '早期用的是 <b>F1 超配比例</b>（基金配置 − 基准权重）、<b>F2 超配 Z</b>、'
+          '<b>F3 超配分位</b>、<b>F11 综合拥挤度</b>（多分量加权）、<b>F15 拥挤背离</b>，'
+          '来自 Wind 持仓 + 基准权重 + 成交额占比，43 期。换掉的四个原因：<br>'
+          '① <b>两套口径打架</b>：超配要用沪深300/中证800 的行业权重，而页面其他数字来自'
+          '东财持仓，同一行业会出现两个超配率。新因子全部来自 canon 一套数据。<br>'
+          '② <b>不可复现</b>：F11 是拟合加权的复合因子，权重没有样本外验证，'
+          '外人算不出同一个数；新因子每个只有一个公式。<br>'
+          '③ <b>含价格漂移</b>：旧超配比例没剥离涨跌，行业涨了没人买也会显示超配上升。<br>'
+          '④ <b>依赖 Wind 授权</b>：接口会截断、换机器就跑不了；新因子只用东财公开披露。<br>'
+          '<b>代价</b>：算不了「相对沪深300 的超配」（只能用同行平均作基准）；'
+          '期数从 43 降到 31；没有换手率/成交额类「交易拥挤」因子——'
+          '这是取舍，不是单向升级。</div>')
 
-    h('<div class="sec">七、稳健性：阈值动一动，名单还成立吗</div>')
-    try:
-        import playbook as _pb
-        _sens = _pb.sensitivity()
-        st.dataframe(_sens[["情景", "可以跟", "要回避", "与基准重合", "重合率", "名单"]],
-                     width="stretch", hide_index=True, height=220,
-                     column_config={"重合率": st.column_config.ProgressColumn(
-                         format="%.0f", min_value=0, max_value=100)})
-        _min = float(_sens["重合率"].min())
-        h(f'<div class="cg-note"><b>怎么读</b>：把「可以跟」与「要回避」的门槛各扰动 ±20%，'
-          f'看名单换不换人。最低重合率 <b>{_min:.0f}%</b>。'
-          f'<br><b>结论</b>：回避名单在放宽方向完全稳定（100%），收紧方向不稳（44%）——'
-          f'说明「要回避」这几家是「只要标准不苛刻就一定在里面」的；'
-          f'可以跟名单在放宽方向会多出两家、在严格方向会清空，说明它们的共识强度只是'
-          f'<b>刚过 60% 这条线</b>，不是压倒性共识。<b>这本身就是信息</b>：'
-          f'本期没有一个「人人都加、价格又便宜」的行业，'
-          f'所以仓位要按「试探」而不是「重仓」来给。</div>')
-    except Exception as _e:
-        h(f'<div class="tiny">稳健性表暂不可用：{type(_e).__name__}</div>')
+    # =====================================================================
+    # 对前面结论的影响
+    # =====================================================================
+    h('<div class="sec">四、这些结果怎么反过来约束前面的判断</div>')
+    h(ui.concl_board([
+        '<b>「可以跟」不是「会涨」</b>：规则筛的是「机构在做 + 多数在加 + 价格不贵」，'
+        '这是赔率与风险的组合。因子检验已证明这些指标对次季收益没有稳定预测力。',
+        '<b>广度只能用来判断共识是否成立</b>：它的 IC 为负（−0.041），'
+        '意味着「大家一窝蜂加」之后往往跑输。这恰好支持「在拥挤处减仓、在冷门处观察」，'
+        '而不是「跟着加」。',
+        '<b>拥挤度只能用来约束仓位</b>：CSI 与配置分位的 t 值都不显著，'
+        '但方向与「拥挤即风险」一致。所以 ≥80 时压仓位上限，而不是清仓。',
+        '<b>真正有用的是「约束」而不是「预测」</b>：知道机构在撤就别抄底、'
+        '知道仓位已在历史高位就别满仓——这些不提高收益，但能显著降低踩踏概率。',
+    ], numbered=False))
 
-    h('<div class="sec">七、局限：为什么结论可能偏保守</div>')
-    h('<div class="cg-note" style="line-height:1.9">'
-      f'· <b>样本短</b>：{d["sample"]["quarters"]} 期、31 个行业，'
-      f'横截面最多 31 个观测，统计功效有限；半年频因子只有 14 期，几乎测不出东西。<br>'
-      '· <b>行业收益用申万一级指数</b>：基金实际持有的是个股，行业指数与「基金能买到的收益」'
-      '之间有跟踪误差；等权行业组合也不是可投资组合。<br>'
-      '· <b>没有交易成本与容量约束</b>：即使 IC 为正，扣掉换手成本后也可能不赚钱。<br>'
-      '· <b>多重检验</b>：9 个因子同时测，出现一个 p&lt;0.1 的结果很正常，'
-      '不能当成「发现」；要样本外再验证一季。<br>'
-      '· <b>前视已尽量排除但仍不完美</b>：分位用扩张窗口、收益用季末到季末，'
-      '但基金持仓的披露时滞（约 3–4 周）没有在 IC 里扣除——'
-      '真实可交易窗口比测试窗口短。</div>')
+    with st.expander("附：稳健性与局限（数字不好看，但必须写）", expanded=False):
+        try:
+            import playbook as _pb
+            _sens = _pb.sensitivity()
+            st.dataframe(_sens[["情景", "可以跟", "要回避", "与基准重合", "重合率"]],
+                         width="stretch", hide_index=True, height=210,
+                         column_config={"重合率": st.column_config.ProgressColumn(
+                             format="%.0f", min_value=0, max_value=100)})
+            _min = float(_sens["重合率"].min())
+            h(f'<div class="tiny">把「可以跟」「要回避」的门槛各扰动 ±20%，看名单换不换人：'
+              f'最低重合率 {_min:.0f}%。回避名单在放宽方向完全稳定、收紧方向不稳；'
+              f'可以跟名单在严格方向会清空——说明这几家的共识只是刚过 60% 这条线，'
+              f'仓位要按「试探」而不是「重仓」给。</div>')
+        except Exception as _e:
+            h(f'<div class="tiny">稳健性表暂不可用：{type(_e).__name__}</div>')
+        h(f'<div class="cg-note" style="font-size:12.5px">'
+          f'· <b>样本短</b>：{d["sample"]["quarters"]} 期、31 个行业，横截面最多 31 个观测，'
+          f'统计功效有限；半年频因子只有 14 期，几乎测不出东西。<br>'
+          f'· <b>收益用申万一级指数</b>：基金实际持有的是个股，指数与「基金能买到的收益」'
+          f'之间有跟踪误差；等权行业组合也不是可投资组合。<br>'
+          f'· <b>没有交易成本与容量约束</b>：即使 IC 为正，扣掉换手成本后也可能不赚钱。<br>'
+          f'· <b>多重检验</b>：9 个因子同时测，出现一个 p&lt;0.1 的结果很正常，'
+          f'不能当成「发现」。<br>'
+          f'· <b>披露时滞没扣</b>：IC 用季末到季末的收益，但持仓要 3–4 周后才可得，'
+          f'真实可交易窗口比测试窗口短。</div>')
 
     if st.button("重算全部因子（约 60–80 秒）", key="ft_calc"):
         with st.spinner("正在重算…"):

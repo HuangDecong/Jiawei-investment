@@ -106,23 +106,36 @@ def fig_active_passive(d: pd.DataFrame, top: int = 11) -> go.Figure:
 # ---------------------------------------------------------------------------
 # 3. 广度：多少基金在动
 # ---------------------------------------------------------------------------
-def fig_breadth(d: pd.DataFrame, top: int = 14) -> go.Figure:
+def fig_breadth(d: pd.DataFrame, top: int = 14,
+                small: list[str] | None = None) -> go.Figure:
     """加仓基金占比的横向条形，按偏离 50% 的幅度排序。
+
+    小样本行业（综合等）单独排在最后、涂灰并标 †：
+    它的 62% 是「58 只基金里 36 只在加」，和银行「1,000 只里 620 只在加」
+    完全不是一个量级的证据，混在中间排会误导。
 
     为什么不用「占比 × 分歧度」散点：分歧度 = 1−|2×占比−1|，
     完全由占比决定，两轴相关性 ±1，画出来是一条线，没有信息量。
-
-    分母说明（页面上也写着）：加仓占比 = 加仓 ÷ (加仓 + 减仓)，即
-    「有实质变动的基金里多少在加」；不持有该行业的基金不进分母。
     """
+    small = small or []
     d = d.dropna(subset=["加仓占比"]).copy()
+    if d.empty:
+        return _base(go.Figure(), "数据未就绪")
+    d["_sm"] = d["行业"].isin(small).astype(int)
     d["偏离"] = (d["加仓占比"] - 50).abs()
-    d = d.nlargest(top, "偏离").sort_values("加仓占比")
-    col = [C.COLOR["up"] if v >= 50 else C.COLOR["down"] for v in d["加仓占比"]]
+    # 正常样本取最偏离的 top 个；小样本一律全部保留在末尾
+    _ok = d[d["_sm"] == 0].nlargest(top, "偏离")
+    _sm = d[d["_sm"] == 1]
+    d = pd.concat([_ok, _sm]).sort_values(["_sm", "加仓占比"],
+                                          ascending=[False, True])
+    col = [CSI_COLORS["小样本"] if sm else
+           (C.COLOR["up"] if v >= 50 else C.COLOR["down"])
+           for v, sm in zip(d["加仓占比"], d["_sm"])]
     fig = go.Figure(go.Bar(
-        y=d["行业"], x=d["加仓占比"], orientation="h", marker_color=col,
+        y=[i + ("†" if sm else "") for i, sm in zip(d["行业"], d["_sm"])],
+        x=d["加仓占比"], orientation="h", marker_color=col,
         text=[f"{v:.0f}%" for v in d["加仓占比"]], textposition="outside",
-        textfont=dict(size=9),
+        textfont=dict(size=11),
         customdata=np.stack([d["加仓基金数"], d["减仓基金数"], d["持有基金数"],
                              d["平均主动pp"]], axis=-1),
         hovertemplate=("<b>%{y}</b><br>加仓基金占比 %{x:.1f}%<br>"
@@ -130,12 +143,16 @@ def fig_breadth(d: pd.DataFrame, top: int = 14) -> go.Figure:
                        "（持有 %{customdata[2]:.0f} 只）<br>"
                        "价格中性净额 %{customdata[3]:+.2f}pp<extra></extra>"),
     ))
-    fig.add_vline(x=50, line=dict(color=C.COLOR["text_dim"], width=1, dash="dot"))
-    fig.update_xaxes(title_text="加仓基金占比（%）　←多数在减　｜　多数在加→",
-                     range=[0, 108])
-    fig.update_yaxes(title_text="")
+    fig.add_vline(x=50, line=dict(color=C.COLOR["threshold"], width=1.4, dash="dash"),
+                  annotation_text="50%：左＝多数在减，右＝多数在加",
+                  annotation_position="top",
+                  annotation_font=dict(size=10, color=C.COLOR["threshold"]),
+                  annotation_bgcolor="rgba(255,255,255,0.85)")
+    fig.update_xaxes(title_text="加仓基金占比（%）", range=[0, 112],
+                     tickfont=dict(size=11))
+    fig.update_yaxes(tickfont=dict(size=12))
     fig = _base(fig, "", 430)
-    fig.update_layout(margin=dict(l=6, r=30, t=16, b=34))
+    fig.update_layout(margin=dict(l=6, r=40, t=26, b=42))
     return fig
 
 
@@ -255,42 +272,48 @@ def ind_color(name: str) -> str:
 
 def fig_ind_structure(M: pd.DataFrame, title: str = "",
                       residual_label: str = "其他（港股/未映射/现金）",
-                      label_top: int = 4) -> go.Figure:
-    """全部 31 个行业的堆叠面积图（行＝期，列＝行业，单位 %）。
+                      label_top: int = 4,
+                      max_items: int | None = 10) -> go.Figure:
+    """行业结构堆叠面积图（行＝期，列＝行业，单位 %）。
 
-    为什么用堆叠面积而不是多条线：31 条线会互相遮挡，面积图能同时看到
-    「谁在扩张、谁在收缩、总结构怎么变」。行业按均值从大到小排，
-    大的在下、小的在上，视觉上稳定。
+    为什么默认只画前 10 大 + 「其他 N 个」：31 个色块叠在一起时，
+    后面 20 个行业每个只有 1–3pp，颜色块细到看不清，图例也排不下。
+    合并之后每一层都有 4pp 以上的厚度，趋势才读得出来。
+    想看全部 31 个，把 max_items 设为 None（页面上有开关）。
 
-    残差带：31 个行业之和常常不到 100——差的部分是港股、未映射行业与现金。
-    不补这一条，图上会出现一块白色空白，看起来像渲染错误；补上并标明，
-    读者才知道「剩下的是没被行业分类覆盖的部分」。
+    残差带：各行业之和常常不到 100——差的部分是港股、未映射行业与现金。
+    不补这一条，图上会出现一块白色空白，看起来像渲染错误。
     """
     if M.empty:
         return _base(go.Figure(), "数据未就绪")
     d = M.copy()
     order = d.mean().sort_values(ascending=False).index.tolist()
-    d = d[order]
+    merged_label = None
+    if max_items and len(order) > max_items:
+        keep = order[:max_items]
+        rest = order[max_items:]
+        merged_label = f"其他 {len(rest)} 个行业"
+        d = d[keep].copy()
+        d[merged_label] = M[rest].sum(axis=1)
+        order = keep + [merged_label]
+
     fig = go.Figure()
     for ind in order:
-        s = d[ind]
-        # hoverinfo="skip"：逐层悬停只会弹出一条，31 层要扫 31 次；
-        # 全部数值改由下面那条透明轨迹一次性给出。
+        s_ = d[ind]
         fig.add_trace(go.Scatter(
-            x=list(d.index), y=s.values, mode="lines", name=ind,
-            stackgroup="one", line=dict(width=0.5, color="#FFFFFF"),
-            fillcolor=ind_color(ind), hoverinfo="skip", showlegend=False))
+            x=list(d.index), y=s_.values, mode="lines", name=ind,
+            stackgroup="one", line=dict(width=0.6, color="#FFFFFF"),
+            fillcolor="#C9D3DE" if ind == merged_label else ind_color(ind),
+            hoverinfo="skip", showlegend=False))
     _resid = (100 - d.sum(axis=1)).clip(lower=0)
     if float(_resid.max()) > 0.5:
         fig.add_trace(go.Scatter(
             x=list(d.index), y=_resid.values, mode="lines", name=residual_label,
-            stackgroup="one", line=dict(width=0.5, color="#FFFFFF"),
-            fillcolor="#E9EDF2",
-            hovertemplate=f"<b>{residual_label}</b><br>%{{x}}：%{{y:.2f}}%<extra></extra>"))
+            stackgroup="one", line=dict(width=0.6, color="#FFFFFF"),
+            fillcolor="#E9EDF2", hoverinfo="skip", showlegend=False))
 
-    # 末端直接标注前几大行业：31 项图例放不下，读者需要一眼看到「现在最大的是谁」。
-    # 位置必须按**堆叠顺序**（即 trace 顺序＝均值降序）累加，
-    # 不能用「最新一期的排序」——两者不一致时标注会飘到别人的色块上。
+    # 末端标注前几大：读者需要一眼看到「现在最大的是谁」。
+    # 位置按堆叠顺序累加，不能用「最新一期的排序」。
     _last = d.index[-1]
     _cur = d.iloc[-1]
     _pos, _acc = {}, 0.0
@@ -298,46 +321,42 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
         _v = float(_cur.get(ind, 0) or 0)
         _pos[ind] = (_acc, _v)
         _acc += _v
-    _top_now = _cur.sort_values(ascending=False).index[:label_top]
+    _top_now = [i for i in _cur.sort_values(ascending=False).index][:label_top]
     for ind in _top_now:
         _y0, _v = _pos.get(ind, (0.0, 0.0))
-        if _v < 2:
+        if _v < 4:
             continue
-        # 标签放在色块**内部**右端（xanchor=right）：放外面需要预留边距，
-        # 容器一窄就会被裁成「医药生物 2…」。放里面既不会被裁，也不挡数据。
         fig.add_annotation(x=_last, y=_y0 + _v / 2, text=f"{ind} {_v:.0f}%",
                            showarrow=False, xanchor="right", xshift=-4,
-                           font=dict(size=9, color="#FFFFFF"), bgcolor=ind_color(ind),
-                           borderpad=1.6, opacity=0.96)
+                           font=dict(size=10, color="#FFFFFF"),
+                           bgcolor="#C9D3DE" if ind == merged_label else ind_color(ind),
+                           borderpad=2, opacity=0.96)
     fig.update_yaxes(title_text="占前十大 %" if residual_label.startswith("其他")
-                     else "占净值比 %", range=[0, 100])
-    # 悬停时一次显示该季度**全部行业**的数值：
-    # 默认 hovermode 只显示鼠标所在的那一层，读者要逐层扫，31 个行业根本看不过来。
-    # 一条透明轨迹承载「该季度全部行业」的悬浮文本：
-    # 按占比从大到小排，一次看全，不会被 plotly 的默认框裁掉。
+                     else "占净值比 %", range=[0, 100], tickfont=dict(size=11))
+    # 悬停：一条透明轨迹承载「该季度全部行业」的数值，一次看全。
     _txt = []
     for q in d.index:
-        row = d.loc[q].sort_values(ascending=False)
+        row = M.loc[q].sort_values(ascending=False)
         if float(_resid.get(q, 0) or 0) > 0.02:
             row = pd.concat([row, pd.Series({residual_label: float(_resid[q])})])
-        head = f"<b>{q}</b>　单位 %"
         lines = [f"{k} {v:.2f}" for k, v in row.items() if v >= 0.02]
         more = len(row) - len(lines)
-        _txt.append(head + "<br>" + "　".join(lines[:16])
-                    + (f"<br>…另有 {more} 个行业 <0.02%" if more > 0 else ""))
+        _txt.append(f"<b>{q}</b>　单位 %<br>" + "　".join(lines[:14])
+                    + (f"<br>…另有 {more} 个行业 &lt;0.02%" if more > 0 else ""))
     fig.add_trace(go.Scatter(
         x=list(d.index), y=[50] * len(d), mode="markers",
         marker=dict(size=1, color="rgba(0,0,0,0)"), showlegend=False,
         customdata=_txt, hovertemplate="%{customdata}<extra></extra>",
         name="全部行业"))
     fig.update_layout(hovermode="closest",
-                      hoverlabel=dict(bgcolor="rgba(255,255,255,0.97)", font_size=9.5,
+                      hoverlabel=dict(bgcolor="rgba(255,255,255,0.98)", font_size=11,
                                       bordercolor=C.COLOR["line"], align="left",
                                       namelength=0))
-    fig.update_xaxes(tickangle=-45)
-    fig = _base(fig, title, 430)
-    # 末端标注需要右侧留白，否则会被裁掉
-    fig.update_layout(margin=dict(l=6, r=14, t=40, b=8))
+    _ticks = [q for q in d.index if str(q).endswith("Q1")] + [d.index[-1]]
+    fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
+                     tickangle=-45, tickfont=dict(size=10))
+    fig = _base(fig, title, 520)
+    fig.update_layout(margin=dict(l=8, r=14, t=44, b=44))
     return fig
 
 
@@ -377,15 +396,43 @@ def fig_csi_change(d: pd.DataFrame, top: int = 31) -> go.Figure:
     return fig
 
 
-def ind_legend_html(names: list[str]) -> str:
-    """行业颜色索引：31 个小色块 + 名称，替代放不下的 plotly 图例。"""
-    chips = "".join(
-        f'<span style="display:inline-flex;align-items:center;gap:3px;'
-        f'margin:2px 7px 2px 0;font-size:10px;color:#37485C">'
-        f'<span style="width:9px;height:9px;border-radius:2px;'
-        f'background:{ind_color(n)};display:inline-block"></span>{n}</span>'
-        for n in names)
-    return f'<div style="line-height:1.9">{chips}</div>'
+def ind_legend_html(names: list[str],
+                    values: "pd.Series | None" = None,
+                    changes: "pd.Series | None" = None,
+                    cols: int = 4,
+                    min_value: float = 0.05) -> str:
+    """行业图例：色块 + 名称 + 当前占比（+ 区间变化）。
+
+    只列「有持仓」的行业（默认 >0.05%）：单只基金常常只持有 8–12 个行业，
+    把 31 个全列出来会有一半是 0.0%，图例比图还长，反而看不清。
+    想核对全部 31 个，用上方的堆叠图或下面的季度条形图。
+    """
+    cells = []
+    for n in names:
+        v_raw = np.nan if values is None else float(values.get(n, np.nan))
+        if values is not None and (not np.isfinite(v_raw) or v_raw < min_value):
+            continue
+        v = "" if values is None else f"{v_raw:.1f}%"
+        chg = ""
+        if changes is not None:
+            c = float(changes.get(n, np.nan))
+            if np.isfinite(c):
+                _c = C.COLOR["up"] if c > 0 else C.COLOR["down"] if c < 0 else C.COLOR["text_dim"]
+                chg = (f'<span style="color:{_c};font-weight:600;margin-left:6px;'
+                       f'font-size:11.5px">{c:+.1f}pp</span>')
+        cells.append(
+            f'<div style="display:flex;align-items:center;gap:7px;padding:4px 5px;'
+            f'border-bottom:1px solid {C.COLOR["grid"]};min-width:0">'
+            f'<span style="width:11px;height:11px;border-radius:2px;flex:0 0 11px;'
+            f'background:{ind_color(n)};display:inline-block"></span>'
+            f'<span style="font-size:12.5px;color:#37485C;white-space:nowrap;'
+            f'overflow:hidden;text-overflow:ellipsis">{n}</span>'
+            f'<span style="margin-left:auto;font-size:12.5px;color:#1F2D3D;'
+            f'font-variant-numeric:tabular-nums;font-weight:700">{v}{chg}</span></div>')
+    if not cells:
+        return ""
+    return (f'<div style="display:grid;grid-template-columns:repeat({cols},minmax(0,1fr));'
+            f'gap:0 16px;margin:2px 0 8px">' + "".join(cells) + '</div>')
 
 
 # ---------------------------------------------------------------------------
@@ -438,22 +485,25 @@ def fig_csi_bar(cs: pd.DataFrame) -> go.Figure:
         y=list(d.index), x=d["CSI"], orientation="h", marker_color=cols,
         text=[f'{v:.0f}　{l}' + ("†" if rel == "小样本" else "")
               for v, l, rel in zip(d["CSI"], d["等级"], d.get("可靠", [""] * len(d)))],
-        textposition="outside", textfont=dict(size=9),
+        textposition="outside", textfont=dict(size=10.5),
         customdata=np.array(_hv).reshape(-1, 1),
         hovertemplate="%{customdata[0]}<extra></extra>"))
     for v in (25, 45, 65, 80):
         fig.add_vline(x=v, line=dict(color=C.COLOR["line"], width=1, dash="dot"))
-    fig.update_xaxes(title_text="拥挤度指数 CSI（0＝最冷，100＝最挤）　†＝小样本", range=[0, 126])
-    fig.update_yaxes(tickfont=dict(size=9.5))
-    fig = _base(fig, "", 640)
-    fig.update_layout(margin=dict(l=6, r=86, t=16, b=34))
+    fig.update_xaxes(title_text="拥挤度指数 CSI（0＝最冷，100＝最挤）　†＝小样本",
+                     range=[0, 132], tickfont=dict(size=11))
+    fig.update_yaxes(tickfont=dict(size=11.5))
+    fig = _base(fig, "", 730)
+    fig.update_layout(margin=dict(l=8, r=92, t=14, b=40),
+                      hoverlabel=dict(font_size=11))
     return fig
 
 
 # ---------------------------------------------------------------------------
 # 6. 分歧结构：广度 × 平均变化
 # ---------------------------------------------------------------------------
-def fig_breadth_vs_move(d: pd.DataFrame) -> go.Figure:
+def fig_breadth_vs_move(d: pd.DataFrame,
+                        small: list[str] | None = None) -> go.Figure:
     """横轴＝多少基金在加，纵轴＝价格中性后的净买卖（pp）。
 
     两轴独立：广度回答「共识度」，幅度回答「力度」。
@@ -461,41 +511,57 @@ def fig_breadth_vs_move(d: pd.DataFrame) -> go.Figure:
 
     纵轴必须用「平均主动pp」而不是原始变化：原始变化含价格漂移，
     暴跌季所有行业都会落在左下角，看不出谁在被真买。
+
+    小样本行业画成灰点并标 †：它们的位置由几十只基金决定，
+    放进「共识/撤离」的分组里会污染判断。
     """
     if d.empty:
         return _base(go.Figure(), "数据未就绪")
     d = d.copy()
+    small = small or []
+    # 广度表的索引是 RangeIndex，行业名在「行业」列里；
+    # 直接用 d.index 会拿到整数，后面拼 † 就会 TypeError。
+    _nm = (d["行业"].astype(str) if "行业" in d.columns
+           else pd.Series(d.index.astype(str), index=d.index))
+    d["_nm"] = _nm
+    d["_sm"] = _nm.isin(small)
     _y = "平均主动pp" if "平均主动pp" in d.columns else "平均变化pp"
     cmap = {"共识形成": C.COLOR["up"], "系统性撤离": C.COLOR["down"],
             "多空对撞": "#E8710A", "分歧": C.COLOR["text_dim"]}
-    notable = ((d["加仓占比"] - 50).abs() >= 15) | (d[_y].abs() >= 0.8)
+    # 只在「明显偏离中心」的点上写字：31 个点里有一半挤在 (55%, 0) 附近，
+    # 全标会叠成一团黑字，反而看不清。小样本一律标（它们是灰色的，需要识别）。
+    notable = ((d["加仓占比"] - 50).abs() >= 15) | (d[_y].abs() >= 1.0) | d["_sm"]
     fig = go.Figure()
-    for tag, g in d.groupby("判读"):
-        lab = [i if notable.get(i, False) else "" for i in g.index]
+    for tag, g in d.groupby("判读", dropna=False):
+        lab = [str(nm) + ("†" if sm else "") if notable.get(ix, False) else ""
+               for ix, nm, sm in zip(g.index, g["_nm"], g["_sm"])]
         fig.add_trace(go.Scatter(
             x=g["加仓占比"], y=g[_y], mode="markers+text", name=f"{tag}（{len(g)}）",
-            marker=dict(size=10 + np.sqrt(g["样本基金数"]) / 8,
-                        color=cmap.get(tag, C.COLOR["text_dim"]), opacity=0.75,
-                        line=dict(width=0.8, color="#FFFFFF")),
+            marker=dict(size=11 + np.sqrt(g["样本基金数"]) / 9,
+                        color=[CSI_COLORS["小样本"] if sm else cmap.get(tag, C.COLOR["text_dim"])
+                               for sm in g["_sm"]],
+                        opacity=0.85, line=dict(width=0.8, color="#FFFFFF")),
             text=lab, textposition="top center",
-            textfont=dict(size=9, color=C.COLOR["text_dim"]),
-            customdata=np.stack([g["加仓基金数"], g["减仓基金数"]], axis=-1),
+            textfont=dict(size=11, color="#37485C"),
+            customdata=np.stack([g["加仓基金数"], g["减仓基金数"], g["持有基金数"]], axis=-1),
             hovertemplate=("<b>%{text}</b><br>加仓基金占比 %{x:.1f}%<br>"
                            "价格中性净额 %{y:+.2f}pp<br>"
-                           "加 %{customdata[0]:.0f} / 减 %{customdata[1]:.0f}<extra></extra>"),
+                           "加 %{customdata[0]:.0f} / 减 %{customdata[1]:.0f}"
+                           "（持有 %{customdata[2]:.0f}）<extra></extra>"),
         ))
     fig.add_vline(x=50, line=dict(color=C.COLOR["threshold"], width=1.4, dash="dash"),
-                  annotation_text="50% 分界：左边多数在减、右边多数在加",
-                  annotation_position="top", annotation_font=dict(size=9, color=C.COLOR["threshold"]),
+                  annotation_text="50%：左＝多数在减，右＝多数在加",
+                  annotation_position="top", annotation_font=dict(size=10, color=C.COLOR["threshold"]),
                   annotation_bgcolor="rgba(255,255,255,0.85)")
     fig.add_hline(y=0, line=dict(color=C.COLOR["text_dim"], width=1, dash="dot"),
-                  annotation_text="净额 0：上方净买入、下方净卖出",
-                  annotation_position="right", annotation_font=dict(size=9, color=C.COLOR["text_dim"]),
+                  annotation_text="净额 0：上＝净买入，下＝净卖出",
+                  annotation_position="right", annotation_font=dict(size=10, color=C.COLOR["text_dim"]),
                   annotation_bgcolor="rgba(255,255,255,0.85)")
-    fig.update_xaxes(title_text="加仓基金占比（%）　←少数在加　｜　多数在加→", range=[0, 100])
-    fig.update_yaxes(title_text="价格中性净额（pp）")
+    fig.update_xaxes(title_text="加仓基金占比（%）", range=[10, 95],
+                     tickfont=dict(size=11))
+    fig.update_yaxes(title_text="价格中性净额（pp）", tickfont=dict(size=11))
     fig = _base(fig, "", 470, legend=True)
-    fig.update_layout(margin=dict(l=64, r=16, t=16, b=44))
+    fig.update_layout(margin=dict(l=64, r=26, t=16, b=44))
     return fig
 
 
@@ -571,17 +637,21 @@ def fig_level_history(M: pd.DataFrame, industry: str,
                   annotation_font=dict(size=9, color=C.COLOR["text_dim"]))
     _hi, _lo = float(s.max()), float(s.min())
     fig.add_annotation(x=s.idxmax(), y=_hi, text=f"最高 {_hi:.1f}%", showarrow=True,
-                       arrowhead=0, ay=-22, font=dict(size=9, color=C.COLOR["up"]))
+                       arrowhead=0, ay=-24, font=dict(size=10, color=C.COLOR["up"]))
     fig.add_annotation(x=s.idxmin(), y=_lo, text=f"最低 {_lo:.1f}%", showarrow=True,
-                       arrowhead=0, ay=22, font=dict(size=9, color=C.COLOR["down"]))
-    # 上下留 12% 余量：最高/最低点的文字标注画在点外侧，不留余量会被画到坐标区外
-    _lo, _hi = float(s.min()), float(s.max())
-    _pad = max((_hi - _lo) * 0.18, 0.6)
-    fig.update_yaxes(title_text="占前十大组合 %", range=[_lo - _pad, _hi + _pad])
-    fig.update_xaxes(tickangle=-45)
-    fig = _base(fig, f"{industry} 配置比例的历史位置{title_extra}", 360)
+                       arrowhead=0, ay=24, font=dict(size=10, color=C.COLOR["down"]))
+    # 上下留 18% 余量：最高/最低点的文字标注画在点外侧，不留余量会被画到坐标区外
+    _pad = max((_hi - _lo) * 0.22, 0.8)
+    fig.update_yaxes(title_text="占前十大组合 %", range=[_lo - _pad, _hi + _pad],
+                     tickfont=dict(size=11))
+    # 31 个季度标签全标会糊成一片：只标每年 Q1 + 末期
+    _tk = [q for q in s.index if str(q).endswith("Q1")] + [s.index[-1]]
+    fig.update_xaxes(tickmode="array", tickvals=_tk, ticktext=_tk,
+                     tickangle=-45, tickfont=dict(size=10))
+    fig = _base(fig, f"{industry} 配置比例的历史位置{title_extra}", 380)
     # 右侧要放「历史均值」标注，不留边距会被裁成「历…」
-    fig.update_layout(margin=dict(l=6, r=72, t=46, b=10))
+    fig.update_layout(margin=dict(l=6, r=86, t=48, b=46),
+                      hoverlabel=dict(font_size=11))
     return fig
 
 
@@ -862,17 +932,17 @@ def fig_threshold(bins: pd.DataFrame, events: pd.DataFrame) -> go.Figure:
     fig.add_trace(go.Bar(
         x=d["档"], y=d["均值"], name="次季超额（%）", marker_color=cols,
         text=[f"{v:+.2f}%" for v in d["均值"]], textposition="outside",
-        textfont=dict(size=9.5, color="#37485C"), width=0.52,
+        textfont=dict(size=11, color="#37485C"), width=0.52,
         customdata=np.stack([d["样本"], d["中位"], d["t"]], axis=-1),
         hovertemplate=("<b>%{x}</b><br>次季超额均值 %{y:+.2f}%<br>"
                        "中位 %{customdata[1]:+.2f}%<br>样本 %{customdata[0]:.0f}<br>"
                        "t 值 %{customdata[2]:+.2f}<extra></extra>")),
         secondary_y=False)
     fig.add_trace(go.Scatter(
-        x=d["档"], y=d["胜率"], name="胜率（%）", mode="lines+markers+text",
-        line=dict(color="#1F6FEB", width=2), marker=dict(size=7),
-        text=[f"{v:.0f}%" for v in d["胜率"]], textposition="bottom center",
-        textfont=dict(size=9, color="#1F6FEB"),
+        x=d["档"], y=d["胜率"], name="胜率（%）", mode="lines+markers",
+        line=dict(color="#1F6FEB", width=2), marker=dict(size=9),
+        # 不在线上写数字：双轴图里数字必然与柱子/坐标轴打架，
+        # 胜率已经在下方表里逐档列出，这里只保留悬浮。
         hovertemplate="<b>%{x}</b><br>次季跑赢同行概率 %{y:.1f}%<extra></extra>"),
         secondary_y=True)
     fig.add_hline(y=0, line=dict(color=C.COLOR["line"], width=1), secondary_y=False)
@@ -881,8 +951,59 @@ def fig_threshold(bins: pd.DataFrame, events: pd.DataFrame) -> go.Figure:
     fig.update_yaxes(title_text="次季超额收益（%）", secondary_y=False,
                      range=[-1.1, 1.1], dtick=0.5)
     fig.update_yaxes(title_text="胜率（%）", secondary_y=True, range=[36, 56],
-                     dtick=5)
-    fig = _base(fig, "", 380, legend=True)
-    fig.update_layout(margin=dict(l=54, r=54, t=42, b=56),
-                      xaxis=dict(tickfont=dict(size=9)))
+                     dtick=5, title_standoff=12)
+    fig = _base(fig, "", 400, legend=True)
+    fig.update_layout(margin=dict(l=58, r=70, t=42, b=56),
+                      xaxis=dict(tickfont=dict(size=11)),
+                      hoverlabel=dict(font_size=11))
+    return fig
+
+
+def _band_of(v: float) -> str:
+    if not np.isfinite(v):
+        return "数据不足"
+    if v >= 80:
+        return "极度拥挤"
+    if v >= 65:
+        return "拥挤"
+    if v >= 45:
+        return "中性"
+    if v >= 25:
+        return "偏冷"
+    return "冷门"
+
+
+def fig_csi_snapshot(H: pd.DataFrame, quarter: str,
+                     small: list[str] | None = None,
+                     height: int = 720) -> go.Figure:
+    """某一个季度、31 个行业的 CSI 一次全部排出来（横向条形）。
+
+    为什么需要它：热力图能看「谁什么时候变红」，但每一格只有一个颜色，
+    想知道「这一期到底谁 88 分、谁 71 分」必须逐个悬停，很费劲。
+    这里把选中的那一期整列展开成条形，所有数值一次性标在条端。
+    """
+    if H.empty or quarter not in H.index:
+        return _base(go.Figure(), "数据未就绪")
+    small = small or []
+    s = H.loc[quarter].dropna()
+    if s.empty:
+        return _base(go.Figure(), "数据未就绪")
+    d = s.to_frame("CSI")
+    d["_sm"] = d.index.isin(small)
+    d = d.sort_values(["_sm", "CSI"], ascending=[True, False])
+    cols = [CSI_COLORS["小样本"] if sm else CSI_COLORS.get(_band_of(v), "#C3CBD4")
+            for v, sm in zip(d["CSI"], d["_sm"])]
+    fig = go.Figure(go.Bar(
+        y=[i + ("†" if sm else "") for i, sm in zip(d.index, d["_sm"])],
+        x=d["CSI"], orientation="h", marker_color=cols,
+        text=[f"{v:.0f}" for v in d["CSI"]], textposition="outside",
+        textfont=dict(size=11),
+        hovertemplate="<b>%{y}</b><br>%{x:.1f} 分<extra></extra>"))
+    for x, lab in [(80, "80"), (65, "65"), (45, "45"), (25, "25")]:
+        fig.add_vline(x=x, line=dict(color="#B9C4D0", width=0.9, dash="dot"))
+    fig.update_xaxes(title_text=f"{quarter} 的 CSI（0＝最冷，100＝最挤）",
+                     range=[0, 108], tickfont=dict(size=11))
+    fig.update_yaxes(tickfont=dict(size=11.5))
+    fig = _base(fig, "", height)
+    fig.update_layout(margin=dict(l=8, r=44, t=12, b=40))
     return fig

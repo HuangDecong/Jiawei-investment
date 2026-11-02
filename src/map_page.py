@@ -27,6 +27,7 @@ import streamlit as st
 import canon as cn
 import config as C
 import report_charts as rc
+import ui
 
 
 def _tone(p: float) -> tuple[str, str]:
@@ -67,13 +68,9 @@ def _verdict(r) -> str:
     return "分位偏低且变动温和：没有明显的拥挤或抛弃信号，按个股逻辑处理即可。"
 
 
-def _read(h, read: str, concl: str) -> None:
-    """统一的「读图 + 结论」块：每张图下面都必须有，否则图就是摆设。"""
-    h(f'<div style="background:{C.COLOR["panel"]};border-left:3px solid {C.COLOR["price"]};'
-      f'padding:9px 12px;border-radius:0 6px 6px 0;margin:4px 0 16px">'
-      f'<div style="font-size:12px;line-height:1.9"><b>读图</b>：{read}</div>'
-      f'<div style="font-size:12.5px;line-height:1.9;margin-top:5px">'
-      f'<b style="color:{C.COLOR["threshold"]}">结论</b>：{concl}</div></div>')
+def _read(h, fact: str, econ: str, invest: str = "") -> None:
+    """图下方的三段式分析：事实 → 经济含义 → 投资含义。"""
+    ui.analysis(h, fact, econ, invest)
 
 
 def _rank_sort(df: pd.DataFrame, level_col: str = "等级") -> pd.DataFrame:
@@ -226,8 +223,7 @@ def render(h) -> None:
     _bl.append('<b>怎么用</b>：拥挤度只决定「给多大仓位」，不决定「买不买」。'
                '本库数据已证伪「高拥挤必然下跌」，所以看到红色不要条件反射地卖，'
                '而是把它的仓位上限压下来；看到深蓝也不要马上买，先等资金转向。')
-    h('<div class="cg-note" style="line-height:1.9">'
-      + "<br>".join(f"{i}. {x}" for i, x in enumerate(_bl, 1)) + "</div>")
+    h(ui.concl_board(_bl))
 
     # =====================================================================
     # ① 拥挤度变化：31 期折线
@@ -278,38 +274,60 @@ def render(h) -> None:
         # ---- 全景热力图：替代「31 条线叠加」 ----
         _small = ([i for i in csi.index if csi.loc[i, "等级"] == "小样本"]
                   if not csi.empty and "等级" in csi.columns else [])
-        h('<div style="font-size:12.5px;font-weight:700;margin:12px 0 3px">'
+        h('<div style="font-size:14px;font-weight:700;margin:14px 0 4px">'
           '31 个行业全景：颜色＝档位，一屏看出「谁、什么时候」变红</div>')
         st.plotly_chart(rc.fig_csi_heatmap(H, _small), width="stretch",
                         config={"displayModeBar": False})
+
+        # ---- 同期横向：选一个季度，31 个行业一次全部排出来 ----
+        h('<div style="font-size:14px;font-weight:700;margin:14px 0 4px">'
+          '同期横向对比：选一个季度，31 个行业的 CSI 一次全部列出</div>')
+        _qc = st.selectbox("选择季度", list(H.index)[::-1], index=0, key="csi_q_pick",
+                           help="热力图每格只有一个颜色，想知道具体谁多少分，用这张图")
+        st.plotly_chart(rc.fig_csi_snapshot(H, _qc, _small), width="stretch",
+                        config={"displayModeBar": False})
+        _sq = H.loc[_qc].dropna().sort_values(ascending=False)
+        _sq_ok = _sq[[i for i in _sq.index if i not in _small]]
+        _chg = (H.loc[_qc] - H.loc[list(H.index)[max(0, list(H.index).index(_qc) - 1)]]) \
+            if list(H.index).index(_qc) > 0 else pd.Series(dtype=float)
+        _upq = _chg.dropna().nlargest(2)
+        _dnq = _chg.dropna().nsmallest(2)
+        h(f'<div class="cg-note" style="font-size:12.5px">'
+          f'{_qc} 共 {len(_sq)} 个行业有值：最挤 <b>{_sq_ok.index[0]} {_sq_ok.iloc[0]:.0f}</b>、'
+          f'次之 {_sq_ok.index[1]} {_sq_ok.iloc[1]:.0f}；最冷 '
+          f'<b>{_sq_ok.index[-1]} {_sq_ok.iloc[-1]:.0f}</b>。'
+          + (f' 相对上一期，变挤最多 {_upq.index[0]}（{_upq.iloc[0]:+.0f}）、'
+             f'变松最多 {_dnq.index[0]}（{_dnq.iloc[0]:+.0f}）。'
+             if len(_upq) else '')
+          + f' 灰色 † 为小样本，不参与排名。</div>')
+
         # 最近 4 期里变化最大的几行
         _d4 = (H.iloc[-1] - H.iloc[-5]).dropna() if len(H) >= 5 else pd.Series(dtype=float)
         _up4 = _d4.nlargest(3)
         _dn4 = _d4.nsmallest(3)
         _red = H.iloc[-1][H.iloc[-1] >= 80].sort_values(ascending=False)
         _long = ((H >= 80).sum()).nlargest(3)
-        h(f'<div class="cg-note"><b>怎么读</b>：每一行是一个行业、每一格是一期，'
-          f'颜色就是五档（深蓝→浅蓝→近白→橙→红）。<b>红色区域＝那段时间又挤又久</b>；'
-          f'<b>同一行从蓝走到红</b>＝拥挤在累积，从红走回蓝＝在退潮。'
-          f'行按当期 CSI 从高到低排，灰色†是小样本（不评级）。悬停看具体数值。<br>'
-          f'<b>最近 4 期变红最快</b>：'
-          + ("、".join(f'{i}（{r:+.0f} 分）' for i, r in _up4.items()) or "—")
-          + f'；<b>退得最快</b>：'
-          + ("、".join(f'{i}（{r:+.0f} 分）' for i, r in _dn4.items()) or "—")
-          + f'。<br><b>当期仍在 ≥80 的</b>：'
-          + ("、".join(f'{i}（{v:.0f}）' for i, v in _red.items()) or "无")
-          + f'；<b>历史上高位持续最久</b>：'
-          + ("、".join(f'{i}（{int(v)} 期）' for i, v in _long.items()) or "—")
-          + '。</div>')
         _read(h,
-              f'热力图和上面的折线是**同一份数据**的两种读法：折线看一个行业的「轨迹」，'
-              f'热力图看 31 个行业的「横截面」。叠加 31 条折线会糊成一团，'
-              f'而热力图的每一格都是独立的，颜色深浅不会被别的行业盖住。'
-              f'<br>本期最显眼的是<b>右上角那片红</b>（煤炭、石油石化）与'
-              f'<b>中段由红转橙的一列</b>（通信、电子），前者在爬顶、后者在退潮。',
-              f'看全景只回答一个问题：<b>现在的拥挤是「局部」还是「全面」</b>。'
-              f'本期 31 个行业里 ≥80 的只有 {len(_red)} 个，说明是结构性拥挤、不是系统性风险；'
-              f'如果是 15 个以上同时红，那才是「全市场都在抱团」的顶。')
+              f'最新一期（{H.index[-1]}）31 个行业里只有 <b>{len(_red)} 个</b> 的 CSI ≥80'
+              f'（{"、".join(f"{i} {v:.0f}" for i, v in _red.items()) or "无"}），'
+              f'其余都在 80 以下。最近 4 期变红最快的是 '
+              + ("、".join(f'{i}（{r:+.0f} 分）' for i, r in _up4.items()) or "—")
+              + f'，退得最快的是 '
+              + ("、".join(f'{i}（{r:+.0f} 分）' for i, r in _dn4.items()) or "—")
+              + f'。历史上待在 ≥80 最久的是 '
+              + ("、".join(f'{i}（{int(v)} 期）' for i, v in _long.items()) or "—") + '。',
+              f'拥挤从来不是均匀发生的。行业景气的传导有先后：上游先涨（价格信号最快），'
+              f'中游跟上（订单兑现），下游最后（需求确认）。反映到持仓上，就是'
+              f'<b>红色区域沿产业链依次亮起</b>——所以看热力图要看「红色的移动方向」，'
+              f'而不是「现在哪里红」。红色停留在同一行越久，说明这个行业的共识越牢固，'
+              f'也越接近「所有人都已上车」的状态；反过来，一行从红退回橙、再退回白，'
+              f'通常是景气见顶后资金在分批撤。',
+              f'本期只有 {len(_red)} 个行业 ≥80，说明这是<b>结构性拥挤、不是系统性风险</b>：'
+              f'市场没有出现「全行业抱团」，因此不需要整体降仓，只需要在这几个行业上'
+              f'压缩仓位上限。如果某期出现 15 个以上同时红，那才是「全市场都在抱团」的顶部特征，'
+              f'届时应把权益仓位整体下调。'
+              f'红色在移动时，正确的动作是<b>跟着移动方向找下一个还没变红的环节</b>，'
+              f'而不是追已经红透的那个。')
 
     # =====================================================================
     # ② 阈值实证
@@ -507,10 +525,12 @@ def render(h) -> None:
     _hist = pd.DataFrame({"配置%": M[sel]}).dropna().tail(8)
     _hist["环比pp"] = _hist["配置%"].diff().round(2)
     _hist = _hist.iloc[::-1].reset_index().rename(columns={"index": "报告期"})
-    st.dataframe(_hist, width="stretch", hide_index=True, height=230,
-                 column_config={
-                     "配置%": st.column_config.NumberColumn(format="%.2f"),
-                     "环比pp": st.column_config.NumberColumn(format="%+.2f")})
+    # 最早一行没有上一期，diff 是 NaN。直接交给 Streamlit 会显示成「None」，
+    # 看起来像数据缺失，其实是「无上期可比」——改成空字符串。
+    _hist["环比pp"] = _hist["环比pp"].map(
+        lambda v: "" if pd.isna(v) else f"{v:+.2f}")
+    _hist["配置%"] = _hist["配置%"].map(lambda v: f"{v:.2f}")
+    st.dataframe(_hist, width="stretch", hide_index=True, height=300)
 
     # =====================================================================
     # ③ 31 个行业一根条
@@ -521,22 +541,28 @@ def render(h) -> None:
     _c = comp.dropna(subset=["CSI"])
     _hi = _c[_c["CSI"] >= 80]
     _lo = _c[_c["CSI"] < 25]
-    h(f'<div class="cg-note"><b>怎么读</b>：条越长越挤，颜色跟着等级走。'
-      f'虚线是分级线（25/45/65/80）。<br>'
-      f'<b>≥80 极度拥挤（{len(_hi)} 个）</b>：'
-      + ("、".join(f'{i}（{r["CSI"]:.0f}）' for i, r in _hi.iterrows()) or "无")
-      + f'——仓位上限 10%，不新增。<br>'
-      f'<b>&lt;25 冷门（{len(_lo)} 个）</b>：'
-      + ("、".join(f'{i}（{r["CSI"]:.0f}）' for i, r in _lo.iterrows()) or "无")
-      + '——没有资金关注，等转向信号（广度≥60 且净额转正）再买。<br>'
-      f'<b>中间段</b>不是「没意见」，而是「不极端」：按个股逻辑处理，'
-      f'不必因为行业分位高低调整仓位。</div>')
+    _read(h,
+          f'≥80 极度拥挤的有 <b>{len(_hi)} 个</b>：'
+          + ("、".join(f'{i}（{r["CSI"]:.0f}）' for i, r in _hi.iterrows()) or "无")
+          + f'；&lt;25 冷门的有 <b>{len(_lo)} 个</b>：'
+          + ("、".join(f'{i}（{r["CSI"]:.0f}）' for i, r in _lo.iterrows()) or "无")
+          + f'；其余 {len(_c) - len(_hi) - len(_lo)} 个落在中间段。',
+          f'CSI 把「配置、价格、资金」三个维度压成一个 0–100 的分数，'
+          f'分数高说明三件事同时成立：机构配得多、价格在历史高位、资金还在进。'
+          f'这三个条件凑齐时，行业的<b>边际买家最少</b>——想买的人已经买完了，'
+          f'剩下的只有卖出选项。这就是「拥挤」的经济含义，与「贵」不是一回事：'
+          f'贵只说明价格高，拥挤说明<b>持仓结构脆弱</b>。',
+          f'≥80 的行业<b>压缩仓位上限</b>（单行业不超过权益的 10%），但不等于清仓——'
+          f'因子检验显示高 CSI 对未来收益没有显著负向预测力，所以「卖」没有依据，'
+          f'「不加」有依据。&lt;25 的行业不要因为便宜就买，要等「广度≥60% 且净额转正」'
+          f'两个信号同时出现，因为冷门可能是「没人要」而不是「没人发现」。'
+          f'中间段不必调整，按个股逻辑处理。')
 
     # =====================================================================
     # ④ 双分位
     # =====================================================================
     # ---- 拥挤度变化：谁在变挤、谁在变松 ----
-    h('<div style="font-size:12px;font-weight:700;margin:12px 0 3px">'
+    h('<div style="font-size:14px;font-weight:700;margin:14px 0 4px">'
       '拥挤度变化：本期 CSI − 上期 CSI（红＝变挤，绿＝变松）</div>')
     cc = cn.csi_change(q)
     if not cc.empty:
@@ -549,23 +575,24 @@ def render(h) -> None:
         _dn = _cco.nsmallest(3, "ΔCSI")
         _hi_up = _cco[(_cco["CSI"] >= 80) & (_cco["ΔCSI"] > 0)]
         _n_sm = len(cc) - len(_cco)
-        h(f'<div class="cg-note">'
-          f'<b>怎么读</b>：横轴是「本期 CSI − 上期 CSI」，不是水位而是水流。'
-          f'右边越长＝这段时间挤得越快，左边越长＝在快速变松。悬停可看本期与上期的具体数值。'
-          f'为免误读，变化榜已剔除 {_n_sm} 个小样本行业（灰色显示），'
-          f'它们的 CSI 波动主要来自样本太小，不代表资金方向。<br>'
-          f'<b>变挤最多（{cc.attrs.get("q_prev", "")}→{cc.attrs.get("q", "")}）</b>：'
-          + "、".join(f'{i}（{r["上期CSI"]:.0f}→{r["CSI"]:.0f}，{r["ΔCSI"]:+.0f}）'
-                      for i, r in _up.iterrows())
-          + f'；<b>变松最多</b>：'
-          + "、".join(f'{i}（{r["上期CSI"]:.0f}→{r["CSI"]:.0f}，{r["ΔCSI"]:+.0f}）'
-                      for i, r in _dn.iterrows())
-          + f'。<br><b>要特别盯的是「水位已高且还在涨」的 {len(_hi_up)} 个</b>：'
-          + ("、".join(_hi_up.index) if len(_hi_up) else "无")
-          + f'——它们才是真正在往拥挤区走的；已经变松的高水位行业（如电子、通信）'
-            f'反而不用急着减，因为资金正在自己退潮。</div>')
-    else:
-        h('<div class="tiny">上期数据不足，无法计算变化。</div>')
+        _read(h,
+              f'变挤最多（{cc.attrs.get("q_prev", "")}→{cc.attrs.get("q", "")}）：'
+              + "、".join(f'{i}（{r["上期CSI"]:.0f}→{r["CSI"]:.0f}，{r["ΔCSI"]:+.0f}）'
+                          for i, r in _up.iterrows())
+              + f'；变松最多：'
+              + "、".join(f'{i}（{r["上期CSI"]:.0f}→{r["CSI"]:.0f}，{r["ΔCSI"]:+.0f}）'
+                          for i, r in _dn.iterrows())
+              + f'。其中「水位已高且还在涨」的有 <b>{len(_hi_up)} 个</b>：'
+              + ("、".join(_hi_up.index) if len(_hi_up) else "无") + '。',
+              f'水位（CSI）和流向（ΔCSI）是两件事。一个行业可以「很挤但正在变松」——'
+              f'那是资金已经在撤、只是仓位还没降下来，危险程度远低于「很挤且还在变挤」。'
+              f'后者意味着还有人在往已经没有空间的地方挤，一旦转向，卖出会非常集中。'
+              f'这就是为什么变化比水平更适合做<b>择时信号</b>，而水平只适合做<b>仓位约束</b>。',
+              f'真正要动手减的是「水位 ≥80 且 ΔCSI>0」的那 {len(_hi_up)} 个'
+              f'（{"、".join(_hi_up.index) if len(_hi_up) else "本期没有"}）。'
+              f'已经变松的高水位行业（电子、通信）反而不用急着卖——资金正在自己退潮，'
+              f'你卖的时点未必比它好。变松最快且已跌到低位的行业可以进观察名单，'
+              f'但要等资金转向确认，不能仅凭「跌得多」就买。')
 
     # =====================================================================
     # ④ 为什么用 CSI，不用 HHI
@@ -619,23 +646,21 @@ def render(h) -> None:
     _both_high = comp[(comp["历史分位"] >= 80) & (comp["横截面分位"] >= 80)]
     _self_only = comp[(comp["历史分位"] >= 80) & (comp["横截面分位"] < 50)]
     _mt_high = comp[(comp["历史分位"] < 50) & (comp["横截面分位"] >= 70)]
-    h('<div class="cg-note">'
-      f'<b>怎么读</b>：横条＝这个行业的配置在<b>它自己 31 期历史</b>里排第几；'
-      f'菱形＝这个行业的配置在<b>当期 31 个行业之间</b>排第几。'
-      f'两根尺子必须一起看。<br>'
-      f'<b>① 又重又在历史极值（两者都 ≥80）</b>：'
-      + ("、".join(_both_high.index) or "无")
-      + '——这才是真拥挤，减仓优先级最高。<br>'
-      f'<b>② 只是「小行业里的相对极端」（自身高、横截面 &lt;50）</b>：'
-      + ("、".join(f"{i}（自身 {r['历史分位']:.0f}、横截面 {r['横截面分位']:.0f}）"
-                  for i, r in _self_only.iterrows()) or "无")
-      + '——它自己历史上没这么重过，但绝对配置很小，对组合影响有限。<br>'
-      f'<b>③ 绝对配置不低、但相对自己历史很轻（自身 &lt;50、横截面 ≥70）</b>：'
-      + ("、".join(f"{i}（自身 {r['历史分位']:.0f}、横截面 {r['横截面分位']:.0f}）"
-                  for i, r in _mt_high.iterrows()) or "无")
-      + '——被冷落了很久，但仍是组合里的大块头，这类最容易出现「预期差」。<br>'
-      f'<b>结论</b>：只看自身分位会高估小行业的拥挤、低估大行业的风险；'
-      f'只看横截面会把「一直很重」当成「现在才拥挤」。</div>')
+    _read(h,
+          f'两边都 ≥80（自身历史高位 + 当期绝对重仓）的有 <b>{len(_both_high)} 个</b>：'
+          + ("、".join(_both_high.index) or "无")
+          + f'。自身分位高、但横截面不到 50 的有 {len(_self_only)} 个；'
+          f'自身分位低、横截面 ≥70 的有 {len(_mt_high)} 个（'
+          + ("、".join(_mt_high.index) or "无") + '）。',
+          f'「重不重」有两个完全不同的参照系。相对自己：这个行业在它过去 31 期里算不算高位，'
+          f'回答「机构是不是刚开始重视它」；相对同行：它在当期 31 个行业里排第几，'
+          f'回答「它是不是组合里的大块头」。小行业可以在自己历史上创纪录，'
+          f'绝对配置却只有 1%，对净值几乎没有影响；大行业可以一直是第一大重仓，'
+          f'自身分位反而不高。<b>两个参照系缺一个，判断就会偏</b>。',
+          f'两边都高的才是<b>真拥挤</b>——既是历史极值、又是绝对重仓，减仓优先级最高。'
+          f'只有自身分位高的，多半是小行业的统计假象，不必因为它「创了新高」就卖。'
+          f'自身分位低、横截面高的，是「被冷落的大块头」，最容易出现预期差，'
+          f'值得放进观察名单——但要有资金转向的信号才动手。')
 
     # =====================================================================
     # ⑤ 四象限
@@ -649,33 +674,38 @@ def render(h) -> None:
         _hold = _d[(_d["历史分位"] >= 50) & (_d["指数分位"] < 50)]
         _miss = _d[(_d["历史分位"] < 50) & (_d["指数分位"] >= 50)]
         _cold = _d[(_d["历史分位"] < 50) & (_d["指数分位"] < 50)]
-        h(f'<div class="cg-note"><b>怎么读</b>：横轴＝机构押得多重（配置分位，31 期）；'
-          f'纵轴＝价格相对自己多贵（指数分位，{idx.attrs.get("start")} 起 '
-          f'{idx.attrs.get("n_days"):,} 个交易日）。气泡大小＝前十配置比例。<br>'
-          f'<b>右上·真拥挤（{len(_crowd)} 个）</b>：'
-          + ("、".join(f"{i}（配置 {r['历史分位']:.0f} / 指数 {r['指数分位']:.0f}）"
-                      for i, r in _crowd.nlargest(4, "指数分位").iterrows()) or "无")
-          + '——机构重仓且价格已在历史高位，买它等于在拥挤处接棒。<br>'
-          f'<b>右下·抱团没赚（{len(_hold)} 个）</b>：'
-          + ("、".join(f"{i}（配置 {r['历史分位']:.0f} / 指数 {r['指数分位']:.0f}）"
-                      for i, r in _hold.head(3).iterrows()) or "无")
-          + '——仓位重但价格还在低位，要么是机会，要么是机构判断错了。<br>'
-          f'<b>左上·机构踏空（{len(_miss)} 个）</b>：'
-          + ("、".join(f"{i}（配置 {r['历史分位']:.0f} / 指数 {r['指数分位']:.0f}）"
-                      for i, r in _miss.head(3).iterrows()) or "无")
-          + '——价格涨了但仓位没跟上，留意补涨或补跌。<br>'
-          f'<b>左下·冷门（{len(_cold)} 个）</b>：仓位轻、价格低，没有资金关注。<br>'
-          f'<b>结论</b>：只看配置分位，会把「抱团没涨」误判成拥挤；'
-          f'加上价格分位，才知道右上角那 {len(_crowd)} 个才是真要减的。</div>')
+        _read(h,
+              f'右上·真拥挤 <b>{len(_crowd)} 个</b>：'
+              + ("、".join(f"{i}（配置 {r['历史分位']:.0f} / 指数 {r['指数分位']:.0f}）"
+                          for i, r in _crowd.nlargest(4, "指数分位").iterrows()) or "无")
+              + f'；右下·抱团没赚 {len(_hold)} 个；左上·机构踏空 {len(_miss)} 个：'
+              + ("、".join(_miss.head(3).index) or "无")
+              + f'；左下·冷门 {len(_cold)} 个。',
+              f'配置分位和价格分位回答两个独立的问题：<b>机构押得多重</b>、<b>价格贵不贵</b>。'
+              f'两者交叉出四种完全不同的处境。右上角是「重仓 + 高位」——机构已经赚到了，'
+              f'价格也反映了乐观预期，此时买入是替别人接棒；右下角是「重仓 + 低位」——'
+              f'机构押了但市场没认，可能是左侧布局，也可能是判断错了；'
+              f'左上角是「轻仓 + 高位」——价格先涨、仓位没跟，机构踏空；'
+              f'左下角是「轻仓 + 低位」，没人关注也没人赚钱。',
+              f'只看配置分位，会把「抱团没涨」误判成拥挤，过早卖出还可能踏空；'
+              f'只看价格分位，会把「一直很重」当成「现在才贵」。两个一起看，'
+              f'才知道该减谁：右上角那 {len(_crowd)} 个才是真要压仓位的。'
+              f'右下的 {len(_hold)} 个不要急着卖——它们是「闷在里面」的，'
+              f'一旦行业景气反转，弹性和右上角一样大，只是时点未知。')
 
     # =====================================================================
     # ⑥ 全行业表
     # =====================================================================
     h('<div class="sec">⑨ 全行业一览：把 31 个行业放在一张表里</div>')
-    _show = comp.reset_index()[[
-        "行业", "配置_前十", "Δ上季pp", "Δ上年pp", "平均主动pp", "加仓占比",
-        "配置_全持仓", "主动pp", "历史分位", "横截面分位", "指数分位",
-        "近3月涨幅%", "CSI", "等级", "判读"]].copy()
+    # 15 列在笔记本上必然要横向拖动，读者很难「一眼扫完」。
+    # 默认只给 11 列核心字段，需要审计再切到全部列。
+    _wide = st.radio("表格列数", ["核心 11 列（推荐）", "全部 15 列（含全持仓与半年主动）"],
+                     horizontal=True, key="map_tbl_cols")
+    _cols = ["行业", "配置_前十", "Δ上季pp", "Δ上年pp", "平均主动pp", "加仓占比",
+             "历史分位", "指数分位", "CSI", "等级", "判读"]
+    if _wide.startswith("全部"):
+        _cols = _cols + ["配置_全持仓", "主动pp", "横截面分位", "近3月涨幅%"]
+    _show = comp.reset_index()[_cols].copy()
     _show = _show.rename(columns={
         "配置_前十": f"前十配置%({q})", "Δ上季pp": f"环比pp({qp}→{q})",
         "Δ上年pp": f"同比pp({qy}→{q})", "平均主动pp": f"当期主动pp({qp}→{q})",
@@ -734,7 +764,9 @@ def render(h) -> None:
                 help="行业指数点位在 2019 年以来每个交易日中的排名"),
             "CSI": st.column_config.ProgressColumn(
                 format="%.0f", min_value=0, max_value=100,
-                help="(配置分位+价格分位+资金分位)/3"),
+                help="(配置分位+价格分位+资金分位)/3", width="small"),
+            "拥挤等级": st.column_config.TextColumn(width="small"),
+            "判读": st.column_config.TextColumn(width="small"),
             "横截面分位": st.column_config.ProgressColumn(
                 format="%.0f", min_value=0, max_value=100,
                 help="当期 31 个行业之间的排名"),

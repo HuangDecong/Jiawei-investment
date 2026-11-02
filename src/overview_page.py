@@ -11,6 +11,12 @@
     2. 把全部结论按「结论 → 证据 → 含义 → 动作 → 失效条件」列出来；
     3. 把动作落成可执行的清单（跟什么、避什么、仓位多少、什么时候推翻）。
 
+字号与版式
+----------
+这一页是「读」的页面，不是「查」的页面，所以正文用 13.5–14px、
+标题 15px、结论主句 20px。之前 10.5–12.5px 的密度适合投屏演示，
+不适合在笔记本上逐条看——读者的反馈是「字太小、看着累」。
+
 所有数字来自 canon / playbook，本页不自己算指标——否则又会出现
 「同一句话在两个页面上不是一个数」。
 """
@@ -23,6 +29,9 @@ import streamlit as st
 import canon as cn
 import config as C
 import playbook as pb
+
+FS_BODY = 13.5
+FS_SMALL = 12.5
 
 
 def _fmt(v, nd=1, unit="", sign=False):
@@ -39,32 +48,46 @@ def _kpis(items):
 
 
 def _concl_card(i: int, c: dict) -> str:
-    """一张结论卡：结论 / 证据 / 含义 / 动作 / 失效。"""
+    """一张结论卡：结论 / 证据 / 含义 / 动作 / 失效。
+
+    版式：左侧序号 + 右侧四段。每段前面用一个小色块标签，
+    比「证据：」「投资解读：」这种纯文字前缀更容易扫读。
+    """
+    def row(label, text, color, bg="#FFFFFF", weight="400"):
+        return (
+            f'<div style="display:flex;gap:9px;padding:6px 0 0">'
+            f'<div style="flex:0 0 62px;font-size:{FS_SMALL}px;font-weight:700;'
+            f'color:{color};line-height:1.85">{label}</div>'
+            f'<div style="flex:1;font-size:{FS_BODY}px;line-height:1.95;'
+            f'color:#26374A;font-weight:{weight}">{text}</div></div>')
+
     return (
         f'<div style="background:#FFFFFF;border:1px solid {C.COLOR["line"]};'
-        f'border-left:3px solid {C.COLOR["price"]};border-radius:6px;'
-        f'padding:8px 11px;margin-bottom:6px">'
-        f'<div style="font-size:12.5px;font-weight:700;line-height:1.6">'
-        f'<span style="display:inline-block;min-width:18px;height:18px;line-height:18px;'
-        f'text-align:center;border-radius:9px;background:{C.COLOR["price"]};color:#fff;'
-        f'font-size:10px;margin-right:6px">{i}</span>'
-        f'<span style="color:{C.COLOR["text_dim"]};font-size:10.5px;font-weight:400;'
-        f'margin-right:6px">[{c["tag"]}]</span>{c["claim"]}</div>'
-        f'<div style="font-size:11px;line-height:1.75;margin-top:4px;color:#37485C">'
-        f'<b>证据</b>：{c["evidence"]}</div>'
-        f'<div style="font-size:11px;line-height:1.75;margin-top:3px;color:#37485C">'
-        f'<b>投资解读</b>：{c["meaning"]}</div>'
-        f'<div style="font-size:11px;line-height:1.75;margin-top:3px">'
-        f'<b style="color:{C.COLOR["up"]}">操作</b>：{c["action"]}</div>'
-        f'<div style="font-size:10.5px;line-height:1.6;margin-top:4px;padding:3px 7px;'
-        f'background:#FFF8EC;border-radius:4px;color:#7A4A00">'
-        f'<b>什么情况下这条不成立</b>：{c["fail"]}</div></div>')
+        f'border-left:4px solid {C.COLOR["price"]};border-radius:9px;'
+        f'padding:11px 15px 13px;margin-bottom:9px">'
+        f'<div style="display:flex;gap:9px;align-items:flex-start">'
+        f'<div style="flex:0 0 25px;height:25px;border-radius:13px;'
+        f'background:{C.COLOR["price"]};color:#fff;font-size:13px;font-weight:700;'
+        f'display:flex;align-items:center;justify-content:center">{i}</div>'
+        f'<div style="flex:1">'
+        f'<div style="font-size:15px;font-weight:700;line-height:1.7;color:#1B2A3A">'
+        f'{c["claim"]}'
+        f'<span style="font-weight:400;font-size:{FS_SMALL}px;'
+        f'color:{C.COLOR["text_dim"]};margin-left:7px">［{c["tag"]}］</span></div>'
+        f'{row("证据", c["evidence"], C.COLOR["price"])}'
+        f'{row("经济含义", c["meaning"], C.COLOR["accent"])}'
+        f'{row("操作", c["action"], C.COLOR["up"])}'
+        f'<div style="margin-top:7px;padding:5px 9px;background:#FFF8EC;'
+        f'border-radius:5px;font-size:{FS_SMALL}px;line-height:1.8;color:#7A4A00">'
+        f'<b>什么时候这条不成立</b>：{c["fail"]}</div>'
+        f'</div></div></div>')
 
 
-def _action_block(title: str, sub: str, df: pd.DataFrame, color: str, cols) -> str:
+def _action_block(title: str, sub: str, df: pd.DataFrame, color: str, cols=0) -> str:
     """一个动作卡片：标题 + 一行解释 + 每个行业一行完整理由。"""
     if df.empty:
-        body = '<div style="font-size:11px;color:#6B7A8C">本期没有符合条件。</div>'
+        body = (f'<div style="font-size:{FS_SMALL}px;color:#6B7A8C;'
+                f'padding:6px 0">本期没有符合条件。</div>')
     else:
         rows = []
         for i, r in df.iterrows():
@@ -73,23 +96,25 @@ def _action_block(title: str, sub: str, df: pd.DataFrame, color: str, cols) -> s
                     ("当期", f'{r["当期主动pp"]:+.2f}pp'),
                     ("广度", f'{r["加仓占比"]:.0f}%'),
                     ("配置", f'{r["历史分位"]:.0f}'),
-                    ("指数", f'{r.get("指数分位", np.nan):.0f}'
+                    ("价格", f'{r.get("指数分位", np.nan):.0f}'
                      if np.isfinite(r.get("指数分位", np.nan)) else "—"),
                 ])
             rows.append(
-                f'<div style="padding:5px 0;border-top:1px dashed {C.COLOR["line"]}">'
-                f'<div style="font-size:11.5px"><b>{i}</b>'
-                f'<span style="font-size:10px;color:{C.COLOR["text_dim"]};margin-left:5px">'
-                f'强度 {r["强度"]}</span></div>'
-                f'<div style="font-size:10.5px;color:#37485C;line-height:1.65">{_cells}</div>'
-                f'<div style="font-size:10.5px;line-height:1.65;margin-top:2px">{r["理由"]}</div>'
+                f'<div style="padding:7px 0;border-top:1px dashed {C.COLOR["line"]}">'
+                f'<div style="font-size:14px;font-weight:700">{i}'
+                f'<span style="font-size:{FS_SMALL}px;color:{C.COLOR["text_dim"]};'
+                f'font-weight:400;margin-left:6px">{r["强度"]}</span></div>'
+                f'<div style="font-size:{FS_SMALL}px;color:#37485C;line-height:1.8;'
+                f'margin-top:2px">{_cells}</div>'
+                f'<div style="font-size:{FS_BODY}px;line-height:1.85;margin-top:3px;'
+                f'color:#26374A">{r["理由"]}</div>'
                 f'</div>')
         body = "".join(rows)
-    return (f'<div style="border:1px solid {C.COLOR["line"]};border-top:3px solid {color};'
-            f'border-radius:7px;padding:8px 10px;height:100%">'
-            f'<div style="font-size:12px;font-weight:700;color:{color}">'
+    return (f'<div style="border:1px solid {C.COLOR["line"]};border-top:4px solid {color};'
+            f'border-radius:9px;padding:10px 13px;height:100%">'
+            f'<div style="font-size:15px;font-weight:700;color:{color}">'
             f'{title}　<span style="color:{C.COLOR["text_dim"]};font-weight:400;'
-            f'font-size:10.5px">{sub}</span></div>{body}</div>')
+            f'font-size:{FS_SMALL}px">{sub}</span></div>{body}</div>')
 
 
 def render(h, B=None, IND=None) -> None:
@@ -123,17 +148,14 @@ def render(h, B=None, IND=None) -> None:
     _up2 = _dd.nlargest(2, "Δ上季pp") if not _dd.empty else pd.DataFrame()
     _dn2 = _dd.nsmallest(2, "Δ上季pp") if not _dd.empty else pd.DataFrame()
 
-    def _pair(df):
-        return "、".join(f"{i} {r['Δ上季pp']:+.2f}pp" for i, r in df.iterrows()) or "—"
-
     h('<div class="sec">一、一句话结论</div>')
     h(f'<div style="background:linear-gradient(90deg,{C.COLOR["panel"]} 0%,#FFFFFF 100%);'
-      f'border:1px solid {C.COLOR["line"]};border-left:4px solid {C.COLOR["price"]};'
-      f'border-radius:8px;padding:12px 15px;margin:2px 0 8px">'
-      f'<div style="font-size:16px;font-weight:700;line-height:1.6">'
+      f'border:1px solid {C.COLOR["line"]};border-left:5px solid {C.COLOR["price"]};'
+      f'border-radius:10px;padding:15px 20px;margin:2px 0 10px">'
+      f'<div style="font-size:20px;font-weight:700;line-height:1.6;color:#16283C">'
       f'机构没有加仓，钱在<b>从「跌得最狠的科技硬件」撤出，'
       f'一半抄底医药、一半躲进银行与公用事业</b>。</div>'
-      f'<div style="font-size:12px;line-height:1.85;margin-top:5px;color:#37485C">'
+      f'<div style="font-size:14px;line-height:2.0;margin-top:8px;color:#2C3E50">'
       f'{q} 主动权益基金季报（样本 <b>{n_funds:,}</b> 只）：股票仓位中位 '
       f'<b>{pos.get("仓位1", float("nan")):.1f}%</b>，比上一个半年报期 '
       f'<b>{pos.get("中位变化pp", float("nan")):+.2f}pp</b>，处在 {len(hist)} 期的第 '
@@ -153,17 +175,18 @@ def render(h, B=None, IND=None) -> None:
         ("极度拥挤", f"{_n_ext} 个", "CSI≥80 且样本充足"),
         ("样本基金", f"{n_funds:,}", f"截至 {q}"),
     ]))
-    h('<div class="tiny" style="margin-top:4px">'
+    h('<div class="tiny" style="margin:6px 0 2px">'
       f'口径：仓位/主动项＝全持仓半年报（{qf0}→{qf}）；环比/广度/分位＝前十大（{qp}→{q}）。'
-      f'两套口径回答不同问题，<b>不要相加</b>；详见「方法」页。</div>')
+      f'两套口径回答不同问题，<b>不要相加</b>；详见「⑥ 方法与口径」。</div>')
 
     # =====================================================================
     # 结论清单
     # =====================================================================
-    h('<div class="sec">二、全部结论（每条都写清证据、含义、动作、失效条件）</div>')
-    h('<div class="tiny" style="margin-bottom:5px">'
-      '下面的 9 条覆盖了本期季报能读出的全部信息：总仓位 → 换仓主线 → 可以跟/别追高/要回避 → '
-      '待确认 → 个股层 → 拥挤度 → 反面证据。每条都能用库里的数据复算。</div>')
+    h('<div class="sec">二、全部结论：每条都写清证据、经济含义、操作与失效条件</div>')
+    h(f'<div class="cg-note" style="font-size:12.5px">'
+      f'下面这 9 条覆盖了本期季报能读出的全部信息：总仓位 → 换仓主线 → '
+      f'可以跟/别追高/要回避 → 待确认 → 个股层 → 拥挤度 → 反面证据。'
+      f'每条都能用库里的数据复算。</div>')
     _cs_list = pb.conclusions(q)
     for i, c in enumerate(_cs_list, 1):
         h(_concl_card(i, c))
@@ -172,10 +195,10 @@ def render(h, B=None, IND=None) -> None:
     # 投资建议
     # =====================================================================
     h('<div class="sec">三、投资建议：四类动作，逐行业给出理由</div>')
-    h(f'<div class="tiny" style="margin-bottom:6px">'
+    h(f'<div class="cg-note" style="font-size:12.5px">'
       f'筛选条件全部事前固定（阈值写在 <span class="mono">playbook.TH</span>）：'
-      f'<b>可以跟</b>＝当期主动≥+0.3pp 且 广度≥60% 且 配置分位≤80 且 指数分位≤85；'
-      f'<b>别追高</b>＝配置分位≥80 或 指数分位≥90，但资金还在进；'
+      f'<b>可以跟</b>＝当期主动≥+0.3pp 且 广度≥60% 且 配置分位≤80 且 价格分位≤85；'
+      f'<b>别追高</b>＝配置分位≥80 或 价格分位≥90，但资金还在进；'
       f'<b>要回避</b>＝当期主动≤−0.4pp 且 广度≤50%，或配置分位≥90 且没人接；'
       f'<b>等确认/观察</b>＝方向不干净。'
       f'「当期主动」是价格中性后的净买入（见方法页），不是原始权重变化。</div>')
@@ -183,18 +206,18 @@ def render(h, B=None, IND=None) -> None:
     c1, c2 = st.columns(2, gap="small")
     with c1:
         h(_action_block("① 可以跟", "资金在进 · 多数在加 · 价格不贵",
-                        _hi, C.COLOR["up"], 0))
+                        _hi, C.COLOR["up"]))
     with c2:
         h(_action_block("② 别追高", "位置到极值 · 资金还在进",
-                        _hot, C.COLOR["level_拥挤"], 0))
+                        _hot, C.COLOR["level_拥挤"]))
     c3, c4 = st.columns(2, gap="small")
     with c3:
         h(_action_block("③ 要回避", "资金在撤 · 没人接",
-                        _av, C.COLOR["down"], 0))
+                        _av, C.COLOR["down"]))
     with c4:
         _wt = t[t["动作"].isin(["等确认", "观察"])]
         h(_action_block("④ 等确认 / 观察", "方向不干净 · 只给观察仓",
-                        _wt, C.COLOR["text_dim"], 0))
+                        _wt, C.COLOR["text_dim"]))
 
     # =====================================================================
     # 操作建议
@@ -211,38 +234,39 @@ def render(h, B=None, IND=None) -> None:
     if _penalty:
         stance += "，分歧大再降 5pp"
 
-    k1, k2, k3 = st.columns([0.3, 0.35, 0.35], gap="small")
+    k1, k2, k3 = st.columns([0.30, 0.35, 0.35], gap="small")
     with k1:
-        h(f'<div style="border:1px solid {C.COLOR["line"]};border-top:3px solid '
-          f'{C.COLOR["price"]};border-radius:7px;padding:9px 11px;height:100%">'
-          f'<div style="font-size:12px;font-weight:700">总仓位</div>'
-          f'<div style="font-size:24px;font-weight:700;margin:3px 0">{lo}%–{hi}%</div>'
-          f'<div style="font-size:10.5px;line-height:1.7;color:#37485C">'
-          f'算法：仓位 {pct:.0f} 分位 → 基础区间；离散度中位 {_disp:.1f}pp'
+        h(f'<div style="border:1px solid {C.COLOR["line"]};border-top:4px solid '
+          f'{C.COLOR["price"]};border-radius:9px;padding:11px 14px;height:100%">'
+          f'<div style="font-size:14px;font-weight:700">权益总仓位</div>'
+          f'<div style="font-size:30px;font-weight:700;margin:4px 0;color:#16283C">'
+          f'{lo}%–{hi}%</div>'
+          f'<div style="font-size:{FS_BODY}px;line-height:1.9;color:#2C3E50">'
+          f'仓位 {pct:.0f} 分位 → 基础区间；离散度中位 {_disp:.1f}pp'
           f'（{">8pp，再降 5pp" if _penalty else "≤8pp，不调整"}）。<br>'
           f'<span style="color:{C.COLOR["text_dim"]}">不是说必须这么配，'
           f'而是提醒：现在整体加仓的赔率不高。</span></div></div>')
     with k2:
-        h(f'<div style="border:1px solid {C.COLOR["line"]};border-top:3px solid '
-          f'{C.COLOR["up"]};border-radius:7px;padding:9px 11px;height:100%">'
-          f'<div style="font-size:12px;font-weight:700">怎么买</div>'
-          f'<div style="font-size:11px;line-height:1.85;margin-top:3px">'
+        h(f'<div style="border:1px solid {C.COLOR["line"]};border-top:4px solid '
+          f'{C.COLOR["up"]};border-radius:9px;padding:11px 14px;height:100%">'
+          f'<div style="font-size:14px;font-weight:700">怎么买</div>'
+          f'<div style="font-size:{FS_BODY}px;line-height:1.95;margin-top:4px">'
           f'· 只买「可以跟」的 {len(_hi)} 个，单行业 ≤ 权益仓位 15%<br>'
           f'· 分 3 批建：首笔 1/3，一个月后不破位再补<br>'
           f'· 行业 ETF / 指数增强优先，个股只买讲得清逻辑的<br>'
           f'· 不融资、不加杠杆、不因为「跌得多」抄底</div></div>')
     with k3:
-        h(f'<div style="border:1px solid {C.COLOR["line"]};border-top:3px solid '
-          f'{C.COLOR["down"]};border-radius:7px;padding:9px 11px;height:100%">'
-          f'<div style="font-size:12px;font-weight:700">怎么卖 / 怎么止损</div>'
-          f'<div style="font-size:11px;line-height:1.85;margin-top:3px">'
+        h(f'<div style="border:1px solid {C.COLOR["line"]};border-top:4px solid '
+          f'{C.COLOR["down"]};border-radius:9px;padding:11px 14px;height:100%">'
+          f'<div style="font-size:14px;font-weight:700">怎么卖 / 怎么止损</div>'
+          f'<div style="font-size:{FS_BODY}px;line-height:1.95;margin-top:4px">'
           f'· 持有「要回避」的：反弹减半，不等解套<br>'
-          f'· 单行业自建仓回撤 >15% 且当期主动转负 → 减半<br>'
+          f'· 自建仓回撤 >15% 且当期主动转负 → 减半<br>'
           f'· 「别追高」的已持有可以拿，不加仓<br>'
           f'· 单行业超过权益 20% → 减到 20% 以内</div></div>')
 
     _rules = pd.DataFrame([
-        dict(动作="买入", 触发条件="当期主动连续 2 期 ≥+0.3pp，广度 ≥60%，指数分位 <85",
+        dict(动作="买入", 触发条件="当期主动连续 2 期 ≥+0.3pp，广度 ≥60%，价格分位 <85",
              执行="分 3 批，单行业上限 15%"),
         dict(动作="加仓", 触发条件="已持有且下季广度仍 ≥60%、主动项仍为正",
              执行="加至目标权重，不追单日涨幅 >5% 的"),
@@ -265,31 +289,31 @@ def render(h, B=None, IND=None) -> None:
     h('<div class="sec">五、反面证据：这套方法什么时候会错</div>')
     c5, c6 = st.columns(2, gap="small")
     with c5:
-        h(f'<div style="border:1px solid {C.COLOR["line"]};border-radius:7px;'
-          f'padding:9px 11px;height:100%;background:#FFF8EC">'
-          f'<div style="font-size:12px;font-weight:700;color:#7A4A00">'
+        h(f'<div style="border:1px solid {C.COLOR["line"]};border-radius:9px;'
+          f'padding:11px 14px;height:100%;background:#FFF8EC">'
+          f'<div style="font-size:14px;font-weight:700;color:#7A4A00">'
           f'已经被自己的数据推翻的三条说法</div>'
-          f'<div style="font-size:11px;line-height:1.8;margin-top:4px">'
+          f'<div style="font-size:{FS_BODY}px;line-height:1.95;margin-top:5px">'
           f'· <b>「拥挤即风险」方向对、但不显著</b>：配置分位 Q1→Q5 的次季收益'
           f'从 +2.39% 降到 +0.51%，可 t 只有 −0.83、p=0.42，不能当卖出信号。<br>'
           f'· <b>「加仓能预测收益」不成立</b>：广度的 RankIC 长期在 0 附近，'
-          f'p 值不显著（实测见因子检验页）。<br>'
+          f'p 值不显著（实测见「⑤ 因子检验」）。<br>'
           f'· <b>「前十大会系统性低估」不成立</b>：它把尾部归零、把集中行业放大，'
           f'不是简单压低。</div></div>')
     with c6:
-        h(f'<div style="border:1px solid {C.COLOR["line"]};border-radius:7px;'
-          f'padding:9px 11px;height:100%">'
-          f'<div style="font-size:12px;font-weight:700">四条硬约束</div>'
-          f'<div style="font-size:11px;line-height:1.8;margin-top:4px">'
+        h(f'<div style="border:1px solid {C.COLOR["line"]};border-radius:9px;'
+          f'padding:11px 14px;height:100%">'
+          f'<div style="font-size:14px;font-weight:700">四条硬约束</div>'
+          f'<div style="font-size:{FS_BODY}px;line-height:1.95;margin-top:5px">'
           f'· <b>季报只有前十大</b>：Q1/Q3 只披露 10 只，绝对水平不可用；<br>'
           f'· <b>时滞约 3–4 周</b>：季末到数据可得 28 天，'
           f'你看到时下季度已过约 1/3；<br>'
           f'· <b>幸存者偏差</b>：已清盘基金不在库内，早期分位偏乐观；<br>'
           f'· <b>只有股票，没有债券与现金</b>：灵活配置型基金的行业占比会被放大。</div></div>')
 
-    h('<div class="tiny" style="margin-top:6px">'
+    h('<div class="tiny" style="margin-top:8px">'
       '想看每个数字怎么算的：左侧边栏「指标速查」可以搜任意指标，'
       '含公式、计算过程、阈值、标准来源与常见误用；'
-      '想看逐图解读：切到「② 本期解读」；'
-      '想看单个行业的历史：切到「④ 行业拥挤度」。'
+      '想看逐图证据：切到「② 本期解读」；'
+      '想看单个行业的历史：切到「③ 行业拥挤度」。'
       f'　版本口径：全持仓 {qf0}→{qf}、前十大 {qp}→{q}、指数 2019-01 起。</div>')
