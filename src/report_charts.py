@@ -697,7 +697,7 @@ CSI_BANDS = [(80, 101, "rgba(198,40,40,0.16)", "≥80 极度拥挤"),
 
 
 def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
-                  show_all: bool = False) -> go.Figure:
+                  show_band: bool = True) -> go.Figure:
     """31 期 CSI 折线：看「拥挤度怎么变」，而不是只看当期一个点。
 
     为什么必须画折线：CSI 是一个 0–100 的水位，单看当期数字无法判断
@@ -728,13 +728,19 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         line=dict(color="#7C8B9C", width=2.4),
         hovertemplate="%{x}<br>全市场中位 %{y:.1f}<extra></extra>"))
 
-    if show_all:
-        for ind in d.columns:
-            fig.add_trace(go.Scatter(
-                x=list(d.index), y=d[ind].values, mode="lines", name=ind,
-                line=dict(color=ind_color(ind), width=1), opacity=0.55,
-                showlegend=False,
-                hovertemplate=f"<b>{ind}</b><br>%{{x}}：%{{y:.1f}}<extra></extra>"))
+    # 不画 31 条线——那是一团蜘蛛网，谁在涨谁在跌都看不出来。
+    # 改成「31 个行业的 25–75% 分位带」：它表达的是「市场整体的分布宽度」，
+    # 只占一层视觉，不跟主角（选中行业）抢注意力。
+    if show_band:
+        q1 = d.quantile(0.25, axis=1)
+        q3 = d.quantile(0.75, axis=1)
+        xs = list(d.index)
+        fig.add_trace(go.Scatter(
+            x=xs + xs[::-1],
+            y=list(q3.values) + list(q1.values)[::-1],
+            fill="toself", fillcolor="rgba(124,139,156,0.20)",
+            line=dict(width=0), hoverinfo="skip", showlegend=True,
+            name="31 行业中 25–75% 区间"))
 
     if sel and sel in d.columns:
         s = d[sel]
@@ -769,10 +775,76 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
                                             line=dict(width=1, color="#FFFFFF")),
                 hovertemplate="%{x}<br>下穿 80：%{y:.1f}<extra></extra>"))
 
-    fig.update_yaxes(title_text="CSI（0＝最冷，100＝最挤）", range=[0, 104])
-    fig.update_xaxes(tickangle=-45, tickfont=dict(size=8.5))
-    fig = _base(fig, "", 420, legend=True)
-    fig.update_layout(margin=dict(l=52, r=18, t=42, b=64))
+    fig.update_yaxes(title_text="CSI（0＝最冷，100＝最挤）", range=[0, 104],
+                     tickfont=dict(size=10))
+    # x 轴只标每年 Q1 + 末期：31 个标签全打出来会挤成一片，
+    # 读图只需要知道「大概哪一年」。
+    _ticks = [q for q in d.index if str(q).endswith("Q1")] + [d.index[-1]]
+    fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
+                     tickangle=-45, tickfont=dict(size=9.5))
+    fig = _base(fig, "", 520, legend=True)
+    fig.update_layout(margin=dict(l=56, r=18, t=56, b=62),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.01,
+                                  x=0, font=dict(size=10)))
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 13. 拥挤度全景热力图：31 个行业 × 31 期，一屏看全
+# ---------------------------------------------------------------------------
+_CSI_SCALE = [
+    # 分段色阶（不是渐变）：颜色只表达「档位」，不表达「小数差多少」。
+    # 饱和度刻意压低一档，31×31 格满屏时纯红纯蓝会刺眼。
+    (0.00, "#2C5A96"), (0.25, "#2C5A96"),
+    (0.25, "#93B7E0"), (0.45, "#93B7E0"),
+    (0.45, "#F5F7F9"), (0.65, "#F5F7F9"),
+    (0.65, "#EEA758"), (0.80, "#EEA758"),
+    (0.80, "#C04B4B"), (1.00, "#C04B4B"),
+]
+
+
+def fig_csi_heatmap(H: pd.DataFrame, small: list[str] | None = None,
+                    height: int = 700) -> go.Figure:
+    """31 个行业 × 31 期的 CSI 热力图：颜色＝档位。
+
+    为什么用它替代「31 条线叠加」：叠加 31 条线谁都看不清（蜘蛛网），
+    而热力图一屏就能看出「哪一行什么时候变红」——这是横向对比最有效的编码。
+    行按当期 CSI 降序排（不评级的排最后），列按时间。
+    """
+    if H.empty:
+        return _base(go.Figure(), "数据未就绪")
+    d = H.dropna(how="all")
+    if d.empty:
+        return _base(go.Figure(), "数据未就绪")
+    small = small or []
+    last = d.iloc[-1]
+    order = [c for c in d.columns if c not in small]
+    order.sort(key=lambda c: (-(last.get(c) if np.isfinite(last.get(c, np.nan)) else -1)))
+    order += [c for c in d.columns if c in small]
+
+    z = d[order].T.values
+    ylab = [c + ("†" if c in small else "") for c in order]
+    hv = [[f"<b>{ind}</b><br>{q}：CSI {z[i, j]:.1f}"
+           + ("<br>小样本，不评级" if ind.replace("†", "") in small else "")
+           for j, q in enumerate(d.index)] for i, ind in enumerate(ylab)]
+    fig = go.Figure(go.Heatmap(
+        z=z, x=list(d.index), y=ylab,
+        colorscale=_CSI_SCALE, zmin=0, zmax=100,
+        xgap=1, ygap=1,
+        customdata=np.array(hv),
+        hovertemplate="%{customdata}<extra></extra>",
+        colorbar=dict(title=dict(text="CSI", font=dict(size=10)),
+                      thickness=9, len=0.5, x=1.012, xpad=4,
+                      tickfont=dict(size=9.5), outlinewidth=0,
+                      tickvals=[12, 35, 55, 72, 90],
+                      ticktext=["冷门", "偏冷", "中性", "拥挤", "极度"])))
+    _ticks = [q for q in d.index if str(q).endswith("Q1")] + [d.index[-1]]
+    fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
+                     tickangle=-45, tickfont=dict(size=9.5), side="bottom")
+    fig.update_yaxes(tickfont=dict(size=10), autorange="reversed")
+    fig = _base(fig, "", height)
+    # 右边必须留够：colorbar 在坐标区外，r=16 会把它切掉一半
+    fig.update_layout(margin=dict(l=92, r=86, t=16, b=62))
     return fig
 
 

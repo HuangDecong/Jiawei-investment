@@ -243,10 +243,11 @@ def render(h) -> None:
             _focus = st.selectbox("聚焦一个行业", _opts, index=0, key="csi_focus",
                                   help="选一个行业会画出它自己的 31 期曲线，并标出它上穿/下穿 80 的时点")
         with _c2:
-            _show_all = st.checkbox("叠加全部 31 条", value=False, key="csi_all",
-                                    help="31 条线同时画会互相遮挡；需要横向对比时再打开")
+            _band = st.checkbox("显示 31 个行业的分位带", value=True, key="csi_band",
+                                help="灰色带是 31 个行业每一期的 25–75% 分位区间，"
+                                     "表示「市场整体的分布宽度」；不画 31 条线是因为会糊成一片")
         _sel_t = None if _focus == _opts[0] else _focus
-        st.plotly_chart(rc.fig_csi_trend(H, _sel_t, _show_all), width="stretch",
+        st.plotly_chart(rc.fig_csi_trend(H, _sel_t, _band), width="stretch",
                         config={"displayModeBar": False})
         _med = H.median(axis=1).dropna()
         _now = float(_med.iloc[-1])
@@ -273,6 +274,42 @@ def render(h) -> None:
               f'从 60 涨上来（刚变挤）与从 95 跌下来（正在退潮）含义完全相反——'
               f'上面这张图就是把「水位」和「方向」放在一张图上。'
               f'下面的阈值实证会回答：这些分界线到底有没有预测力。')
+
+        # ---- 全景热力图：替代「31 条线叠加」 ----
+        _small = ([i for i in csi.index if csi.loc[i, "等级"] == "小样本"]
+                  if not csi.empty and "等级" in csi.columns else [])
+        h('<div style="font-size:12.5px;font-weight:700;margin:12px 0 3px">'
+          '31 个行业全景：颜色＝档位，一屏看出「谁、什么时候」变红</div>')
+        st.plotly_chart(rc.fig_csi_heatmap(H, _small), width="stretch",
+                        config={"displayModeBar": False})
+        # 最近 4 期里变化最大的几行
+        _d4 = (H.iloc[-1] - H.iloc[-5]).dropna() if len(H) >= 5 else pd.Series(dtype=float)
+        _up4 = _d4.nlargest(3)
+        _dn4 = _d4.nsmallest(3)
+        _red = H.iloc[-1][H.iloc[-1] >= 80].sort_values(ascending=False)
+        _long = ((H >= 80).sum()).nlargest(3)
+        h(f'<div class="cg-note"><b>怎么读</b>：每一行是一个行业、每一格是一期，'
+          f'颜色就是五档（深蓝→浅蓝→近白→橙→红）。<b>红色区域＝那段时间又挤又久</b>；'
+          f'<b>同一行从蓝走到红</b>＝拥挤在累积，从红走回蓝＝在退潮。'
+          f'行按当期 CSI 从高到低排，灰色†是小样本（不评级）。悬停看具体数值。<br>'
+          f'<b>最近 4 期变红最快</b>：'
+          + ("、".join(f'{i}（{r:+.0f} 分）' for i, r in _up4.items()) or "—")
+          + f'；<b>退得最快</b>：'
+          + ("、".join(f'{i}（{r:+.0f} 分）' for i, r in _dn4.items()) or "—")
+          + f'。<br><b>当期仍在 ≥80 的</b>：'
+          + ("、".join(f'{i}（{v:.0f}）' for i, v in _red.items()) or "无")
+          + f'；<b>历史上高位持续最久</b>：'
+          + ("、".join(f'{i}（{int(v)} 期）' for i, v in _long.items()) or "—")
+          + '。</div>')
+        _read(h,
+              f'热力图和上面的折线是**同一份数据**的两种读法：折线看一个行业的「轨迹」，'
+              f'热力图看 31 个行业的「横截面」。叠加 31 条折线会糊成一团，'
+              f'而热力图的每一格都是独立的，颜色深浅不会被别的行业盖住。'
+              f'<br>本期最显眼的是<b>右上角那片红</b>（煤炭、石油石化）与'
+              f'<b>中段由红转橙的一列</b>（通信、电子），前者在爬顶、后者在退潮。',
+              f'看全景只回答一个问题：<b>现在的拥挤是「局部」还是「全面」</b>。'
+              f'本期 31 个行业里 ≥80 的只有 {len(_red)} 个，说明是结构性拥挤、不是系统性风险；'
+              f'如果是 15 个以上同时红，那才是「全市场都在抱团」的顶。')
 
     # =====================================================================
     # ② 阈值实证
