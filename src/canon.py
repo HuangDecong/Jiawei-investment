@@ -420,7 +420,11 @@ def panel_top10(q: str, normalize: bool = True) -> pd.DataFrame:
         SELECT code, industry, SUM(weight_pct) AS w
         FROM (
             SELECT code, industry, weight_pct,
-                   ROW_NUMBER() OVER (PARTITION BY code ORDER BY weight_pct DESC) rn
+                   -- 必须带 stock_code 兜底排序：权重相同的股票（尤其最后一名）
+                   -- 在两次查询里可能取到不同的一只，前十大集合就会漂移，
+                   -- 进而让「主题基金」判定、样本池、线上与本地结果差 1–2 只。
+                   ROW_NUMBER() OVER (PARTITION BY code
+                                      ORDER BY weight_pct DESC, stock_code) rn
             FROM fund_holdings
             WHERE quarter=?
         )

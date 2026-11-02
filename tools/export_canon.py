@@ -54,7 +54,7 @@ def main() -> None:
         FROM (
             SELECT code, quarter, industry, weight_pct,
                    ROW_NUMBER() OVER (PARTITION BY code, quarter
-                                      ORDER BY weight_pct DESC) rn
+                                      ORDER BY weight_pct DESC, stock_code) rn
             FROM fund_holdings
         )
         WHERE rn <= 10 AND industry IS NOT NULL AND industry != ''
@@ -107,7 +107,7 @@ def main() -> None:
                weight_pct, shares, mv, is_hk
         FROM (
             SELECT *, ROW_NUMBER() OVER (PARTITION BY code, quarter
-                                         ORDER BY weight_pct DESC) rn
+                                         ORDER BY weight_pct DESC, stock_code) rn
             FROM fund_holdings WHERE quarter IN ({ph2})
         )
         WHERE rn <= 12

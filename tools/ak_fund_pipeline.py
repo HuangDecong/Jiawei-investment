@@ -92,11 +92,32 @@ def connect(retries: int = 8):
             # SQLite 的 busy handler 不会等待，会立刻抛 database is locked。
             con.isolation_level = None
             con.executescript(SCHEMA)
+            _ensure_coverage_unique(con)
             return con
         except sqlite3.OperationalError as e:
             last = e
             time.sleep(1 + i * 1.5)
     raise last
+
+
+def _ensure_coverage_unique(con) -> None:
+    """给老库补 (code, quarter) 唯一索引。
+
+    早期建表语句没带主键，`INSERT OR REPLACE` 不会替换，重复抓同一年
+    就会往 coverage 里追加一份重复行（本库曾积累 307 行）。重复行会让
+    「同一只基金的覆盖率」出现两个值，线上（读快照）与本地（读库）
+    算出的样本量差 1 只，很难查。这里一次性去重并加索引，之后不再发生。
+    """
+    try:
+        con.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_coverage_code_q "
+                    "ON coverage(code, quarter)")
+        return
+    except sqlite3.IntegrityError:
+        pass
+    con.execute("DELETE FROM coverage WHERE rowid NOT IN "
+                "(SELECT MAX(rowid) FROM coverage GROUP BY code, quarter)")
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_coverage_code_q "
+                "ON coverage(code, quarter)")
 
 
 def init_wal():
