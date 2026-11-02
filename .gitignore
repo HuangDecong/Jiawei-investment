@@ -70,3 +70,4 @@ data/db/*.db-shm
 
 # 净值缓存（体积小但可重抓，避免仓库膨胀）
 data/cache/fund_nav/
+data/cache/fund_name_em.csv
