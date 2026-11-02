@@ -68,6 +68,15 @@ def _verdict(r) -> str:
     return "分位偏低且变动温和：没有明显的拥挤或抛弃信号，按个股逻辑处理即可。"
 
 
+def _num(v, nd: int = 0, dash: str = "—") -> str:
+    """把可能为 NaN 的数值格式化成字符串：NaN → 破折号，绝不输出 "nan"。"""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return dash
+    return f"{v:.{nd}f}" if np.isfinite(v) else dash
+
+
 def _read(h, fact: str, econ: str, invest: str = "") -> None:
     """图下方的三段式分析：事实 → 经济含义 → 投资含义。"""
     ui.analysis(h, fact, econ, invest)
@@ -99,8 +108,8 @@ def _chips(cs: pd.DataFrame, comp: pd.DataFrame) -> str:
         _is_small = r.get("可靠") == "小样本"
         c = rc.CSI_COLORS.get(r["等级"], "#C3CBD4")
         _aq = comp.loc[i, "Δ上季pp"] if i in comp.index else np.nan
-        _tip = (f'全市场仅 {r.get("持有基金数", float("nan")):.0f} 只基金持有，'
-                f'前十配置 {r.get("配置_前十", r.get("配置", float("nan"))):.2f}%；'
+        _tip = (f'全市场仅 {_num(r.get("持有基金数"))} 只基金持有，'
+                f'前十配置 {_num(r.get("配置_前十", r.get("配置")), 2)}%；'
                 f'按三分位本应判为「{r.get("原等级", "—")}」，'
                 f'但样本不足，不评级' if _is_small else f'CSI {r["CSI"]:.0f}（{r["等级"]}）')
         _lvl = "小样本·不评级" if _is_small else r["等级"]
@@ -171,8 +180,13 @@ def render(h) -> None:
     if len(_top):
         _bl.append(f'<b>最拥挤</b>：' + "、".join(
             f'{i}（CSI {r["CSI"]:.0f}，配置{r["历史分位"]:.0f}/价格'
-            f'{r.get("指数分位", float("nan")):.0f}）' for i, r in _top.iterrows())
+            f'{_num(r.get("指数分位"), 0)}）' for i, r in _top.iterrows())
             + f'。31 个行业里极度拥挤 <b>{_n_ext}</b> 个、冷门 <b>{_n_cold}</b> 个。')
+    if len(_bot):
+        _bl.append('最冷门：' + "、".join(
+            f'{i}（CSI {r["CSI"]:.0f}，配置{r["历史分位"]:.0f}/价格'
+            f'{_num(r.get("指数分位"), 0)}）' for i, r in _bot.iterrows())
+            + '。冷门不等于机会——没有资金关注时，估值再低也可能继续低。')
     if len(_hi_chg):
         _bl.append(f'<b>拥挤度见顶</b>（配置还在高位、资金已转负）：'
                    + "、".join(f'{i}（配置{r["历史分位"]:.0f}、当期{r["平均主动pp"]:+.2f}pp）'
@@ -292,9 +306,11 @@ def render(h) -> None:
             if list(H.index).index(_qc) > 0 else pd.Series(dtype=float)
         _upq = _chg.dropna().nlargest(2)
         _dnq = _chg.dropna().nsmallest(2)
+        _second = (f'、次之 {_sq_ok.index[1]} {_sq_ok.iloc[1]:.0f}'
+                   if len(_sq_ok) > 1 else '')
         h(f'<div class="cg-note" style="font-size:12.5px">'
-          f'{_qc} 共 {len(_sq)} 个行业有值：最挤 <b>{_sq_ok.index[0]} {_sq_ok.iloc[0]:.0f}</b>、'
-          f'次之 {_sq_ok.index[1]} {_sq_ok.iloc[1]:.0f}；最冷 '
+          f'{_qc} 共 {len(_sq)} 个行业有值：最挤 '
+          f'<b>{_sq_ok.index[0]} {_sq_ok.iloc[0]:.0f}</b>{_second}；最冷 '
           f'<b>{_sq_ok.index[-1]} {_sq_ok.iloc[-1]:.0f}</b>。'
           + (f' 相对上一期，变挤最多 {_upq.index[0]}（{_upq.iloc[0]:+.0f}）、'
              f'变松最多 {_dnq.index[0]}（{_dnq.iloc[0]:+.0f}）。'
@@ -583,7 +599,9 @@ def render(h) -> None:
               + "、".join(f'{i}（{r["上期CSI"]:.0f}→{r["CSI"]:.0f}，{r["ΔCSI"]:+.0f}）'
                           for i, r in _dn.iterrows())
               + f'。其中「水位已高且还在涨」的有 <b>{len(_hi_up)} 个</b>：'
-              + ("、".join(_hi_up.index) if len(_hi_up) else "无") + '。',
+              + ("、".join(_hi_up.index) if len(_hi_up) else "无")
+              + (f'。变化榜已剔除 {_n_sm} 个小样本行业（灰色），它们的波动来自样本太小。'
+                 if _n_sm else '。'),
               f'水位（CSI）和流向（ΔCSI）是两件事。一个行业可以「很挤但正在变松」——'
               f'那是资金已经在撤、只是仓位还没降下来，危险程度远低于「很挤且还在变挤」。'
               f'后者意味着还有人在往已经没有空间的地方挤，一旦转向，卖出会非常集中。'

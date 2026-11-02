@@ -206,6 +206,17 @@ def summary(q: str | None = None) -> dict:
 # ---------------------------------------------------------------------------
 # 结论卡：每条都写成「结论 / 证据 / 含义 / 动作 / 失效条件」
 # ---------------------------------------------------------------------------
+def _f(v, nd: int = 0, plus: bool = False) -> str:
+    """格式化可能缺失的数值：NaN/None → 「—」，不输出 "nan"。"""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    if not np.isfinite(v):
+        return "—"
+    return (f"{v:+.{nd}f}" if plus else f"{v:.{nd}f}")
+
+
 def position_band(pct: float, disp: float | None) -> tuple[int, int, bool]:
     """由仓位分位与离散度给出权益仓位区间。规则事前固定：
 
@@ -305,7 +316,7 @@ def conclusions(q: str | None = None) -> list[dict]:
                   + "、".join(fol.index) + "。",
             evidence="；".join(
                 f"{i}：当期主动 {r['当期主动pp']:+.2f}pp、{r['加仓占比']:.0f}% 在加、"
-                f"配置 {r['历史分位']:.0f} 分位、指数 {r.get('指数分位', float('nan')):.0f} 分位"
+                f"配置 {r['历史分位']:.0f} 分位、指数 {_f(r.get('指数分位'))} 分位"
                 for i, r in fol.iterrows()),
             meaning=("这三条是「与」不是「或」：只有资金、广度、价格同时过关，"
                      "才叫赔率合适的加仓。少一条就降级——广度不够是少数大基金在撑，"
@@ -322,8 +333,8 @@ def conclusions(q: str | None = None) -> list[dict]:
             claim=f"{len(hot)} 个行业已在历史极值，资金还在进，但赔率不够："
                   + "、".join(hot.index) + "。",
             evidence="；".join(
-                f"{i}：配置 {r['历史分位']:.0f} 分位、指数 {r.get('指数分位', float('nan')):.0f} 分位、"
-                f"近 3 月 {r.get('近3月涨幅%', float('nan')):+.1f}%"
+                f"{i}：配置 {r['历史分位']:.0f} 分位、指数 {_f(r.get('指数分位'))} 分位、"
+                f"近 3 月 {_f(r.get('近3月涨幅%'), 1, True)}%"
                 for i, r in hot.iterrows()),
             meaning=("拥挤不等于马上跌——本库自己的数据已经证伪「高配置必跌」"
                      "（高分位行业次季反而 +0.83%）。所以这里不是看空，而是"

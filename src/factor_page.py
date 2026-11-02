@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 import os
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -65,7 +64,7 @@ def _load() -> dict:
 def _recompute() -> dict:
     """现算一次并写回 JSON（页面按钮触发，约 60–80 秒）。"""
     import factor_test as ft
-    tab = ft.run_all()
+    ft.run_all()
     out = _load() or {}
     out["generated"] = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
     out["factors"] = []
@@ -212,7 +211,6 @@ def render(h, B=None, IND=None) -> None:
     h('<div class="sec">二、九个因子一览：各自衡量什么、结论如何</div>')
     _rows = []
     for f in F:
-        _doc = DOC.get(f["key"], {})
         _rows.append({
             "因子": f["name"],
             "衡量什么": _BRIEF.get(f["key"], f["name"]),
@@ -238,54 +236,64 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     # 逐因子说明书
     # =====================================================================
-    h('<div class="sec">三、逐个因子：经济内容 → 公式 → 步骤 → 阈值 → 失效 → 风险</div>')
-    _opts = [f'{f["name"]}（{f["verdict"]}）' for f in F]
-    _pick = st.selectbox("选择因子", _opts, key="ft_pick")
-    f = F[_opts.index(_pick)]
-    doc = DOC.get(f["key"], {})
-    _c = _VERDICT_COLOR.get(f["verdict"], C.COLOR["text_dim"])
+    h('<div class="sec">三、九个因子：逐个展开，看完整说明书</div>')
+    h('<div class="tiny" style="margin:-2px 0 8px">'
+      '九张卡片默认折叠，标题行就是「名称 · 结论 · IC」，扫一眼就知道谁有用；'
+      '点开任意一张，可看到经济内容、投资含义、公式、步骤、阈值、失效条件与风险。'
+      '第一张（最显著的因子）默认展开。</div>')
+    # 按 |IC| 降序：最值得看的排最前，与上方速查表顺序一致
+    F_sorted = sorted(F, key=lambda x: abs(x.get("ic_mean") or 0), reverse=True)
+    for _i, f in enumerate(F_sorted, 1):
+        doc = DOC.get(f["key"], {})
+        _c = _VERDICT_COLOR.get(f["verdict"], C.COLOR["text_dim"])
+        _lab = (f'{_i}. {f["name"]}　·　{f["verdict"]}　·　'
+                f'IC {f["ic_mean"]:+.3f}　t {f["t"]:+.2f}　{f["n"]} 期')
+        with st.expander(_lab, expanded=(_i == 1)):
+            _steps = doc.get("steps") or []
+            _steps_html = "<br>".join(f"{k}. {v}" for k, v in enumerate(_steps, 1)) or "—"
+            _formula_html = ('<span style="font-family:ui-monospace,Consolas,monospace;'
+                             'font-size:12.5px">' + str(f.get("formula", "—")) + "</span>")
+            h(f'<div style="border:1px solid {C.COLOR["line"]};border-left:4px solid {_c};'
+              f'border-radius:9px;padding:10px 14px;background:#FFFFFF">'
+              f'<div style="font-size:15px;font-weight:700;color:#16283C">{f["name"]}'
+              f'<span style="font-size:12.5px;color:{_c};margin-left:9px">{f["verdict"]}</span>'
+              f'<span style="font-size:12px;font-weight:400;color:{C.COLOR["text_dim"]};'
+              f'margin-left:10px">胜率 {f["win"]:.0f}%　单调性 '
+              f'{(f["mono"] if f.get("mono") is not None else float("nan")):+.2f}'
+              f'</span></div>'
+              + _field("经济内容", doc.get("econ", "—"), C.COLOR["price"])
+              + _field("投资含义", doc.get("invest", "—"), C.COLOR["accent"])
+              + _field("为什么这样算", doc.get("why", "—"), C.COLOR["text_dim"])
+              + _field("公式", _formula_html, C.COLOR["price"])
+              + _field("计算步骤", _steps_html, C.COLOR["text_dim"])
+              + _field("判定阈值", doc.get("standard", "—"), C.COLOR["threshold"])
+              + _field("阈值来源", doc.get("src", "—"), C.COLOR["text_dim"])
+              + _field("失效条件", doc.get("fail", "—"), C.COLOR["level_拥挤"])
+              + _field("使用风险", doc.get("risk", "—"), C.COLOR["threshold"])
+              + '</div>')
 
-    _steps = doc.get("steps") or []
-    _steps_html = "<br>".join(f"{k}. {v}" for k, v in enumerate(_steps, 1)) or "—"
-    _formula_html = ('<span style="font-family:ui-monospace,Consolas,monospace;'
-                     'font-size:12.5px">' + str(f.get("formula", "—")) + "</span>")
-    _card = (
-        f'<div style="border:1px solid {C.COLOR["line"]};border-left:4px solid {_c};'
-        f'border-radius:9px;padding:11px 15px;background:#FFFFFF">'
-        f'<div style="font-size:16px;font-weight:700;color:#16283C">{f["name"]}'
-        f'<span style="font-size:13px;color:{_c};margin-left:9px">{f["verdict"]}</span>'
-        f'<span style="font-size:12.5px;font-weight:400;color:{C.COLOR["text_dim"]};'
-        f'margin-left:10px">IC {f["ic_mean"]:+.3f}　t {f["t"]:+.2f}　'
-        f'p {f["p"]:.3f}　胜率 {f["win"]:.0f}%　{f["n"]} 期</span></div>'
-        + _field("经济内容", doc.get("econ", "—"), C.COLOR["price"])
-        + _field("投资含义", doc.get("invest", "—"), C.COLOR["accent"])
-        + _field("为什么这样算", doc.get("why", "—"), C.COLOR["text_dim"])
-        + _field("公式", _formula_html, C.COLOR["price"])
-        + _field("计算步骤", _steps_html, C.COLOR["text_dim"])
-        + _field("判定阈值", doc.get("standard", "—"), C.COLOR["threshold"])
-        + _field("阈值来源", doc.get("src", "—"), C.COLOR["text_dim"])
-        + _field("失效条件", doc.get("fail", "—"), C.COLOR["level_拥挤"])
-        + _field("使用风险", doc.get("risk", "—"), C.COLOR["threshold"])
-        + '</div>')
-    h(_card)
+            _c1, _c2 = st.columns([0.62, 0.38], gap="small")
+            with _c1:
+                st.plotly_chart(_ic_fig(f), width="stretch",
+                                config={"displayModeBar": False})
+            with _c2:
+                st.plotly_chart(_layer_fig(f), width="stretch",
+                                config={"displayModeBar": False})
 
-    c1, c2 = st.columns([0.62, 0.38], gap="small")
-    with c1:
-        st.plotly_chart(_ic_fig(f), width="stretch", config={"displayModeBar": False})
-    with c2:
-        st.plotly_chart(_layer_fig(f), width="stretch", config={"displayModeBar": False})
-
-    _s = pd.Series({k: v for k, v in f.get("ic_series", {}).items() if v is not None})
-    if len(_s):
-        _pos, _neg = int((_s > 0).sum()), int((_s < 0).sum())
-        _maxq = _s.abs().idxmax()
-        h(f'<div class="tiny">左图：每根柱是一期的 IC，橙线是累计 IC——'
-          f'累计线一路向下说明长期反向，只靠一两期撑起说明不稳定。'
-          f'右图：按因子值五等分，Q1→Q5 严格递增才是好因子。<br>'
-          f'本期该因子 {_pos} 期为正、{_neg} 期为负，绝对值最大的一期是 '
-          f'<b>{_maxq}</b>（{_s.get(_maxq, float("nan")):+.3f}）。'
-          + (f' 分层从 Q1 {f["layers"]["0"]:+.2f}% 到 Q5 {f["layers"]["4"]:+.2f}%，'
-             f'单调性 {f["mono"]:+.2f}。' if f.get("layers") else '') + '</div>')
+            _s = pd.Series({k: v for k, v in f.get("ic_series", {}).items()
+                            if v is not None})
+            if len(_s):
+                _pos, _neg = int((_s > 0).sum()), int((_s < 0).sum())
+                _maxq = _s.abs().idxmax()
+                h(f'<div class="tiny">左图：每根柱是一期的 IC，橙线是累计 IC——'
+                  f'累计线一路向下说明长期反向，只靠一两期撑起说明不稳定；'
+                  f'右图：按因子值五等分，Q1→Q5 严格递增才是好因子。<br>'
+                  f'该因子 {_pos} 期为正、{_neg} 期为负，绝对值最大的一期是 '
+                  f'<b>{_maxq}</b>（{_s.get(_maxq, float("nan")):+.3f}）。'
+                  + (f' 分层从 Q1 {f["layers"]["0"]:+.2f}% 到 Q5 {f["layers"]["4"]:+.2f}%，'
+                     f'单调性 {f["mono"]:+.2f}。' if f.get("layers") else '') + '</div>')
+            else:
+                h('<div class="tiny">该因子样本不足，未生成 IC 序列与分层图。</div>')
 
     # =====================================================================
     # 为什么不用旧因子

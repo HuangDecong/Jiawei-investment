@@ -20,6 +20,8 @@
 """
 from __future__ import annotations
 
+import re
+
 import numpy as np
 
 # 分类用于侧边栏分组
@@ -716,7 +718,7 @@ def card_html(key: str, color: dict) -> str:
         for a, b, c in v.get("threshold", []))
     _steps = "".join(f'<li style="margin:2px 0">{s}</li>' for s in v.get("steps", []))
     _formula = str(v.get("formula", "")).replace("\n", "<br>")
-    return f"""
+    html = f"""
 <div style="border:1px solid {color['line']};border-top:3px solid {color['price']};
 border-radius:7px;padding:9px 11px;background:#FFFFFF">
   <div style="font-size:13px;font-weight:700;margin-bottom:2px">{v['name']}
@@ -753,6 +755,9 @@ border-radius:7px;padding:9px 11px;background:#FFFFFF">
   background:#FFF8EC;border-radius:4px;color:#7A4A00">
   <b>常见误用</b>：{v['misuse']}</div>
 </div>"""
+    # 词条里沿用了 Markdown 的 **加粗**；card_html 产出的是原始 HTML，
+    # 不转换的话星号会直接显示在页面上（「**全部**」）。
+    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html)
 
 
 def compact_table(color: dict) -> str:

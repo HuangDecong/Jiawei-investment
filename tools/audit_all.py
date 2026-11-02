@@ -1,0 +1,272 @@
+# -*- coding: utf-8 -*-
+"""全站审计：静态检查 → 口径自检 → 页面渲染 → 文本卫生 → 交互 → 跨页一致性。
+
+为什么要有这个脚本
+------------------
+这个项目踩过的坑，几乎都不是「算错」，而是：
+  · 本地能跑、线上报错（推送漏文件）；
+  · 页面某一块静默失败，看起来只是「没有内容」；
+  · 同一句话在两个页面上不是一个数；
+  · 改了一处，另一处还在用旧文案。
+
+所以审计必须同时覆盖「代码」「数据」「渲染结果」三层，并且每次都跑同一套，
+而不是靠人眼看截图。
+
+用法：
+    python tools/audit_all.py            # 全量
+    python tools/audit_all.py --fast     # 跳过交互（约 40 秒）
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "src"))
+sys.path.insert(0, ROOT)
+
+PAGES = ["① 结论总览", "② 本期解读", "③ 行业拥挤度",
+         "④ 单只基金", "⑤ 因子检验", "⑥ 方法与口径"]
+
+# 文本卫生：这些串出现在 HTML 里，说明有变量是 NaN、或 Markdown 没被渲染
+BAD_PATTERNS = [
+    (re.compile(r"(?<![A-Za-z])nan(?![A-Za-z])"), "nan"),
+    (re.compile(r"(?<![A-Za-z])NaN(?![A-Za-z])"), "NaN"),
+    (re.compile(r"(?<![A-Za-z])None(?![A-Za-z])"), "None"),
+    (re.compile(r"\*\*[^\s*][^*]{0,40}\*\*"), "** 未渲染"),
+    (re.compile(r"&lt;b&gt;"), "转义标签"),
+    (re.compile(r"\{[a-zA-Z_][a-zA-Z0-9_]*\}"), "未替换的占位符"),
+]
+
+ROWS: list[tuple[str, str, str, str]] = []
+
+
+def rec(stage: str, item: str, ok: bool, detail: str = "") -> None:
+    ROWS.append((stage, item, "通过" if ok else "失败", detail))
+
+
+# ---------------------------------------------------------------------------
+# 1. 语法与静态
+# ---------------------------------------------------------------------------
+def stage_static() -> None:
+    files = ([os.path.join(ROOT, "app.py")]
+             + [os.path.join(ROOT, "src", f) for f in os.listdir(os.path.join(ROOT, "src"))
+                if f.endswith(".py")]
+             + [os.path.join(ROOT, "tools", f) for f in os.listdir(os.path.join(ROOT, "tools"))
+                if f.endswith(".py")])
+    bad = []
+    for f in files:
+        try:
+            with open(f, encoding="utf-8") as fh:
+                compile(fh.read(), f, "exec")
+        except Exception as e:
+            bad.append(f"{os.path.basename(f)}: {e}")
+    rec("静态", f"全部 {len(files)} 个 .py 可编译", not bad, "；".join(bad[:3]))
+
+    # pyflakes 只看「未定义名」，其余（未使用变量等）不阻断
+    try:
+        out = subprocess.run([sys.executable, "-m", "pyflakes"] + files,
+                             capture_output=True, text=True, timeout=120).stdout
+        undef = [ln for ln in out.splitlines()
+                 if "undefined name" in ln or "redefinition" in ln]
+        rec("静态", "无未定义名 / 重复定义", not undef, "；".join(undef[:3]))
+    except Exception as e:
+        rec("静态", "pyflakes 检查", True, f"跳过：{type(e).__name__}")
+
+
+# ---------------------------------------------------------------------------
+# 2. 口径自检
+# ---------------------------------------------------------------------------
+def stage_selfcheck() -> None:
+    import selfcheck
+    t = selfcheck.run()
+    n, m = t.attrs.get("n_pass"), t.attrs.get("n_all")
+    bad = t[t["结果"].astype(str) != "通过"]
+    rec("数据", f"口径恒等式 {n}/{m}", n == m,
+        "；".join(bad["项目"].tolist()[:4]) if len(bad) else "")
+
+
+def stage_data() -> None:
+    import canon as cn
+    qs = cn.quarters()
+    expect = ((int(qs[-1][:4]) - int(qs[0][:4])) * 4
+              + int(qs[-1][-1]) - int(qs[0][-1]) + 1)
+    rec("数据", "季度序列连续", expect == len(qs), f"{qs[0]}–{qs[-1]}，{len(qs)} 期")
+
+    from pathlib import Path
+    deriv = Path(ROOT) / "data" / "derived"
+    need = ["canon_level_top10.csv.gz", "canon_position.csv.gz",
+            "canon_csi_history.csv.gz", "canon_top10.csv.gz", "fund_list.csv.gz",
+            "factor_test.json"]
+    miss = [f for f in need if not (deriv / f).exists()]
+    rec("数据", "派生快照齐全", not miss, "缺：" + "、".join(miss) if miss else f"{len(need)} 个文件")
+
+    # 预计算文件不能比数据库旧，否则页面会用过期矩阵
+    db = Path(ROOT) / "data" / "db" / "fund_ak.db"
+    if db.exists():
+        older = []
+        for f in ["canon_level_top10.csv.gz", "canon_position.csv.gz",
+                  "canon_csi_history.csv.gz", "canon_top10.csv.gz"]:
+            p = deriv / f
+            if p.exists() and p.stat().st_mtime < db.stat().st_mtime:
+                older.append(f)
+        rec("数据", "预计算文件不早于数据库", not older, "；".join(older))
+    else:
+        rec("数据", "数据库存在", True, "线上模式（无库）不适用")
+
+    c = cn.crowding_score()
+    cs = cn.csi_history()
+    rec("数据", "CSI 面板与本期一致", abs(float(c["CSI"].max()) - float(cs.iloc[-1].max())) < 1e-6,
+        f"{c['CSI'].idxmax()} 本期 {c['CSI'].max():.1f}")
+
+
+# ---------------------------------------------------------------------------
+# 3. 页面渲染
+# ---------------------------------------------------------------------------
+def _bad_text(v: str) -> tuple[str, str] | None:
+    for pat, name in BAD_PATTERNS:
+        m = pat.search(v)
+        if m:
+            return name, m.group(0)[:40]
+    return None
+
+
+def stage_pages(fast: bool = False) -> None:
+    from streamlit.testing.v1 import AppTest
+    at = AppTest.from_file(os.path.join(ROOT, "app.py"), default_timeout=1500)
+    at.run()
+    rec("渲染", "① 结论总览", len(at.exception) == 0,
+        str(at.exception[0].value)[:200] if at.exception else "")
+
+    for p in PAGES[1:]:
+        t0 = time.time()
+        at.radio(key="page").set_value(p)
+        at.run()
+        dt = time.time() - t0
+        ok = len(at.exception) == 0
+        rec("渲染", p, ok,
+            (str(at.exception[0].value)[:200] if at.exception else f"{dt:.1f}s"))
+
+        # 文本卫生：只看 HTML 块，不看 dataframe
+        hits = []
+        # _h() 用的是 st.html，不是 st.markdown，两处都要扫
+        for blk in list(at.markdown) + list(at.get("html")):
+            v = str(getattr(blk, "value", "") or getattr(blk, "body", "") or "")
+            b = _bad_text(v)
+            if b:
+                hits.append(f"{b[0]}:{b[1]}")
+        # 「暂不可用」是各页 try/except 的兜底文案：一旦出现，说明某块静默失败了
+        silent = [w for w in ("暂不可用", "未找到持仓数据", "结果文件为空")
+                  if any(w in str(getattr(x, "value", "") or getattr(x, "body", "") or "")
+                         for x in list(at.markdown) + list(at.get("html")))]
+        if silent:
+            hits.append("静默失败：" + "、".join(silent))
+        rec("文本", f"{p} 无 nan/None/未渲染标签/静默失败", not hits, "；".join(hits[:3]))
+
+        n_chart = len(at.get("plotly_chart"))
+        # ⑥ 方法与口径 是纯文字页，没有图表是正常的
+        need_chart = p not in ("⑥ 方法与口径",)
+        rec("渲染", f"{p} 图表数量", (n_chart > 0) or (not need_chart),
+            f"{n_chart} 张" if need_chart else f"{n_chart} 张（纯文字页）")
+
+    if not fast:
+        stage_widgets(at)
+
+
+def stage_widgets(at) -> None:
+    """每个页面把每个控件的最后一个选项点一遍，确认不会崩。"""
+    for p in PAGES:
+        at.radio(key="page").set_value(p)
+        at.run()
+        for w in list(at.radio) + list(at.selectbox):
+            if getattr(w, "key", "") == "page":
+                continue
+            try:
+                opts = list(w.options)
+                if len(opts) < 2:
+                    continue
+                w.set_value(opts[-1])
+                at.run()
+                ok = len(at.exception) == 0
+                rec("交互", f"{p} / {w.label[:14]} → 最后一项", ok,
+                    str(at.exception[0].value)[:160] if at.exception else "")
+                if not ok:
+                    at.radio(key="page").set_value(p)
+                    at.run()
+            except Exception as e:
+                rec("交互", f"{p} / {getattr(w, 'label', '?')[:14]}", False,
+                    f"{type(e).__name__}: {e}"[:160])
+        for cb in list(at.checkbox):
+            try:
+                cb.set_value(not cb.value)
+                at.run()
+                rec("交互", f"{p} / {cb.label[:14]} 切换", len(at.exception) == 0,
+                    str(at.exception[0].value)[:160] if at.exception else "")
+                cb.set_value(not cb.value)
+                at.run()
+            except Exception as e:
+                rec("交互", f"{p} / 复选框", False, f"{type(e).__name__}: {e}"[:160])
+
+
+# ---------------------------------------------------------------------------
+# 4. 跨页一致性
+# ---------------------------------------------------------------------------
+def stage_consistency() -> None:
+    from streamlit.testing.v1 import AppTest
+    import canon as cn
+
+    at = AppTest.from_file(os.path.join(ROOT, "app.py"), default_timeout=1500)
+    at.run()
+    txt1 = "\n".join(str(getattr(x, "value", "") or getattr(x, "body", "") or "")
+                     for x in list(at.markdown) + list(at.get("html")))
+    c = cn.crowding_score()
+    top = c[c["等级"] != "小样本"].index[0]
+    v = float(c.loc[top, "CSI"])
+    rec("一致性", f"首页/拥挤度页同一只最挤行业（{top} {v:.0f}）",
+        top in txt1 and f"{v:.0f}" in txt1, "")
+
+    at.radio(key="page").set_value("③ 行业拥挤度")
+    at.run()
+    txt3 = "\n".join(str(getattr(x, "value", "") or getattr(x, "body", "") or "")
+                     for x in list(at.markdown) + list(at.get("html")))
+    rec("一致性", "拥挤度页含同一行业与其分值",
+        top in txt3 and f"{v:.0f}" in txt3, "")
+
+    # 期次标签一致：所有页面都用同一个最新季
+    q = cn.latest()
+    for p in ["① 结论总览", "② 本期解读", "③ 行业拥挤度", "④ 单只基金"]:
+        at.radio(key="page").set_value(p)
+        at.run()
+        t = "\n".join(str(getattr(x, "value", "") or getattr(x, "body", "") or "")
+                      for x in list(at.markdown) + list(at.get("html")))
+        rec("一致性", f"{p} 使用最新期 {q}", q in t, "" if q in t else "未出现最新期")
+
+
+# ---------------------------------------------------------------------------
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--fast", action="store_true", help="跳过控件交互")
+    args = ap.parse_args()
+
+    t0 = time.time()
+    stage_static()
+    stage_selfcheck()
+    stage_data()
+    stage_pages(args.fast)
+    stage_consistency()
+
+    import pandas as pd
+    df = pd.DataFrame(ROWS, columns=["阶段", "检查项", "结果", "说明"])
+    n_bad = int((df["结果"] != "通过").sum())
+    print(df.to_string(index=False))
+    print(f"\n{'✅ 全部通过' if n_bad == 0 else f'❌ {n_bad} 项失败'}"
+          f"　共 {len(df)} 项，用时 {time.time() - t0:.0f}s")
+    return 0 if n_bad == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

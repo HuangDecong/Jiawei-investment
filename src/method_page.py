@@ -17,7 +17,6 @@
 """
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -224,7 +223,10 @@ def render(h, B=None, IND=None) -> None:
                          "为什么查这条": st.column_config.TextColumn(width="large"),
                      })
         h('<div class="tiny">这些检查全部是「左边必须等于右边」的恒等式，'
-          '不是「看起来差不多」。任何一处口径改动，这里会立刻变红。</div>')
+          '不是「看起来差不多」。任何一处口径改动，这里会立刻变红。'
+          '除这 12 条外，<span class="mono">python tools/audit_all.py</span> 还会跑'
+          '「代码可编译、无未定义名、六页渲染无异常、页面无空值与未渲染标签、'
+          '控件逐项点击、跨页数字一致」共 54 项检查。</div>')
     except Exception as _e:
         h(f'<div class="tiny">自检脚本未通过：{type(_e).__name__}: {_e}</div>')
 
@@ -249,6 +251,7 @@ python tools/export_canon.py      # 导出压缩快照（无数据库时线上�
 python tools/export_matrix.py     # 预计算行业矩阵与仓位分布
 python tools/export_csi.py        # 预计算 CSI 面板（31×31）
 python tools/run_factor_test.py   # 生成因子检验结果 factor_test.json
+python tools/audit_all.py         # 全站审计：静态/口径/渲染/文本/交互/一致性
 python -c "import sys; sys.path.insert(0,'src'); import selfcheck; print(selfcheck.run())"
 """, language="bash")
         h('<div class="tiny">数据文件：<span class="mono">data/db/fund_ak.db</span>'

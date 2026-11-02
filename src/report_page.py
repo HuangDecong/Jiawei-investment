@@ -21,7 +21,6 @@ import streamlit as st
 
 import canon as cn
 import config as C
-import playbook as pb
 import report_charts as rc
 import ui
 
@@ -76,7 +75,7 @@ def render(h, B=None, IND=None) -> None:
         return
 
     q = cn.latest()
-    pf, pq, ps = cn.pair_full(), cn.pair_quarter(), cn.pair_same()
+    pf, pq = cn.pair_full(), cn.pair_quarter()
     n_funds = len(cn.universe(q))
     pos_hist = cn.position_series()
     pos = cn.position_change() if pf else {}
@@ -338,7 +337,6 @@ def render(h, B=None, IND=None) -> None:
                 st.plotly_chart(rc.fig_stock_flow(sf_f, 10, *_pair), width="stretch",
                                 config={"displayModeBar": False})
                 _a, _c = sf_f.nlargest(3, "d_n"), sf_f.nsmallest(3, "d_n")
-                _ind_a = _a["industry"].value_counts()
                 h(f'<div class="tiny">口径：<b>前十大</b>。'
                   f'季报（Q1/Q3）法定只披露<b>前十大重仓股</b>；半年报/年报（Q2/Q4）披露'
                   f'<b>全部持仓</b>。这里对四个季度统一只取「每只基金最重的 10 只」，'
