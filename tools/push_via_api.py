@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -117,8 +118,12 @@ def main() -> None:
     for status, path in files:
         if status == "D" or not os.path.exists(path):
             continue
-        local = subprocess.check_output(["git", "hash-object", path],
-                                        text=True).strip()
+        # 自己算 git blob sha，不用 git hash-object：
+        # 后者会按 core.autocrlf 做换行转换（CRLF→LF），
+        # 而我们上传的是原始字节，两者对不上会误报「不一致」。
+        with open(path, "rb") as f:
+            content = f.read()
+        local = hashlib.sha1(b"blob %d\x00" % len(content) + content).hexdigest()
         if remote.get(path) != local:
             bad.append(path)
     if bad:
