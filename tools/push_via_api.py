@@ -45,21 +45,32 @@ def call(method: str, path: str, payload=None):
         return json.loads(r.read().decode())
 
 
-def main() -> None:
-    sha = sys.argv[1] if len(sys.argv) > 1 else subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], text=True).strip()
-
-    changed = subprocess.check_output(
-        ["git", "-c", "core.quotepath=false", "show", "--name-status",
-         "--format=", sha],
+def _files_of(rev_range: str) -> list[tuple[str, str]]:
+    """取一个提交范围的变更文件并集（同名取最后一次的状态）。"""
+    out = subprocess.check_output(
+        ["git", "-c", "core.quotepath=false", "log", "--name-status",
+         "--format=", rev_range],
         text=True, encoding="utf-8").strip().split("\n")
-    files = []
-    for row in changed:
+    seen: dict[str, str] = {}
+    for row in out:
         parts = row.split("\t")
         if len(parts) < 2:
             continue
-        status, path = parts[0][0], parts[-1]
-        files.append((status, path))
+        seen[parts[-1]] = parts[0][0]
+    return [(st, p) for p, st in seen.items()]
+
+
+def main() -> None:
+    # 不传参数时推「最近 3 个提交」的并集：
+    # 只推 HEAD 会漏掉前一次提交——r32.0 就是这样只推了 shot6.py，
+    # 线上 canon.py 还是旧的，整页报 AttributeError。
+    if len(sys.argv) > 1:
+        sha = sys.argv[1]
+        files = _files_of(f"{sha}~1..{sha}")
+    else:
+        sha = subprocess.check_output(["git", "rev-parse", "HEAD"],
+                                      text=True).strip()
+        files = _files_of("HEAD~3..HEAD")
     print(f"待推送 {len(files)} 个文件")
 
     # 1) 远端当前 main
@@ -96,6 +107,24 @@ def main() -> None:
     call("PATCH", f"/repos/{OWNER}/{REPO}/git/refs/heads/{BRANCH}",
          {"sha": commit["sha"], "force": False})
     print(f"✅ 已推送：{commit['sha'][:8]}  {msg[:40]}")
+
+    # 校验：远端每个文件的 blob 必须与本地一致。
+    # 不做这一步，「推送成功」可能只是自我安慰（本次事故的根因）。
+    tree_after = call("GET", f"/repos/{OWNER}/{REPO}/git/trees/{tree['sha']}?recursive=1")
+    remote = {it["path"]: it["sha"] for it in tree_after.get("tree", [])
+              if it.get("type") == "blob"}
+    bad = []
+    for status, path in files:
+        if status == "D" or not os.path.exists(path):
+            continue
+        local = subprocess.check_output(["git", "hash-object", path],
+                                        text=True).strip()
+        if remote.get(path) != local:
+            bad.append(path)
+    if bad:
+        print(f"❌ 校验失败：{len(bad)} 个文件远端与本地不一致 → " + "、".join(bad[:5]))
+        raise SystemExit(1)
+    print(f"✅ 校验通过：{len([1 for st, _ in files if st != 'D'])} 个文件与本地一致")
 
 
 if __name__ == "__main__":
