@@ -353,6 +353,19 @@ def stage_charts() -> None:
     rec("图表", "拥挤度折线：双面板（CSI + 分位）", len(f.layout.annotations or []) >= 4,
         f"traces={len(f.data)}")
 
+    # 「每一季度不能跳」：折线每期都必须带悬浮分位，缺一期就是断档
+    _tr = next((t for t in f.data if getattr(t, "name", "") == "电子"), None)
+    _cd = getattr(_tr, "customdata", None) if _tr is not None else None
+    rec("图表", "折线每一期都带分位（悬浮不断档）",
+        _cd is not None and len(_cd) == len(H),
+        f"{len(_cd) if _cd is not None else 0} 期 / 面板 {len(H)} 期")
+    # 下图：自身历史分位 + 全行业分位（横截面）两条都要在
+    _names = [getattr(t, "name", "") for t in f.data]
+    rec("图表", "下图含「自身历史分位」与「全行业分位」",
+        any("自身历史分位" in n for n in _names)
+        and any("全行业分位" in n for n in _names),
+        "；".join(n for n in _names if "分位" in n))
+
     f2 = rc.fig_csi_trend(H, None, True)
     rec("图表", "拥挤度折线（全市场）：下图为广度",
         any("≥65" in str(getattr(t, "name", "")) for t in f2.data),

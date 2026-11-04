@@ -802,7 +802,9 @@ def _expanding_pct(s: pd.Series, window: int | None = None) -> pd.Series:
     for i in range(len(arr)):
         lo = 0 if not window else max(0, i - window + 1)
         seg = arr[lo: i + 1]
-        pct[i] = float((seg <= arr[i]).mean() * 100)
+        # 只有 1–3 个观测时不打分位：一个点永远是 100 分位，
+        # 两个点只有 0/50/100 三档，画出来是一段假的「从 100 掉下来」。
+        pct[i] = np.nan if len(seg) < 4 else float((seg <= arr[i]).mean() * 100)
     out.loc[v.index] = pct
     return out
 
@@ -820,6 +822,8 @@ def pct_of(s: pd.Series, cur: float | None = None,
     if window:
         v = v.tail(int(window))
     k = int((v <= cur).sum())
+    if len(v) < 4:
+        return float("nan"), len(v), k
     return float(k / len(v) * 100), len(v), k
 
 
@@ -827,7 +831,8 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
                   show_band: bool = True,
                   rank_universe: list[str] | None = None,
                   window: int | None = None,
-                  thr: float = 80) -> go.Figure:
+                  thr: float = 80,
+                  show_cross: bool = True) -> go.Figure:
     """上：CSI 水位怎么走；下：这个水位在「自己的历史」里排第几。
 
     为什么必须画折线：CSI 是一个 0–100 的水位，单看当期数字无法判断
@@ -899,12 +904,29 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
 
     if sel and sel in d.columns:
         s = d[sel]
+        # 每一个点的悬浮都要能回答「当期多少分、在自己历史排第几、在同行里排第几」，
+        # 这样「看每一季度」才不只是看折线，而是看每一季的位置。
+        _own_s = _expanding_pct(d[sel], window)
+        _cross_s = d.rank(axis=1, pct=True) * 100
+        _cd = []
+        for _q in d.index:
+            _v = d.at[_q, sel]
+            if not np.isfinite(_v):
+                _cd.append([np.nan, np.nan, np.nan, np.nan])
+                continue
+            _row = d.loc[_q].dropna()
+            _cd.append([float(_own_s.loc[_q]), float(_cross_s.at[_q, sel]),
+                        int((_row > _v).sum()) + 1, int(len(_row))])
+        _ht = (f"<b>{sel}</b>　%{{x}}<br>CSI %{{y:.1f}}"
+               "<br>自身历史分位 %{customdata[0]:.0f}"
+               "｜全行业分位 %{customdata[1]:.0f}"
+               "（第 %{customdata[2]}/%{customdata[3]}）"
+               "<extra></extra>")
         fig.add_trace(go.Scatter(
             x=list(d.index), y=s.values, mode="lines+markers", name=sel,
             line=dict(color="#1F6FEB", width=2.8),
             marker=dict(size=3.5, color="#1F6FEB"),
-            hovertemplate=f"<b>{sel}</b><br>%{{x}}：%{{y:.1f}}<extra></extra>"),
-            row=1, col=1)
+            customdata=_cd, hovertemplate=_ht), row=1, col=1)
         # 「现在多少分、在自身历史与全行业里各是什么位置」放进标题：
         # 放在图内会压在折线上（末点常落在 70–90 的拥挤带里），标题位置永远干净。
         _v = s.dropna()
@@ -966,8 +988,17 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         fig.add_shape(type="line", xref="x2 domain", x0=0, x1=1,
                       yref="y2", y0=80, y1=80,
                       line=dict(color="#C62828", width=1, dash="dot"))
+        if show_cross:
+            _cr = d.rank(axis=1, pct=True) * 100
+            fig.add_trace(go.Scatter(
+                x=list(_cr.index), y=_cr[sel].values, mode="lines",
+                name="全行业分位（横截面）",
+                line=dict(color="#1F6FEB", width=1.8, dash="dash"),
+                hovertemplate=("%{x}<br>全行业分位 %{y:.0f}"
+                               "（当期 31 个行业里排第几）<extra></extra>")),
+                row=2, col=1)
         fig.update_yaxes(title_text=("近 %d 期分位" % window) if window
-                         else "自身历史分位", range=[0, 104],
+                         else "分位（0–100）", range=[0, 104],
                          tickfont=dict(size=9.5), row=2, col=1)
     else:
         cnt = d.notna().sum(axis=1)
@@ -1163,7 +1194,8 @@ def fig_csi_position(s: pd.Series, name: str, window: int | None = None,
     fig.update_xaxes(range=[-2, 102], title_text="CSI（0＝最冷，100＝最挤）",
                      tickfont=dict(size=9.5), dtick=10)
     _wlab = f"近 {n} 期" if window else f"自身 {n} 期历史"
-    fig = _base(fig, f"{name}：当前 {cur:.0f} 分，处在{_wlab}的第 {pct:.0f} 分位"
+    _ptxt = f"第 {pct:.0f} 分位" if np.isfinite(pct) else "分位不可用（样本不足 4 期）"
+    fig = _base(fig, f"{name}：当前 {cur:.0f} 分，处在{_wlab}的{_ptxt}"
                      f"（P25 {p25:.0f}｜P50 {p50:.0f}｜P75 {p75:.0f}）",
                 148, legend=False)
     fig.update_layout(margin=dict(l=44, r=14, t=46, b=34))
