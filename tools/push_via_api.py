@@ -12,6 +12,8 @@ import json
 import os
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 
 OWNER = "HuangDecong"
@@ -34,16 +36,35 @@ TOKEN = _token()
 API = "https://api.github.com"
 
 
-def call(method: str, path: str, payload=None):
+def call(method: str, path: str, payload=None, tries: int = 4):
+    """调 GitHub API；5xx 与网络抖动重试（GitHub 偶发 500 建 blob 失败）。
+
+    只对 4xx 之外的错误重试：400/404/422 是请求本身有问题，重试只是浪费时间。
+    """
     data = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(API + path, data=data, method=method)
-    req.add_header("Authorization", f"Bearer {TOKEN}")
-    req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    if data:
-        req.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.loads(r.read().decode())
+    last = None
+    for i in range(tries):
+        req = urllib.request.Request(API + path, data=data, method=method)
+        req.add_header("Authorization", f"Bearer {TOKEN}")
+        req.add_header("Accept", "application/vnd.github+json")
+        req.add_header("X-GitHub-Api-Version", "2022-11-28")
+        if data:
+            req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            last = e
+            if e.code < 500 or i == tries - 1:
+                raise
+            print(f"  …{method} {path.split('/')[-1]} {e.code}，第 {i + 1} 次重试")
+            time.sleep(2 + 2 * i)
+        except (urllib.error.URLError, TimeoutError) as e:
+            last = e
+            if i == tries - 1:
+                raise
+            time.sleep(2 + 2 * i)
+    raise last  # pragma: no cover
 
 
 def _files_of(rev_range: str) -> list[tuple[str, str]]:
