@@ -83,9 +83,11 @@ def fig_position(P: pd.DataFrame, cur: pd.Series, q_cur: str) -> go.Figure:
                                hovertemplate="%{x:.0f}%：%{y} 只<extra></extra>"),
                   row=1, col=2)
     _m = float(cur.median())
-    fig.add_vline(x=_m, line=dict(color=C.COLOR["up"], width=1.5, dash="dash"),
-                  annotation_text=f"中位 {_m:.1f}%", annotation_position="top",
-                  annotation_font=dict(size=9, color=C.COLOR["up"]), row=1, col=2)
+    # 同上：带 row/col 的 add_vline 会被静默丢弃，零线和「中位 xx%」标注都得手写。
+    _vline(fig, _m, xref="x2", color=C.COLOR["up"], width=1.5, dash="dash")
+    fig.add_annotation(x=_m, xref="x2", y=1, yref="y2 domain",
+                       text=f"中位 {_m:.1f}%", showarrow=False,
+                       yanchor="bottom", font=dict(size=9, color=C.COLOR["up"]))
     fig.update_xaxes(title_text="仓位 %", row=1, col=2)
     fig.update_yaxes(title_text="基金数", row=1, col=2)
     return _base(fig, "", 330)

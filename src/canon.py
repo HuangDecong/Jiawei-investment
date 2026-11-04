@@ -640,13 +640,16 @@ POS_MIN = 40.0
 
 
 @lru_cache(maxsize=8)
-def position_series() -> pd.DataFrame:
+def position_series(refresh: bool = False) -> pd.DataFrame:
     """每个全持仓期的股票仓位分布（中位/25%/75%），用于画仓位趋势。
 
     只统计股票仓位 ≥ `POS_MIN` 的基金：打新/偏债型灵活配置基金会把
     早期中位数系统性拉低，让今天看起来「仓位史上最高」。
+
+    `refresh=True` 时跳过 CSV：导出脚本必须这样调用，否则会「读旧快照 →
+    原样写回」，快照永远停在第一次生成的那一版（本库曾因此差 2 只基金）。
     """
-    if _position_csv_ok():
+    if not refresh and _position_csv_ok():
         return _position_csv().copy()
     rows = {}
     for q in full_quarters():

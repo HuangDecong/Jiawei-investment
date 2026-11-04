@@ -178,7 +178,12 @@ def render(h, B=None, IND=None) -> None:
           f'图 1　仓位：把 {_npos} 个半年报期连起来，才知道现在是高还是低</div>')
         _c = cn.coverage(pos["q"])
         _idx = _c.index.intersection(list(cn.universe(pos["q"])))
-        st.plotly_chart(rc.fig_position(pos_hist, _c.loc[_idx].dropna(), pos["q"]),
+        _v = _c.loc[_idx].dropna()
+        # 直方图必须与左栏同口径（剔除股票仓位 <40% 的打新/偏债型），
+        # 否则同一张图里会并排出现两个中位数（89.0% 与 89.5%），
+        # 读者会以为其中一个是错的。
+        _v = _v[_v >= cn.POS_MIN]
+        st.plotly_chart(rc.fig_position(pos_hist, _v, pos["q"]),
                         width="stretch", config={"displayModeBar": False})
         h(f'<div class="tiny">口径：全持仓半年报（{pos["q0"]}→{pos["q"]}），'
           f'占净值比；只含股票，不含债券与现金。样本 '

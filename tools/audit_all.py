@@ -330,6 +330,16 @@ def stage_charts() -> None:
     rec("图表", "两栏对比：两栏零线", len(f4.layout.shapes or []) == 2,
         f"shapes={len(f4.layout.shapes or [])}")
 
+    # 仓位分布图的中位虚线（子图右栏，曾因 add_vline(row/col) 静默丢失）
+    try:
+        P = cn.position_series()
+        fq = cn.full_quarters()
+        f6 = rc.fig_position(P, cn.coverage(fq[-1]), fq[-1])
+        rec("图表", "仓位图：分布栏中位虚线", len(f6.layout.shapes or []) >= 1,
+            f"shapes={len(f6.layout.shapes or [])}")
+    except Exception as e:
+        rec("图表", "仓位图：分布栏中位虚线", False, f"{type(e).__name__}: {e}")
+
     # 分位尺：档位底色 5 + P25/P50/P75 三条 = 8
     ser = H["电子"].dropna() if "电子" in H.columns else H.median(axis=1).dropna()
     f5 = rc.fig_csi_position(ser, "电子")

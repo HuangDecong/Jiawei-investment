@@ -47,7 +47,7 @@ def main() -> None:
 
     # 仓位分布：15 行 × 4 列。现场算每期要一次全表聚合，合计 12 秒，
     # 是首页首屏的主要耗时；预计算后读文件不到 1 毫秒。
-    ps = cn.position_series()
+    ps = cn.position_series(refresh=True)   # 不要读回旧快照，否则改了口径也不会更新
     if not ps.empty:
         ps.to_csv(OUT_POS, index=True, compression="gzip", encoding="utf-8")
         print(f"canon_position.csv.gz     {ps.shape[0]} 期 × {ps.shape[1]} 列  "
