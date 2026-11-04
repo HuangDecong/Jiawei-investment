@@ -358,7 +358,7 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
     # 每根柱子就是一个季度，标签必须一一对应（只标 Q1 会读不出「哪一根是哪季」）
     _ticks = list(d.index)
     fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
-                     tickangle=-90, tickfont=dict(size=8.5))
+                     tickangle=-90, tickfont=dict(size=9, color="#40505F"))
     fig = _base(fig, title, 520)
     fig.update_layout(margin=dict(l=8, r=14, t=44, b=56))
     return fig
@@ -665,7 +665,7 @@ def fig_level_history(M: pd.DataFrame, industry: str,
     # 每期都标：只标 Q1 会跳过三个季度，读不出「高点在哪一季」
     _tk = list(s.index)
     fig.update_xaxes(tickmode="array", tickvals=_tk, ticktext=_tk,
-                     tickangle=-90, tickfont=dict(size=8.5))
+                     tickangle=-90, tickfont=dict(size=9, color="#40505F"))
     fig = _base(fig, f"{industry} 配置比例的历史位置{title_extra}", 400)
     # 右侧要放「历史均值」标注，不留边距会被裁成「历…」
     fig.update_layout(margin=dict(l=6, r=86, t=48, b=56),
@@ -1027,7 +1027,8 @@ def fig_csi_heatmap(H: pd.DataFrame, small: list[str] | None = None,
     # 热力图每列是一个季度，全部标出（旋转 90° 后每列约 10px，放得下）
     _ticks = list(d.index)
     fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
-                     tickangle=-90, tickfont=dict(size=8.5), side="bottom")
+                     tickangle=-90, side="bottom",
+                     tickfont=dict(size=9, color="#40505F"))
     fig.update_yaxes(tickfont=dict(size=10), autorange="reversed")
     fig = _base(fig, "", height)
     # 右边必须留够：colorbar 在坐标区外，r=16 会把它切掉一半
