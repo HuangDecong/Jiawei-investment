@@ -211,30 +211,45 @@ def render(h) -> None:
               f'前十配置仅 <b>{_s0["配置_前十"]:.2f}%</b>。'
               f'几十只基金里少数几只调仓，就足以把三个分位同时推到高位，'
               f'所以本页把它标成灰色「小样本」、不算进拥挤个数、也不给买卖动作。')
-    # 本期刚好穿过阈值的行业：这是「折线 + 阈值」最直接可用的输出
+    # 本期刚好穿过阈值的行业：**跟随 ① 的阈值滑块**。
+    # 结论板在控件之上，拿不到本轮的返回值，只能读 session_state 里上一轮的值；
+    # 不这样做，用户把阈值改成 70 后，结论仍会说「上穿 80」。
+    _thr0 = float(st.session_state.get("csi_thr", 80) or 80)
     try:
-        _ST0 = cn.csi_threshold()
-        if _ST0:
-            _cur0 = _ST0["current"]
-            # 小样本行业（综合）的穿越是噪音，不进结论
-            if "等级" in _cur0.columns:
-                _cur0 = _cur0[_cur0["等级"] != "小样本"]
-            _up0 = _cur0[_cur0["状态"] == "刚上穿 80"]
-            _dn0 = _cur0[_cur0["状态"] == "刚跌破 80"]
-            _ev0 = _ST0.get("events")
-            _wr = (_ev0["胜率"].iloc[0] if _ev0 is not None and len(_ev0) else np.nan)
-            if len(_up0) or len(_dn0):
+        _H0 = cn.csi_history()
+        if len(_H0) >= 2 and "等级" in comp:
+            _last0, _prev0 = _H0.iloc[-1], _H0.iloc[-2]
+            _lvl = comp["等级"]
+            _pool0 = [i for i in _H0.columns
+                      if i in _lvl.index and _lvl.loc[i] != "小样本"
+                      and np.isfinite(_last0.get(i, np.nan))
+                      and np.isfinite(_prev0.get(i, np.nan))]
+            _up0 = [(i, _prev0[i], _last0[i]) for i in _pool0
+                    if _prev0[i] < _thr0 <= _last0[i]]
+            _dn0 = [(i, _prev0[i], _last0[i]) for i in _pool0
+                    if _prev0[i] >= _thr0 > _last0[i]]
+            if _up0 or _dn0:
                 _p0 = []
-                if len(_up0):
-                    _p0.append('<b>刚上穿 80</b>：' + "、".join(
-                        f'{i}（{r["上期CSI"]:.0f}→{r["CSI"]:.0f}）' for i, r in _up0.iterrows()))
-                if len(_dn0):
-                    _p0.append('<b>刚跌破 80</b>：' + "、".join(
-                        f'{i}（{r["上期CSI"]:.0f}→{r["CSI"]:.0f}）' for i, r in _dn0.iterrows()))
-                _bl.append('<b>本期刚好穿过阈值</b>：' + "；".join(_p0)
-                           + f'。历史上「刚上穿」的次季跑赢同行概率只有 <b>{_wr:.0f}%</b>'
-                             f'（t 值不显著，但方向偏负），所以它是<b>不追高</b>的量化依据；'
-                             f'「刚跌破」方向相反，不必急着卖。')
+                if _up0:
+                    _p0.append(f'<b>刚上穿 {_thr0:.0f}</b>：' + "、".join(
+                        f'{i}（{a:.0f}→{b:.0f}）' for i, a, b in _up0))
+                if _dn0:
+                    _p0.append(f'<b>刚跌破 {_thr0:.0f}</b>：' + "、".join(
+                        f'{i}（{a:.0f}→{b:.0f}）' for i, a, b in _dn0))
+                if abs(_thr0 - 80) < 0.1:
+                    _ST0 = cn.csi_threshold()
+                    _ev0 = _ST0.get("events") if _ST0 else None
+                    _wr = (float(_ev0["胜率"].iloc[0])
+                           if _ev0 is not None and len(_ev0) else np.nan)
+                    _tail = (f'。历史上「刚上穿 80」的次季跑赢同行概率只有 '
+                             f'<b>{_wr:.0f}%</b>（t 值不显著，但方向偏负），'
+                             f'所以它是<b>不追高</b>的量化依据；'
+                             f'「刚跌破」方向相反，不必急着卖。'
+                             if np.isfinite(_wr) else '。')
+                else:
+                    _tail = (f'。你把阈值改成了 {_thr0:.0f} 分，这里按新阈值判定；'
+                             f'历史胜率仍按 80 分档统计（见下方阈值实证），不随滑块变化。')
+                _bl.append('<b>本期刚好穿过阈值</b>：' + "；".join(_p0) + _tail)
     except Exception:
         pass
     _bl.append('<b>怎么用</b>：拥挤度只决定「给多大仓位」，不决定「买不买」。'
