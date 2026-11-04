@@ -1618,6 +1618,46 @@ def _fund_struct_snapshot(code: str) -> pd.DataFrame:
     return (g.div(s.where(s > 0), axis=0) * 100.0).sort_index()
 
 
+@lru_cache(maxsize=16)
+def crowding_exposure(code: str, thr: float = 80.0) -> pd.DataFrame:
+    """该基金 vs 全市场：持仓有多「堵」——两个口径一起给。
+
+    · 加权 CSI （连续）：Σ 行业权重 × 该行业 CSI，0–100。
+      好处是平滑、不受阈值影响；坏处是「一个 95 分与一个 45 分平均成 70」，
+      掩盖了结构。
+    · 高拥挤仓位（阈值）：Σ 行业权重 × 1[CSI ≥ thr]，0–100%。
+      好处是直白「多少仓位压在已经很挤的行业上」；坏处是阈值附近会跳变
+      （从 79 到 81 分，权重会整块进出）。
+
+    两个都看：加权 CSI 判断「整体有多贵」，高拥挤仓位判断「有多少仓位
+    会在转向时被一起卖」。分母都是各期前十大合计（归一化 100），可比。
+    """
+    F = fund_structure(code, "top10")
+    H = csi_history()
+    if F.empty or H.empty:
+        return pd.DataFrame()
+    qs = [q for q in F.index if q in H.index]
+    if not qs:
+        return pd.DataFrame()
+    M = level_matrix("top10")
+    rows = {}
+    for q in qs:
+        c = H.loc[q].reindex(F.columns).astype(float)
+        w = F.loc[q].fillna(0).astype(float)
+        hi = (c >= thr).fillna(False).astype(float)
+        mw = (M.loc[q].reindex(F.columns).fillna(0).astype(float)
+              if q in M.index else None)
+        rows[q] = dict(
+            本基金加权CSI=float((w * c.fillna(0)).sum() / max(w.sum(), 1e-9)),
+            全市场加权CSI=(float((mw * c.fillna(0)).sum() / max(mw.sum(), 1e-9))
+                          if mw is not None else float("nan")),
+            本基金高拥挤=float((w * hi).sum()),
+            全市场高拥挤=(float((mw * hi).sum()) if mw is not None else float("nan")))
+    d = pd.DataFrame(rows).T.sort_index()
+    d.index.name = "quarter"
+    return d
+
+
 def fund_structure(code: str, basis: str = "top10") -> pd.DataFrame:
     """单只基金的行业结构时间序列（行＝期，列＝31 个行业，单位 %）。
 

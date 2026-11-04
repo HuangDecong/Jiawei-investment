@@ -143,6 +143,20 @@ def stage_data() -> None:
     rec("数据", "CSI 面板与本期一致", abs(float(c["CSI"].max()) - float(cs.iloc[-1].max())) < 1e-6,
         f"{c['CSI'].idxmax()} 本期 {c['CSI'].max():.1f}")
 
+    # 拥挤暴露：权重×CSI 必须落在 0–100（归一化写错会溢出到几百）
+    try:
+        _code = str(cn.profiles()["code"].iloc[0]).zfill(6)
+        _ex = cn.crowding_exposure(_code)
+        _ok = (not _ex.empty
+               and float(_ex.min().min()) >= -0.01
+               and float(_ex.max().max()) <= 100.01)
+        rec("数据", "拥挤暴露在 0–100（抽样一只基金）", _ok,
+            f"{_code} {_ex.shape[0]} 期，最大 {float(_ex.max().max()):.1f}"
+            if not _ex.empty else "空表")
+    except Exception as e:
+        rec("数据", "拥挤暴露在 0–100（抽样一只基金）", False,
+            f"{type(e).__name__}: {e}")
+
     # 三项分位长表必须覆盖全部期次：缺一期，⑤ 的「选一期」就会现场重算（慢 2–4 秒）
     part_q = set(cn._csi_parts_csv().get("quarter", [])) if not cn._csi_parts_csv().empty else set()
     miss_q = [q for q in qs if q not in part_q]

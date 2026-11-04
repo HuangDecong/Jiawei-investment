@@ -4,7 +4,8 @@
 页面顺序按「先看结构、再看偏离、最后看个股」：
     1. 行业结构漂移（全部 31 个行业，全样本期）——第一眼就要看到它押注的变化；
     2. 与同行的偏离——哪些是它自己的判断，哪些是全员都在做；
-    3. 前十大——季报能看到的最后一块拼图。
+    3. 拥挤暴露——它的持仓有多少压在已经很挤的行业上（组合有多脆弱）；
+    4. 前十大——季报能看到的最后一块拼图。
 
 口径
 ----
@@ -565,6 +566,85 @@ def render(h) -> None:
             '它才是合适的载体；重叠但拥挤（CSI≥80），就应该减半仓位而不是加。')
 
     # =====================================================================
+    # ④ 拥挤暴露：它的持仓有多「堵」
+    # =====================================================================
+    h('<div class="sec">④ 它的持仓有多「堵」：拥挤暴露</div>')
+    _ex = cn.crowding_exposure(code)
+    if _ex.empty:
+        h('<div class="cg-note">该基金没有可比的行业结构，无法计算拥挤暴露。</div>')
+    else:
+        _ex = _ex.dropna(subset=["本基金加权CSI"])
+        _last = _ex.index[-1]
+        _cw = float(_ex.loc[_last, "本基金加权CSI"])
+        _mw = float(_ex.loc[_last, "全市场加权CSI"])
+        _ch = float(_ex.loc[_last, "本基金高拥挤"])
+        _mh = float(_ex.loc[_last, "全市场高拥挤"])
+        _own = float((_ex["本基金加权CSI"] <= _cw).mean() * 100)
+        _gap = _cw - _mw
+
+        _fg = go.Figure()
+        # 五档第一层只画两条关键线：80 以上是「会被一起卖」的区域，
+        # 65 以上是「偏拥挤」。画满五档会盖住两条曲线。
+        _fg.add_hrect(y0=80, y1=100, fillcolor="rgba(198,40,40,0.10)",
+                      line_width=0, layer="below")
+        _fg.add_hrect(y0=65, y1=80, fillcolor="rgba(232,113,10,0.08)",
+                      line_width=0, layer="below")
+        _fg.add_trace(go.Scatter(
+            x=list(_ex.index), y=_ex["全市场加权CSI"], mode="lines",
+            name="全市场（前十大加权）",
+            line=dict(color="#7C8B9C", width=2.0, dash="dot"),
+            hovertemplate="%{x}<br>全市场 %{y:.1f}<extra></extra>"))
+        _fg.add_trace(go.Scatter(
+            x=list(_ex.index), y=_ex["本基金加权CSI"], mode="lines+markers",
+            name="本基金",
+            line=dict(color=C.COLOR["price"], width=2.6), marker=dict(size=3.5),
+            hovertemplate="%{x}<br>本基金 %{y:.1f}<extra></extra>"))
+        _fg.add_annotation(x=_ex.index[-1], y=_cw, xanchor="left", xshift=4,
+                           text=f"{_cw:.0f}", showarrow=False,
+                           font=dict(size=10, color=C.COLOR["price"]))
+        _fg.update_yaxes(title_text="持仓加权 CSI（0＝最冷，100＝最挤）",
+                         range=[0, 104], tickfont=dict(size=10))
+        # 每期都标：只有 39 期，横轴宽 1000px，逐个标得下
+        _tk = list(_ex.index)
+        _fg.update_xaxes(tickmode="array", tickvals=_tk, ticktext=_tk,
+                         tickangle=-90, tickfont=dict(size=9, color="#40505F"))
+        _f = _base(_fg, "", 430, legend=True)
+        # 左：纵轴标题是竖排中文，l=6 会跟刻度数字叠在一起；右：末端数值标注在
+        # 坐标区外，不留白会被裁成半个数字。
+        _f.update_layout(margin=dict(l=64, r=40, t=18, b=76))
+        st.plotly_chart(_f, width="stretch", config={"displayModeBar": False})
+
+        h(ui.stat_strip([
+            ("持仓加权 CSI", f"{_cw:.0f}", f"{_last}｜全市场 {_mw:.0f}"),
+            ("高拥挤仓位（≥80）", f"{_ch:.0f}%", f"全市场 {_mh:.0f}%"),
+            ("与全市场之差", f"{_gap:+.0f}", "正＝比同行更堵"),
+            ("自身历史分位", f"{_own:.0f}", f"{len(_ex)} 期中第 "
+                                            f"{int((_ex['本基金加权CSI'] <= _cw).sum())} 低"),
+        ]))
+
+        _peak_q = _ex["本基金加权CSI"].idxmax()
+        _peak_v = float(_ex["本基金加权CSI"].max())
+        _read(h,
+              f'两条线都是「按前十大权重加权的 CSI」：本基金最新 <b>{_cw:.0f}</b> 分，'
+              f'全市场 <b>{_mw:.0f}</b> 分（差 {_gap:+.0f}）。'
+              f'按阈值口径，它 <b>{_ch:.0f}%</b> 的仓位压在 ≥80 分的行业上，'
+              f'全市场是 {_mh:.0f}%。历史最高出现在 {_peak_q}（{_peak_v:.0f} 分）。'
+              f'<br>两个口径要一起看：加权 CSI 连续、平滑，回答「整体有多贵」；'
+              f'高拥挤仓位是阈值口径，回答「多少仓位会在转向时被一起卖」，'
+              f'它会在行业跨过 80 分时整块跳变——所以别拿单期变化当趋势。',
+              f'<b>拥挤暴露衡量的是「脆弱性」，不是「收益潜力」。</b>'
+              f'同样看好电子，40% 仓位在电子 CSI=40 时是「便宜的重仓」，'
+              f'在 CSI=95 时是「随时会被踩踏的重仓」——持仓没变，风险变了。'
+              f'这也是为什么本页把它单列：行业结构告诉你「押了什么」，'
+              f'拥挤暴露告诉你「这个押注现在有多容易被挤出去」。',
+              f'<b>怎么用</b>：① 暴露高于全市场且加权 CSI ≥80 → 这只基金在替你在拥挤交易上加杠杆，'
+              f'仓位打七折或换成暴露更低的同类；② 暴露低于全市场 → 它没在这次抱团里，'
+              f'不必因为它「没跟上」而赎回；③ 看变化：暴露从 30% 冲到 90% 往往意味着'
+              f'基金经理在追高，比单看行业结构更早发现风格漂移。'
+              f'注意：本指标只覆盖前十大（季报口径），中小盘基金的前十大占比低，'
+              f'读数会被低估。')
+
+    # =====================================================================
     # ③ 前十大
     # =====================================================================
     # 优先用**最新一季**（2026Q3）的前十大，与上面的结构图、结论同期；
@@ -577,7 +657,7 @@ def render(h) -> None:
         tp = _top_holdings(code, qf)
         _hold_q = qf
         _hold_tag = "全持仓（半年报，全部持仓的前 12 大）"
-    h(f'<div class="sec">④ 它的前十大到底是谁（{_hold_q}）</div>')
+    h(f'<div class="sec">⑤ 它的前十大到底是谁（{_hold_q}）</div>')
     if tp.empty:
         h('<div class="cg-note">该期无持仓明细。</div>')
         return
