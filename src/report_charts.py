@@ -33,6 +33,10 @@ def _vline(fig: go.Figure, x: float, xref: str = "x",
 
 def _base(fig: go.Figure, title: str, h: int = 420, legend: bool = False) -> go.Figure:
     fig.update_layout(
+        # 关掉拖拽缩放：这些图是「看」的，不是「探索」的。
+        # 原来鼠标一拖就进入框选缩放，图会被缩成几条横线，而工具栏已隐藏
+        # （displayModeBar=False），用户找不到复位按钮，只能刷新页面。
+        dragmode=False,
         title=dict(text=title, font=dict(size=13, color=C.COLOR["text"]), x=0.005, y=0.97),
         height=h, margin=dict(l=6, r=10, t=46, b=10),
         paper_bgcolor=C.COLOR["bg"], plot_bgcolor=C.COLOR["bg"],
@@ -833,7 +837,8 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
                   window: int | None = None,
                   thr: float = 80,
                   show_cross: bool = True,
-                  ref_levels: tuple[int, ...] = (50, 90)) -> go.Figure:
+                  ref_levels: tuple[int, ...] = (50, 90),
+                  show_own: bool = True) -> go.Figure:
     """上：CSI 水位怎么走；下：这个水位在「自己的历史」里排第几。
 
     为什么必须画折线：CSI 是一个 0–100 的水位，单看当期数字无法判断
@@ -974,56 +979,59 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
                 row=1, col=1)
 
     # ---- 下图：位置怎么变 ----
+    # 两个视角都必须能回答「现在处于什么分位」，否则一切到全市场，下图
+    # 就只剩一条没人看得懂的「≥65 分占比」：
+    # · 选了行业   → 橙＝它自己的历史分位；蓝虚线＝当期在全行业里的分位
+    # · 全市场中位 → 橙＝中位自己的历史分位；蓝虚线＝≥65 分行业占比（广度）
+    # 两条线的量纲都是 0–100，所以 P10/P50/P90 参考线在两种视角下都成立。
+    for _lv in ref_levels:
+        _lv = float(_lv)
+        fig.add_shape(type="line", xref="x2 domain", x0=0, x1=1,
+                      yref="y2", y0=_lv, y1=_lv,
+                      line=dict(color=("#C62828" if _lv >= 80 else "#B9C3CE"),
+                                width=1.0, dash="dot"))
+        fig.add_annotation(x=1, xref="x2 domain", y=_lv, yref="y2",
+                           text=f"P{_lv:.0f}", showarrow=False,
+                           xanchor="right", yanchor="bottom",
+                           font=dict(size=8.5, color="#7A5A2A"),
+                           bgcolor="rgba(255,255,255,0.72)")
+
     if sel and sel in d.columns:
         pct = _expanding_pct(d[sel], window)
-        fig.add_shape(type="rect", xref="x2 domain", x0=0, x1=1,
-                      yref="y2", y0=80, y1=100,
-                      fillcolor="rgba(198,40,40,0.10)", line_width=0,
-                      layer="below")
+        _lab_own = "自身历史分位"
+        _hov_own = "%{x}<br>自身历史分位 %{y:.0f}<extra></extra>"
+        _lab_cross = "全行业分位（横截面）"
+        _hov_cross = ("%{x}<br>全行业分位 %{y:.0f}"
+                      "（当期 31 个行业里排第几）<extra></extra>")
+        _cross_ser = (d.rank(axis=1, pct=True) * 100)[sel]
+        _yt = "分位（0–100）"
+    else:
+        pct = _expanding_pct(med, window)
+        _lab_own = "全市场中位的历史分位"
+        _hov_own = "%{x}<br>中位的历史分位 %{y:.0f}<extra></extra>"
+        _cnt = d.notna().sum(axis=1)
+        _cross_ser = (d >= 65).sum(axis=1) / _cnt.replace(0, np.nan) * 100
+        _lab_cross = "≥65 分行业占比（广度）"
+        _hov_cross = "%{x}<br>≥65 分的行业占比 %{y:.0f}%<extra></extra>"
+        _yt = "分位 / 广度（0–100）"
+
+    # 80 分位以上是红线区：历史上只有两成季度比现在更挤
+    fig.add_shape(type="rect", xref="x2 domain", x0=0, x1=1, yref="y2",
+                  y0=80, y1=100, fillcolor="rgba(198,40,40,0.10)",
+                  line_width=0, layer="below")
+    if show_own:
         fig.add_trace(go.Scatter(
-            x=list(pct.index), y=pct.values, mode="lines", name="自身历史分位",
+            x=list(pct.index), y=pct.values, mode="lines", name=_lab_own,
             line=dict(color="#8A5A00", width=2.0),
             fill="tozeroy", fillcolor="rgba(200,150,60,0.10)",
-            hovertemplate="%{x}<br>自身历史分位 %{y:.0f}<extra></extra>"),
-            row=2, col=1)
-        fig.add_shape(type="line", xref="x2 domain", x0=0, x1=1,
-                      yref="y2", y0=80, y1=80,
-                      line=dict(color="#C62828", width=1, dash="dot"))
-        # 参考分位线：P90 以上＝「历史上只有 10% 的季度比现在更挤」
-        for _lv in ref_levels:
-            _lv = float(_lv)
-            fig.add_shape(type="line", xref="x2 domain", x0=0, x1=1,
-                          yref="y2", y0=_lv, y1=_lv,
-                          line=dict(color=("#C62828" if _lv >= 80 else "#AEB8C4"),
-                                    width=1, dash="dot"))
-            fig.add_annotation(x=1, xref="x2 domain", y=_lv, yref="y2",
-                               text=f"P{_lv:.0f}", showarrow=False,
-                               xanchor="right", yanchor="bottom",
-                               font=dict(size=8.5, color="#7A5A2A"))
-        if show_cross:
-            _cr = d.rank(axis=1, pct=True) * 100
-            fig.add_trace(go.Scatter(
-                x=list(_cr.index), y=_cr[sel].values, mode="lines",
-                name="全行业分位（横截面）",
-                line=dict(color="#1F6FEB", width=1.8, dash="dash"),
-                hovertemplate=("%{x}<br>全行业分位 %{y:.0f}"
-                               "（当期 31 个行业里排第几）<extra></extra>")),
-                row=2, col=1)
-        fig.update_yaxes(title_text=("近 %d 期分位" % window) if window
-                         else "分位（0–100）", range=[0, 104],
-                         tickfont=dict(size=9.5), row=2, col=1)
-    else:
-        cnt = d.notna().sum(axis=1)
-        share = (d >= 65).sum(axis=1) / cnt.replace(0, np.nan) * 100
+            hovertemplate=_hov_own), row=2, col=1)
+    if show_cross:
         fig.add_trace(go.Scatter(
-            x=list(share.index), y=share.values, mode="lines",
-            name="≥65 分的行业占比",
-            line=dict(color="#B25E00", width=2.0),
-            fill="tozeroy", fillcolor="rgba(200,150,60,0.10)",
-            hovertemplate="%{x}<br>≥65 分的行业 %{y:.0f}%<extra></extra>"),
-            row=2, col=1)
-        fig.update_yaxes(title_text="≥65 分占比 %", range=[0, 104],
-                         tickfont=dict(size=9.5), row=2, col=1)
+            x=list(_cross_ser.index), y=_cross_ser.values, mode="lines",
+            name=_lab_cross, line=dict(color="#1F6FEB", width=1.8, dash="dash"),
+            hovertemplate=_hov_cross), row=2, col=1)
+    fig.update_yaxes(title_text=_yt, range=[0, 104],
+                     tickfont=dict(size=9.5), row=2, col=1)
 
     fig.update_yaxes(title_text="CSI（0＝最冷，100＝最挤）", range=[0, 104],
                      tickfont=dict(size=10), row=1, col=1)
@@ -1034,8 +1042,22 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
     fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
                      tickangle=-90, tickfont=dict(size=9.5), row=2, col=1)
     fig.update_xaxes(showticklabels=False, row=1, col=1)
-    fig = _base(fig, _title_txt if sel and sel in d.columns else
-                "全市场 31 个行业的拥挤度中位：看整体水位怎么变", 620, legend=True)
+    if sel and sel in d.columns:
+        _cap = _title_txt
+    else:
+        # 全市场视角也要给「当前处于什么分位」，否则读者只能看到一条灰线。
+        _mm = med.dropna()
+        _cur_m = float(_mm.iloc[-1])
+        _own_m, _n_m, _k_m = pct_of(_mm, _cur_m, window)
+        _last_m = d.iloc[-1]
+        _n_hi = int((_last_m >= 65).sum())
+        _n_cnt = int(_last_m.notna().sum())
+        _w_m = f"近 {_n_m} 期" if window else f"自身 {_n_m} 期"
+        _cap = (f"全市场中位 {_cur_m:.0f} 分｜"
+                + (f"{_w_m}第 {_own_m:.0f} 分位" if np.isfinite(_own_m)
+                   else f"{_w_m}样本不足")
+                + f"｜31 个行业里 {_n_hi}/{_n_cnt} 个 ≥65 分")
+    fig = _base(fig, _cap, 620, legend=True)
     fig.update_layout(margin=dict(l=76, r=18, t=64, b=80),
                       legend=dict(orientation="h", yanchor="bottom", y=1.005,
                                   x=0, font=dict(size=9.5)))
@@ -1157,6 +1179,75 @@ def fig_fund_crowding_rank(rk: pd.DataFrame, med: float, thr: float = 80,
     return fig
 
 
+def csi_stat_table(H: pd.DataFrame, window: int | None = None,
+                   thr: float = 80, universe: list[str] | None = None,
+                   selected: str | None = None) -> pd.DataFrame:
+    """31 个行业的描述统计：均值、标准差、z 值、分位数、当前分位、排名。
+
+    为什么单列一张表：图上只能给「当前值 + 一条箱线」，读者想核对
+    「88 分比它自己的均值高多少」时没有落点。这张表把每个数字摊开，
+    并且**与图表共用同一套算法**（`pct_of` / 同一窗口），
+    避免出现「图上 55 分位、表里 54 分位」这种对不上的情况。
+
+    参数
+    ----
+    window : 分位窗口（期数）；None＝全部历史。均值/标准差也按同一窗口算，
+             否则「全历史均值」与「近 12 期分位」混在一张表里会自相矛盾。
+    thr    : 拥挤阈值，用于「触及次数」列。
+    universe : 参与排名的行业（当期有值的全部行业）。
+    """
+    if H.empty:
+        return pd.DataFrame()
+    d = H.dropna(how="all")
+    last = d.iloc[-1]
+    pool = [i for i in (universe or list(d.columns))
+            if i in d.columns and np.isfinite(last.get(i, np.nan))]
+    rk = last.reindex(pool).rank(ascending=False, method="min")
+    xrank = last.reindex(pool).rank(pct=True) * 100
+    rows = []
+    for ind in d.columns:
+        s_all = d[ind].dropna().astype(float)
+        if s_all.empty:
+            continue
+        v = s_all.tail(int(window)) if window else s_all
+        cur = float(s_all.iloc[-1])
+        pct, n_w, k_w = pct_of(s_all, cur, window)
+        mu = float(v.mean())
+        sd = float(v.std(ddof=1)) if len(v) > 1 else float("nan")
+        q = {p: float(np.percentile(v, p)) for p in (10, 50, 90)}
+        rows.append({
+            "行业": ind,
+            # 「选中」放第二列：表格默认横向滚动，放最后一列会被滚出视野，
+            # 读者就找不到「我在看的那个行业是哪一行」。
+            "选中": "●" if ind == selected else "",
+            "当前": round(cur, 1),
+            "历史均值": round(mu, 1),
+            "标准差": round(sd, 1),
+            "z值": round((cur - mu) / sd, 2) if np.isfinite(sd) and sd > 0 else np.nan,
+            "P10": round(q[10], 1),
+            "P50": round(q[50], 1),
+            "P90": round(q[90], 1),
+            "最小": round(float(v.min()), 1),
+            "最大": round(float(v.max()), 1),
+            "当前分位": round(pct, 1) if np.isfinite(pct) else np.nan,
+            "全行业分位": round(float(xrank.get(ind, np.nan)), 1),
+            "排名": int(rk.get(ind)) if np.isfinite(rk.get(ind, np.nan)) else np.nan,
+            "近4期变化": (round(cur - float(s_all.iloc[-5]), 1)
+                          if len(s_all) >= 5 else np.nan),
+            # 用全历史计数（与 KPI「历史触及 ≥80」同口径），列名写明「全历史」，
+            # 避免与「期数」（按窗口）混在一张表里被误读成同期数。
+            f"全历史触及≥{thr:.0f}": int((s_all >= thr).sum()),
+            "期数": int(len(v)),
+        })
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    out = out.sort_values(["当前", "行业"], ascending=[False, True]).reset_index(drop=True)
+    out.attrs["n_pool"] = len(pool)
+    out.attrs["window"] = int(window) if window else int(len(d))
+    return out
+
+
 def fig_csi_position(s: pd.Series, name: str, window: int | None = None,
                      thr: float = 80) -> go.Figure:
     """当前值在自身历史中的位置——用**箱线图**，不用 40 根竖线。
@@ -1187,20 +1278,20 @@ def fig_csi_position(s: pd.Series, name: str, window: int | None = None,
                   line=dict(color="#7C8B9C", width=1.3))
     for _p in (p10, p90):
         fig.add_shape(type="line", xref="x", x0=_p, x1=_p, yref="y",
-                      y0=-0.09, y1=0.09, line=dict(color="#7C8B9C", width=1.3))
+                      y0=-0.11, y1=0.11, line=dict(color="#7C8B9C", width=1.3))
     # 箱：P25–P75
     fig.add_shape(type="rect", xref="x", x0=p25, x1=p75, yref="y",
-                  y0=-0.17, y1=0.17, line=dict(color="#1F6FEB", width=1.2),
+                  y0=-0.22, y1=0.22, line=dict(color="#1F6FEB", width=1.2),
                   fillcolor="rgba(31,111,235,0.12)")
     # 中位：P50
     fig.add_shape(type="line", xref="x", x0=p50, x1=p50, yref="y",
-                  y0=-0.17, y1=0.17, line=dict(color="#1F6FEB", width=2.2))
+                  y0=-0.22, y1=0.22, line=dict(color="#1F6FEB", width=2.2))
     # 当前值：菱形放在箱体上方，用虚线连到轴上，位置一眼可读
     fig.add_shape(type="line", xref="x", x0=cur, x1=cur, yref="y",
-                  y0=-0.30, y1=0.30, line=dict(color=C.COLOR["up"], width=1,
+                  y0=-0.32, y1=0.42, line=dict(color=C.COLOR["up"], width=1,
                                               dash="dot"))
     fig.add_trace(go.Scatter(
-        x=[cur], y=[0.36], mode="markers+text", name="当前",
+        x=[cur], y=[0.52], mode="markers+text", name="当前",
         text=[f"当前 {cur:.0f}"], textposition="top center",
         textfont=dict(size=10, color=C.COLOR["up"]),
         marker=dict(symbol="diamond", size=12, color=C.COLOR["up"],
@@ -1212,25 +1303,34 @@ def fig_csi_position(s: pd.Series, name: str, window: int | None = None,
                        "｜P90 %{customdata[5]:.0f}<extra></extra>")))
     # 阈值线
     fig.add_shape(type="line", xref="x", x0=thr, x1=thr, yref="y",
-                  y0=-0.44, y1=0.44,
+                  y0=-0.52, y1=0.66,
                   line=dict(color="#C62828", width=1.1, dash="dash"))
-    fig.add_annotation(x=thr, y=0.46, yref="y", text=f"阈值 {thr:.0f}",
+    fig.add_annotation(x=thr, y=0.70, yref="y", text=f"阈值 {thr:.0f}",
                        showarrow=False, yanchor="bottom",
                        font=dict(size=8.5, color="#C62828"))
     # 三个关键分位的刻度值放在轴下方，不再压在图里
     for _x, _lab in ((p10, "P10"), (p50, "P50"), (p90, "P90")):
-        fig.add_annotation(x=_x, y=-0.38, yref="y", text=f"{_lab} {_x:.0f}",
+        fig.add_annotation(x=_x, y=-0.70, yref="y", text=f"{_lab} {_x:.0f}",
                            showarrow=False, yanchor="top",
                            font=dict(size=9, color="#5A6B7D"))
-    fig.update_yaxes(visible=False, range=[-0.62, 0.62])
+    # 中间 50% 的实际区间写在箱体上方：箱线图最常被误读成「箱体就是范围」
+    fig.add_annotation(x=(p25 + p75) / 2, y=0.30, yref="y",
+                       text=f"中间 50%：{p25:.0f}–{p75:.0f}", showarrow=False,
+                       yanchor="bottom", font=dict(size=8.5, color="#1F6FEB"))
+    fig.update_yaxes(visible=False, range=[-0.82, 0.98])
     fig.update_xaxes(range=[-2, 102], title_text="CSI（0＝最冷，100＝最挤）",
                      tickfont=dict(size=9.5), dtick=10)
     _wlab = f"近 {n} 期" if window else f"自身 {n} 期历史"
     _ptxt = f"第 {pct:.0f} 分位" if np.isfinite(pct) else "分位不可用（样本不足 4 期）"
+    _mu = float(v.mean())
+    _sd = float(v.std(ddof=1)) if len(v) > 1 else float("nan")
+    _z = (cur - _mu) / _sd if np.isfinite(_sd) and _sd > 0 else float("nan")
     fig = _base(fig, f"{name}：当前 {cur:.0f} 分，处在{_wlab}的{_ptxt}"
-                     f"（箱体＝中间 50%，须＝P10–P90，范围 {vmin:.0f}–{vmax:.0f}）",
-                150, legend=False)
-    fig.update_layout(margin=dict(l=44, r=14, t=48, b=34))
+                     f"（均值 {_mu:.1f}±{_sd:.1f}"
+                     + (f"｜z={_z:+.1f}" if np.isfinite(_z) else "")
+                     + f"｜箱体＝中间 50%，须＝P10–P90，范围 {vmin:.0f}–{vmax:.0f}）",
+                196, legend=False)
+    fig.update_layout(margin=dict(l=44, r=16, t=44, b=32))
     return fig
 
 

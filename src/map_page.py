@@ -298,20 +298,24 @@ def render(h) -> None:
                 default=["P50", "P90"], key="csi_ref",
                 help="P90＝历史上只有 10% 的季度比现在更挤；P50＝中位；"
                      "P10＝只有 10% 的季度更冷。选几条就画几条")
-        _r2c1, _r2c2 = st.columns([0.66, 0.34])
+        _r2c1, _r2c2, _r2c3 = st.columns([0.44, 0.36, 0.20])
         with _r2c1:
+            # 明确给出「看哪条线」的开关：读者不用去理解「加画」这种措辞，
+            # 直接选「只看自身 / 只看全行业 / 两条都看」即可切换。
+            _mode = st.radio("下图显示", ["两条都看", "只看自身", "只看全行业"],
+                             index=0, horizontal=True, key="csi_mode",
+                             help="自身＝这个行业在它自己历史里的分位（时间维度）；"
+                                  "全行业＝当期 31 个行业里的分位（截面维度）；"
+                                  "选全市场中位时，「全行业」换成「≥65 分行业占比」＝拥挤广度")
+        with _r2c2:
             _thr = st.slider("拥挤阈值（画在哪条线算过度拥挤）", 60, 95, 80,
                              step=5, key="csi_thr",
                              help="改它会同步改上穿/下穿标记、「历史触及」统计与提示语；"
                                   "五档底色仍按固定档位（80/65/45/25）")
-        with _r2c2:
+        with _r2c3:
             _band = st.checkbox("显示 31 行业分位带", value=True, key="csi_band",
                                 help="灰色带是 31 个行业每一期的 25–75% 分位区间，"
                                      "表示「市场整体的分布宽度」；不画 31 条线是因为会糊成一片")
-            _cross = st.checkbox("下图加画「全行业分位」", value=True, key="csi_cross",
-                                 help="全行业分位＝当期这个行业在 31 个行业里排第几（横截面）；"
-                                      "自身历史分位＝在它自己过去若干期里排第几（时间维度）。"
-                                      "两条线一起看，才知道「是它自己变挤，还是全场都挤」")
         _sel_t = None if _focus == _opts[0] else _focus
         _window = {"全部历史": None, "近 20 期（5 年）": 20, "近 12 期（3 年）": 12}[_win_lab]
         # 排名与广度在「当期有值」的全部行业里算——包括选中行业自己，
@@ -319,16 +323,35 @@ def render(h) -> None:
         _lastrow = H.iloc[-1]
         _ok = [i for i in H.columns if np.isfinite(_lastrow.get(i, np.nan))]
         _refs = tuple(int(x[1:]) for x in _ref_sel)
+        _show_own = _mode != "只看全行业"
+        _show_cross = _mode != "只看自身"
         st.plotly_chart(rc.fig_csi_trend(H, _sel_t, _band, rank_universe=_ok,
                                          window=_window, thr=float(_thr),
-                                         show_cross=_cross, ref_levels=_refs),
-                        width="stretch", config={"displayModeBar": False})
+                                         show_cross=_show_cross, ref_levels=_refs,
+                                         show_own=_show_own),
+                        width="stretch", config={"displayModeBar": False,
+                                                 "scrollZoom": False,
+                                                 "doubleClick": "reset"})
+        _REF_DESC = {10: "只有 10% 的季度比现在更冷",
+                     25: "下四分位（1/4 的季度比现在冷）",
+                     50: "历史中位",
+                     75: "上四分位（1/4 的季度比现在挤）",
+                     90: "只有 10% 的季度比现在更挤"}
+        _ref_txt = ("、".join(f"<b>P{k}</b>＝{_REF_DESC[k]}" for k in sorted(_refs))
+                    if _refs else "未选（可在上方「参考分位线」里勾选）")
+        if _sel_t:
+            _line_txt = ('橙线＝<b>它自己的历史分位</b>（时间维度：在它过去若干期里排第几）；'
+                         '蓝虚线＝<b>当期全行业分位</b>（截面维度：31 个行业里排第几）。'
+                         '两条都高＝「对自己、对同行都到顶」；只有一条高＝另一维度还是常态。')
+        else:
+            _line_txt = ('橙线＝<b>全市场中位自己的历史分位</b>（时间维度：整体水位在历史上排第几）；'
+                         '蓝虚线＝<b>≥65 分行业占比</b>（广度：31 个行业里有几个已经偏挤）。'
+                         '橙线高＝整体水位在历史高位；蓝虚线高＝拥挤是普遍现象，不是个别行业。')
         h('<div class="tiny" style="margin:-6px 0 6px">'
-          '<b>下图怎么读</b>：橙线＝它自己的历史分位，蓝虚线＝当期在 31 个行业里的分位；'
-          '点线是参考位——<b>P90</b>＝历史上只有 10% 的季度比现在更挤，'
-          '<b>P50</b>＝中位，<b>P10</b>＝只有 10% 的季度更冷。'
-          '两条线都高＝「对自己、对同行都到顶」；只有一条高＝另一维度还是常态。'
-      '　阈值到底有没有预测力？见页尾「附：阈值分档实证」。</div>')
+          '<b>下图怎么读</b>：' + _line_txt +
+          '点线是你勾选的参考位——' + _ref_txt + '。'
+          '　两条线的量纲都是 0–100，可以直接叠着比。'
+          '（图表已锁定，鼠标拖动不会缩放；阈值有没有预测力见页尾「附：阈值分档实证」。）</div>')
 
         # ---- 现在处于什么分位：时间维度（自身历史）× 截面维度（全行业） ----
         _med = H.median(axis=1).dropna()
@@ -402,11 +425,14 @@ def render(h) -> None:
                         if np.isfinite(_own) else f'{_win_txt}样本不足，不打分位；')
                      + f'历史最高 {_series.iloc[_imax]:.0f}（{_series.index[_imax]}）、'
                      f'最低 {_series.iloc[_imin]:.0f}（{_series.index[_imin]}）。'
-                     f'下半图是<b>拥挤广度</b>：当期 {_nvalid} 个行业里有 '
+                     f'下半图有两条线：<b>橙线</b>是中位自己的历史分位（最新 '
+                     + (f'{_own:.0f}' if np.isfinite(_own) else '样本不足') +
+                     f'），<b>蓝虚线</b>是拥挤广度——当期 {_nvalid} 个行业里有 '
                      f'<b>{len(_crowd)} 个</b>已经 ≥65 分'
                      f'（{len(_crowd) / max(_nvalid, 1) * 100:.0f}%）。'
                      f'中位只说明「整体水位」，广度才说明「是几个行业在挤，还是全都挤」；'
-                     f'单看中位看不出谁在变挤，要在上面选一个行业。')
+                     f'单看中位看不出谁在变挤，要在上面选一个行业，'
+                     f'或直接查下面的对照表。')
 
         # 投资含义随所选行业变化：同一个分数，上行与下行对应完全相反的动作
         _inv3 = (f' 你选的 <b>{_sel_t}</b> 最新 {_cur:.0f} 分、'
@@ -417,36 +443,103 @@ def render(h) -> None:
                     if _d1 < -3 else
                     "<b>基本走平</b>——按水位办事即可，不需要因为这张图调仓。")
                  ) if _sel_t and _ns > 1 else ''
-        _read(h, _txt2,
-              f'<b>上半图回答「方向」，下半图回答「位置」——而且是两个不同的位置。</b>'
-              f'橙线是<b>自身历史分位</b>（时间维度）：这个行业现在的拥挤度，'
-              f'在它自己过去 {_nw} 个季度里排第几，回答「对它自己来说，现在是不是异常」。'
-              + (f'当前选的是<b>近 {_window} 期窗口</b>（只跟最近这段时间比），'
-                 f'窗口越短越敏感，适合看「这一轮周期走到哪了」。'
-                 if _window else '当前选的是<b>全部历史</b>，最稳，适合做仓位决策。')
-              + f'蓝虚线是<b>全行业分位</b>（截面维度）：同一时点 31 个行业里排第几，'
-              f'回答「在同行里，它是不是最挤的那个」。'
-              f'它用<b>扩张窗口</b>逐期计算'
-              f'（第 i 期只跟第 i 期及以前比），不用未来数据，所以曲线是可以「当时就看见」的。'
-              f'「全行业排名」是截面维度：同一时点 31 个行业里排第几——回答「在同行里，它是不是最挤的那个」。'
-              f'两者会背离：小行业可能「自身 95 分位、全行业第 20 名」（配置只有 1%，挤也挤不到哪去），'
-              f'大行业也可能「自身 60 分位、全行业第 3 名」（它一直很重，但没比过去更重）。'
-              f'背离时以<b>全行业排名</b>为准——组合的风险来自「大家都挤在一起」，不是「它自己创了新高」。',
+        if _sel_t:
+            _pos_txt = (
+                f'<b>上半图回答「方向」，下半图回答「位置」——而且是两个不同的位置。</b>'
+                f'橙线是<b>自身历史分位</b>（时间维度）：这个行业现在的拥挤度，'
+                f'在它自己过去 {_nw} 个季度里排第几，回答「对它自己来说，现在是不是异常」。'
+                + (f'当前选的是<b>近 {_window} 期窗口</b>（只跟最近这段时间比），'
+                   f'窗口越短越敏感，适合看「这一轮周期走到哪了」。'
+                   if _window else '当前选的是<b>全部历史</b>，最稳，适合做仓位决策。')
+                + f'蓝虚线是<b>全行业分位</b>（截面维度）：同一时点 31 个行业里排第几，'
+                f'回答「在同行里，它是不是最挤的那个」。'
+                f'两条线都用<b>扩张窗口</b>逐期计算（第 i 期只跟第 i 期及以前比），'
+                f'不用未来数据，所以曲线是「当时就能看见」的。'
+                f'两者会背离：小行业可能「自身 95 分位、全行业第 20 名」（配置只有 1%，挤也挤不到哪去），'
+                f'大行业也可能「自身 60 分位、全行业第 3 名」（它一直很重，但没比过去更重）。'
+                f'背离时以<b>全行业分位</b>为准——组合的风险来自「大家都挤在一起」，'
+                f'不是「它自己创了新高」。')
+        else:
+            _pos_txt = (
+                f'<b>上半图是 31 个行业的中位水位，下半图是它的两条位置线。</b>'
+                f'橙线是<b>中位自己的历史分位</b>（时间维度）：整体水位在 {_nw} 个季度里排第几，'
+                f'回答「全市场现在算不算高位」。'
+                + (f'当前选的是<b>近 {_window} 期窗口</b>。'
+                   if _window else '当前选的是<b>全部历史</b>。')
+                + f'蓝虚线是<b>≥65 分行业占比</b>（广度）：31 个行业里有几个已经偏挤。'
+                f'两者要一起看：中位高、广度低＝少数行业极热但没扩散；'
+                f'中位高、广度也高＝全面抱团，那才是系统性风险；'
+                f'中位低、广度却抬头＝资金刚开始往少数行业集中，是拥挤的早期信号。'
+                f'单看中位看不出谁在变挤——具体是哪个行业，在上面选一个即可。')
+        _read(h, _txt2, _pos_txt,
               f'<b>看方向做仓位，看水位做上限。</b>分数还在往上走、且已经过 80 的，'
               f'本季不要再加，甚至把已有仓位减半（还有人在往没有空间的地方挤，'
               f'转向时卖出会非常集中）；分数从 90 以上往下掉到 70 附近的，'
               f'反而是「压力已经释放」，不必急着卖。'
-              f'<br><b>两个分位怎么用</b>：自身历史分位 ≥80 <b>且</b> 全行业分位 ≥80'
-              f'（当期前 1/5）→ <b>先减它</b>（对己对人都到顶）；'
-              f'自身分位高、全行业分位低 → <b>不用动</b>（是小体量的统计噪音，'
-              f'它的「历史新高」推不动组合）；自身分位不高、全行业分位 ≥90 → '
-              f'<b>盯着</b>（它一直是大家的底仓，转向时冲击最大）。' + _inv3
+              + (f'<br><b>两个分位怎么用</b>：自身历史分位 ≥80 <b>且</b> 全行业分位 ≥80'
+                 f'（当期前 1/5）→ <b>先减它</b>（对己对人都到顶）；'
+                 f'自身分位高、全行业分位低 → <b>不用动</b>（是小体量的统计噪音，'
+                 f'它的「历史新高」推不动组合）；自身分位不高、全行业分位 ≥90 → '
+                 f'<b>盯着</b>（它一直是大家的底仓，转向时冲击最大）。'
+                 if _sel_t else
+                 f'<br><b>全市场视角怎么用</b>：橙线（中位分位）与蓝虚线（广度）同高 → '
+                 f'全面抱团，降整体权益仓位；橙线高、蓝虚线低 → 结构性行情，'
+                 f'只压最挤的那几个行业；橙线低、蓝虚线在抬头 → 拥挤刚开始扩散，'
+                 f'别追刚刚变红的行业。') + _inv3
               + f' 需要提醒的是：{_nq} 期样本下「上穿 {_thr:.0f}」的次季胜率不到五成、'
                 't 值不显著，所以这条线只能约束仓位，不能当买卖信号。'
               + (' 你当前选的是**近 %d 期窗口**：分位只说明「在这段时间里排第几」，'
                  '窗口越短越敏感，也越容易被一两次季度波动推到 0 或 100——'
                  '做仓位决策时建议同时看「全部历史」那一档。' % _window
                  if _window else ''))
+
+    # ---- 分位对照表：把图上每个数字摊开，方便逐个核对 ----
+    h('<div style="font-size:14px;font-weight:700;margin:16px 0 2px">'
+      '31 个行业分位对照表：图上的每个数字都能在这里对上</div>')
+    _win_show = f"近 {_window} 期" if _window else f"全部历史（{len(H)} 期）"
+    h('<div class="tiny" style="margin:0 0 6px">'
+      f'窗口＝{_win_show}；均值、标准差、分位数都按<b>同一窗口</b>计算'
+      f'（换窗口这几列会一起变）；'
+      f'<b>z 值＝(当前−均值)/标准差</b>，＋1 表示比自己的常态挤一个标准差；'
+      f'「排名」＝当期在 {len(_ok)} 个行业里的名次（1＝最挤）。'
+      f'点表头可排序；表格下方按钮可下载 CSV。</div>')
+    _tbl = rc.csi_stat_table(H, window=_window, thr=float(_thr),
+                             universe=_ok, selected=_sel_t)
+    if _tbl.empty:
+        h('<div class="cg-note">本期数据不足，无法生成对照表。</div>')
+    else:
+        st.dataframe(
+            _tbl, hide_index=True, width="stretch", height=430,
+            column_config={
+                "行业": st.column_config.TextColumn("行业", width="small"),
+                "选中": st.column_config.TextColumn("本次", width="small",
+                                                   help="● 为当前选中的行业"),
+                "当前": st.column_config.NumberColumn("当前 CSI", format="%.1f"),
+                "历史均值": st.column_config.NumberColumn("历史均值", format="%.1f"),
+                "标准差": st.column_config.NumberColumn("标准差 σ", format="%.1f"),
+                "z值": st.column_config.NumberColumn("z 值", format="%+.2f",
+                                                     help="(当前−均值)/σ"),
+                "P10": st.column_config.NumberColumn("P10", format="%.1f"),
+                "P50": st.column_config.NumberColumn("P50", format="%.1f"),
+                "P90": st.column_config.NumberColumn("P90", format="%.1f"),
+                "最小": st.column_config.NumberColumn("最小", format="%.1f"),
+                "最大": st.column_config.NumberColumn("最大", format="%.1f"),
+                # 用数字而不是进度条：列宽只有 ~90px 时进度条会把数值挤掉，
+                # 而这张表的用途就是「核对数字」，看不到数字等于没做。
+                "当前分位": st.column_config.NumberColumn(
+                    "当前分位", format="%.0f",
+                    help="当前值在「这个窗口」里由低到高排第几（0–100）"),
+                "全行业分位": st.column_config.NumberColumn(
+                    "全行业分位", format="%.0f",
+                    help="当期在 31 个行业里的百分位（截面）"),
+                "排名": st.column_config.NumberColumn("排名", format="%d"),
+                "近4期变化": st.column_config.NumberColumn("近 4 期 Δ", format="%+.1f"),
+            })
+        st.download_button(
+            f"下载对照表（{len(_tbl)} 行 × {len(_tbl.columns)} 列，CSV）",
+            _tbl.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"行业分位对照表_{H.index[-1]}.csv", mime="text/csv",
+            key="dl_csi_tbl")
 
         # ---- 全景热力图：替代「31 条线叠加」 ----
         _small = ([i for i in csi.index if csi.loc[i, "等级"] == "小样本"]

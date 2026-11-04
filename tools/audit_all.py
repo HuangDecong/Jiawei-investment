@@ -371,6 +371,37 @@ def stage_charts() -> None:
         any("≥65" in str(getattr(t, "name", "")) for t in f2.data),
         "；".join(str(getattr(t, "name", "")) for t in f2.data))
 
+    # 全市场视角的「分位」不能缺席：只有一条广度线，读者无法回答「现在什么分位」。
+    _n2 = [getattr(t, "name", "") for t in f2.data]
+    rec("图表", "全市场视角：下图同时有中位分位与广度",
+        any("中位的历史分位" in n for n in _n2)
+        and any("≥65" in n for n in _n2),
+        "；".join(_n2))
+
+    # 误触缩放：dragmode 必须关闭，否则鼠标一拖整张图被缩成几条线，
+    # 而工具栏是隐藏的（displayModeBar=False），用户无法复位。
+    _drag = [str(getattr(f.layout, "dragmode", "zoom")),
+             str(getattr(f2.layout, "dragmode", "zoom"))]
+    rec("图表", "图表禁止拖拽缩放（防误触缩成一团）",
+        all(d in ("False", "False", "None") or d is False for d in _drag),
+        f"dragmode={_drag}")
+
+    # 对照表：均值/标准差/分位必须与面板直接计算一致（抽 3 个行业逐个核）
+    _tbl = rc.csi_stat_table(H, thr=80).set_index("行业")
+    _bad = []
+    for _ind in list(H.columns)[:3] + ["电子", "煤炭"]:
+        if _ind not in _tbl.index:
+            continue
+        _s = H[_ind].dropna().astype(float)
+        _mu = float(_s.mean())
+        _pc, _n, _k = rc.pct_of(_s, float(_s.iloc[-1]))
+        if (abs(float(_tbl.loc[_ind, "历史均值"]) - _mu) > 0.051
+                or abs(float(_tbl.loc[_ind, "当前分位"]) - _pc) > 0.051):
+            _bad.append(f"{_ind} 均值 {_tbl.loc[_ind, '历史均值']}/{_mu:.1f}"
+                        f" 分位 {_tbl.loc[_ind, '当前分位']}/{_pc:.0f}")
+    rec("图表", "对照表与面板同源（均值/分位逐个可核）",
+        not _bad and len(_tbl) == len(H.columns), "；".join(_bad[:3]) or f"{len(_tbl)} 行")
+
     if len(qs) >= 2:
         d = cn.stock_flow(qs[-2], qs[-1])
         f3 = rc.fig_stock_flow(d)
