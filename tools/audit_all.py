@@ -157,6 +157,20 @@ def stage_data() -> None:
         rec("数据", "拥挤暴露在 0–100（抽样一只基金）", False,
             f"{type(e).__name__}: {e}")
 
+    # 基金层面的拥挤暴露榜：两个口径都要落在 0–100
+    try:
+        _rk = cn.fund_crowding_rank(top=5000)
+        _ok = (not _rk.empty
+               and float(_rk["高拥挤仓位"].min()) >= -0.01
+               and float(_rk["高拥挤仓位"].max()) <= 100.01
+               and float(_rk["加权CSI"].min()) >= -0.01
+               and float(_rk["加权CSI"].max()) <= 100.01)
+        rec("数据", "基金拥挤暴露榜在 0–100", _ok,
+            f"{len(_rk):,} 只，榜首 {float(_rk['高拥挤仓位'].max()):.0f}%"
+            if not _rk.empty else "空表")
+    except Exception as e:
+        rec("数据", "基金拥挤暴露榜在 0–100", False, f"{type(e).__name__}: {e}")
+
     # 三项分位长表必须覆盖全部期次：缺一期，⑤ 的「选一期」就会现场重算（慢 2–4 秒）
     part_q = set(cn._csi_parts_csv().get("quarter", [])) if not cn._csi_parts_csv().empty else set()
     miss_q = [q for q in qs if q not in part_q]

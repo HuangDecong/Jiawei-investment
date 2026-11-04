@@ -1658,6 +1658,68 @@ def crowding_exposure(code: str, thr: float = 80.0) -> pd.DataFrame:
     return d
 
 
+@lru_cache(maxsize=8)
+def fund_crowding_rank(q: str | None = None, thr: float = 80.0,
+                       top: int = 12) -> pd.DataFrame:
+    """最新一期：哪几只基金把最多的仓位押在「CI ≥ thr」的行业上。
+
+    为什么从「行业视角」切到「基金视角」：行业页告诉你哪个行业挤，
+    但真正要动手时问的是「我持有的那几只，谁在替我挤」。这里一次 SQL 取
+    该期所有基金的前十大行业权重，算每只基金的拥挤暴露，按高低排序。
+
+    口径与 `crowding_exposure` 一致：分母是该基金前十大中**有行业映射**的
+    权重合计（港股/未映射不计入分母，避免把港股仓位错算成「不拥挤」）。
+    """
+    if not available():
+        return pd.DataFrame()
+    q = q or latest()
+    sql = """
+        SELECT code, industry, SUM(weight_pct) AS w
+        FROM (
+            SELECT code, industry, weight_pct,
+                   ROW_NUMBER() OVER (PARTITION BY code
+                                      ORDER BY weight_pct DESC, stock_code) rn
+            FROM fund_holdings
+            WHERE quarter = ? AND industry IS NOT NULL
+        )
+        WHERE rn <= 10
+        GROUP BY code, industry
+    """
+    try:
+        with _con() as con:
+            d = pd.read_sql(sql, con, params=(q,), dtype={"code": str})
+    except Exception:
+        return pd.DataFrame()
+    if d.empty:
+        return pd.DataFrame()
+    csi = csi_history()
+    if q not in csi.index:
+        return pd.DataFrame()
+    c = csi.loc[q]
+    d["code"] = d["code"].str.zfill(6)
+    d["crowd"] = d["industry"].map(c)
+    g = d.groupby("code")
+    tot = g["w"].sum()
+    hi = d[d["crowd"].fillna(0) >= thr].groupby("code")["w"].sum().reindex(tot.index).fillna(0)
+    wsum = d.assign(x=d["w"] * d["crowd"].fillna(0)).groupby("code")["x"].sum()
+    out = pd.DataFrame({
+        "高拥挤仓位": (hi / tot * 100).round(1),
+        "加权CSI": (wsum / tot).round(1),
+        "前十大合计": tot.round(1),
+    })
+    # 该基金最重的两个拥挤行业，方便直接说「它押的是谁」
+    hot = (d[d["crowd"].fillna(0) >= thr]
+           .sort_values(["code", "w"], ascending=[True, False])
+           .groupby("code")["industry"].apply(lambda x: "、".join(list(x)[:2])))
+    out["拥挤行业"] = hot.reindex(out.index).fillna("")
+    out = out[out["前十大合计"] >= 30]      # 前十大太轻的，读数没有代表性
+    out = out.sort_values("高拥挤仓位", ascending=False)
+    prof = profiles().set_index("code")["name"] if not profiles().empty else pd.Series(dtype=str)
+    out.insert(0, "名称", prof.reindex(out.index).values)
+    out.index.name = "code"
+    return out.head(top)
+
+
 def fund_structure(code: str, basis: str = "top10") -> pd.DataFrame:
     """单只基金的行业结构时间序列（行＝期，列＝31 个行业，单位 %）。
 

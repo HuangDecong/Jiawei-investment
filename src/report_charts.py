@@ -1074,6 +1074,43 @@ def fig_csi_heatmap(H: pd.DataFrame, small: list[str] | None = None,
     return fig
 
 
+def fig_fund_crowding_rank(rk: pd.DataFrame, med: float, thr: float = 80,
+                           top: int = 12) -> go.Figure:
+    """横向条形：哪几只基金把最多的仓位押在拥挤行业上（前十大口径）。
+
+    读法：条长＝高拥挤仓位占比，颜色＝拥挤程度（≥80 红、≥50 橙、其余灰），
+    条端直接写「xx%（CSI yy）」；虚线是全市场中位，用来判断「它是不是异常」。
+    """
+    if rk.empty:
+        return _base(go.Figure(), "数据未就绪")
+    d = rk.head(top).iloc[::-1]
+    names = [str(x)[:14] for x in d["名称"].fillna(pd.Series(d.index, index=d.index))]
+    cols = ["#C62828" if v >= 80 else "#E8710A" if v >= 50 else "#8A97A5"
+            for v in d["高拥挤仓位"]]
+    fig = go.Figure(go.Bar(
+        y=names, x=list(d["高拥挤仓位"]), orientation="h", marker_color=cols,
+        text=[f'{v:.0f}%（CSI {c:.0f}）' for v, c in zip(d["高拥挤仓位"], d["加权CSI"])],
+        textposition="outside", textfont=dict(size=9.5),
+        customdata=[[c, s] for c, s in zip(d["加权CSI"], d["拥挤行业"])],
+        hovertemplate=("<b>%{y}</b><br>高拥挤仓位 %{x:.1f}%<br>"
+                       "加权 CSI %{customdata[0]:.0f}<br>"
+                       "押在：%{customdata[1]}<extra></extra>")))
+    # 中位为 0 时不画线：线会贴在 y 轴上，看起来像「边框加粗」。
+    # 这时「大多数基金一股没押」本身就是结论，写在图下方的说明里更清楚。
+    if med >= 1:
+        fig.add_shape(type="line", xref="x", x0=med, x1=med, yref="y domain",
+                      y0=0, y1=1, line=dict(color="#7C8B9C", width=1, dash="dot"))
+        fig.add_annotation(x=med, y=1, yref="y domain", text=f"全市场中位 {med:.0f}%",
+                           showarrow=False, yanchor="bottom", xanchor="center",
+                           font=dict(size=9, color="#5A6B7D"))
+    fig.update_xaxes(title_text=f"高拥挤仓位（%，前十大口径，阈值 CSI ≥ {thr:.0f}）",
+                     range=[0, 122])
+    fig.update_yaxes(tickfont=dict(size=10))
+    fig = _base(fig, "", 430)
+    fig.update_layout(margin=dict(l=8, r=90, t=30, b=44))
+    return fig
+
+
 def fig_csi_position(s: pd.Series, name: str, window: int | None = None,
                      thr: float = 80) -> go.Figure:
     """把「当前值在自身历史中的位置」画成一把尺子（rug + 分位线）。
