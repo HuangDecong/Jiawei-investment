@@ -271,81 +271,44 @@ def render(h) -> None:
         _sel_t = None if _focus == _opts[0] else _focus
         st.plotly_chart(rc.fig_csi_trend(H, _sel_t, _band), width="stretch",
                         config={"displayModeBar": False})
-
-        # ---- 现在处于什么分位：时间维度（自身历史）× 截面维度（全行业） ----
         _med = H.median(axis=1).dropna()
-        _series = H[_sel_t].dropna() if _sel_t else _med
-        _name = _sel_t or "全市场中位"
-        _cur = float(_series.iloc[-1])
-        _ns = len(_series)
-        _own = float((_series <= _cur).mean() * 100)
-        _kth = int((_series <= _cur).sum())
-        _lastrow = H.iloc[-1]
-        _rank = int((_lastrow > _cur).sum()) + 1
-        _nvalid = int(_lastrow.notna().sum())
-        _chg4 = _cur - float(_series.iloc[-5]) if _ns >= 5 else np.nan
-        _n80 = int((_series >= 80).sum())
-        _imax = int(np.argmax(_series.values))
-        _imin = int(np.argmin(_series.values))
-        _lv_now = ""
-        if _sel_t and "等级" in csi.columns and _sel_t in csi.index:
-            _lv_now = str(csi.loc[_sel_t, "等级"])
-
-        st.plotly_chart(rc.fig_csi_position(_series, _name), width="stretch",
-                        config={"displayModeBar": False})
-        h(ui.stat_strip([
-            ("当前 CSI", f"{_cur:.0f}", f"{_name}" + (f"｜{_lv_now}" if _lv_now else "")),
-            ("自身历史分位", f"{_own:.0f}", f"{_ns} 期中第 {_kth} 高"),
-            ("全行业排名", f"第 {_rank}/{_nvalid}", "同一时点横截面"),
-            ("近 4 期变化", (f"{_chg4:+.0f}" if np.isfinite(_chg4) else "—"), "与前 4 个季度比"),
-            ("历史触及 ≥80", f"{_n80} 期", f"占 {_n80 / _ns * 100:.0f}%"),
-        ]))
-
+        _now = float(_med.iloc[-1])
+        _pct = float((_med <= _now).mean() * 100)
+        _imax = int(np.argmax(_med.values))
+        _imin = int(np.argmin(_med.values))
+        _txt2 = (f'灰粗线是<b>全市场中位</b>：最新 <b>{_now:.0f}</b> 分，'
+                 f'在 {_nq} 期里排第 <b>{_pct:.0f}</b> 分位；'
+                 f'历史最高 {_med.iloc[_imax]:.0f}（{_med.index[_imax]}）、'
+                 f'最低 {_med.iloc[_imin]:.0f}（{_med.index[_imin]}）。'
+                 f'背景色带就是五档阈值：<b>≥80 淡红、65–80 淡橙、45–65 近白、25–45 淡蓝、&lt;25 深蓝</b>，'
+                 f'让「现在算不算高」一眼可见，不用记数字。')
         if _sel_t:
-            _d1 = float(_series.iloc[-1] - _series.iloc[-2]) if _ns > 1 else np.nan
-            _n_up = sum(1 for i in range(1, _ns) if _series.iloc[i - 1] < 80 <= _series.iloc[i])
-            _n_dn = sum(1 for i in range(1, _ns) if _series.iloc[i - 1] >= 80 > _series.iloc[i])
-            _txt2 = (f'<b>{_sel_t}</b> 最新 <b>{_cur:.0f}</b> 分（{_lv_now}），'
-                     f'上期 {_series.iloc[-2]:.0f}（{_d1:+.0f}）。'
-                     f'两个分位同时给出来：<b>自身历史第 {_own:.0f} 分位</b>'
-                     f'（{_ns} 期里第 {_kth} 高）、<b>全行业第 {_rank}/{_nvalid}</b>。'
-                     f'历史最高 {_series.iloc[_imax]:.0f}（{_series.index[_imax]}）、'
-                     f'最低 {_series.iloc[_imin]:.0f}（{_series.index[_imin]}）；'
-                     f'{_ns} 期里上穿 80 共 <b>{_n_up}</b> 次、下穿 <b>{_n_dn}</b> 次'
-                     f'（红三角＝上穿、绿三角＝下穿）。')
-        else:
-            _txt2 = (f'灰粗线是<b>全市场中位</b>：最新 <b>{_cur:.0f}</b> 分，'
-                     f'在 {_ns} 期里排第 <b>{_own:.0f}</b> 分位；'
-                     f'历史最高 {_series.iloc[_imax]:.0f}（{_series.index[_imax]}）、'
-                     f'最低 {_series.iloc[_imin]:.0f}（{_series.index[_imin]}）。'
-                     f'它代表「31 个行业的拥挤度中位数」，是判断整体水位的背景线；'
-                     f'单看它看不出谁在变挤，要在上面选一个行业。')
-
+            _s = H[_sel_t].dropna()
+            _d1 = float(_s.iloc[-1] - _s.iloc[-2]) if len(_s) > 1 else np.nan
+            _n_up = sum(1 for i in range(1, len(_s)) if _s.iloc[i - 1] < 80 <= _s.iloc[i])
+            _n_dn = sum(1 for i in range(1, len(_s)) if _s.iloc[i - 1] >= 80 > _s.iloc[i])
+            _txt2 += (f'<br><b>{_sel_t}</b>：最新 <b>{_s.iloc[-1]:.0f}</b>'
+                      f'（上期 {_s.iloc[-2]:.0f}，{_d1:+.0f}）；'
+                      f'{len(_s)} 期里上穿 80 共 <b>{_n_up}</b> 次、下穿 <b>{_n_dn}</b> 次，'
+                      f'图上红三角＝上穿、绿三角＝下穿。')
         # 投资含义随所选行业变化：同一个分数，上行与下行对应完全相反的动作
-        _inv3 = (f' 你选的 <b>{_sel_t}</b> 最新 {_cur:.0f} 分、'
-                 f'上期 {_series.iloc[-2]:.0f} 分（{_d1:+.0f}）：'
+        _inv3 = (f' 你选的 <b>{_sel_t}</b> 最新 {_s.iloc[-1]:.0f} 分、'
+                 f'上期 {_s.iloc[-2]:.0f} 分（{_d1:+.0f}）：'
                  + ("<b>还在变挤</b>——仓位上限压到平时的七成，等它转向再恢复。"
                     if _d1 > 3 else
                     "<b>正在变松</b>——不要因为分数还高就恐慌卖出，资金已经在退。"
                     if _d1 < -3 else
                     "<b>基本走平</b>——按水位办事即可，不需要因为这张图调仓。")
-                 ) if _sel_t and _ns > 1 else ''
+                 ) if _sel_t and len(_s) > 1 else ''
         _read(h, _txt2,
-              f'<b>折线回答「方向」，两条分位回答「位置」。</b>「自身历史分位」是时间维度：'
-              f'这个行业现在的拥挤度，在它自己过去 {_ns} 个季度里排第几——'
-              f'回答「对它自己来说，现在是不是异常」。「全行业排名」是截面维度：'
-              f'同一时点 31 个行业里排第几——回答「在同行里，它是不是最挤的那个」。'
-              f'两者会背离：小行业可能「自身 95 分位、全行业第 20 名」（配置只有 1%，挤也挤不到哪去），'
-              f'大行业也可能「自身 60 分位、全行业第 3 名」（它一直很重，但没比过去更重）。'
-              f'背离时以<b>全行业排名</b>为准——组合的风险来自「大家都挤在一起」，不是「它自己创了新高」。',
+              f'<b>折线回答的是「方向」，不是「高低」。</b>同样是 88 分，'
+              f'从 60 涨上来（刚变挤）与从 95 跌下来（正在退潮）含义完全相反——'
+              f'上面这张图就是把「水位」和「方向」放在一张图上。'
+              f'下面的阈值实证会回答：这些分界线到底有没有预测力。',
               f'<b>看方向做仓位，看水位做上限。</b>分数还在往上走、且已经过 80 的，'
               f'本季不要再加，甚至把已有仓位减半（还有人在往没有空间的地方挤，'
               f'转向时卖出会非常集中）；分数从 90 以上往下掉到 70 附近的，'
-              f'反而是「压力已经释放」，不必急着卖。'
-              f'<br><b>两个分位怎么用</b>：自身历史分位 ≥80 且全行业排名前 5 → '
-              f'<b>先减它</b>（对己对人都到顶）；自身分位高但全行业排名靠后 → '
-              f'<b>不用动</b>（是小体量的统计噪音）；自身分位不高但全行业前 3 → '
-              f'<b>盯着</b>（它一直是大家的底仓，转向时冲击最大）。' + _inv3
+              f'反而是「压力已经释放」，不必急着卖。' + _inv3
               + f' 需要提醒的是：{_nq} 期样本下「上穿 80」的次季胜率不到五成、'
                 't 值不显著，所以这条线只能约束仓位，不能当买卖信号。')
 

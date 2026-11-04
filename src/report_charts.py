@@ -339,12 +339,11 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
                                       namelength=-1))
     fig.update_yaxes(title_text="占前十大 %" if residual_label.startswith("其他")
                      else "占净值比 %", range=[0, 100], tickfont=dict(size=11))
-    # 每根柱子就是一个季度，标签必须一一对应（只标 Q1 会读不出「哪一根是哪季」）
-    _ticks = list(d.index)
+    _ticks = [q for q in d.index if str(q).endswith("Q1")] + [d.index[-1]]
     fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
-                     tickangle=-90, tickfont=dict(size=8.5))
+                     tickangle=-45, tickfont=dict(size=10))
     fig = _base(fig, title, 520)
-    fig.update_layout(margin=dict(l=8, r=14, t=44, b=56))
+    fig.update_layout(margin=dict(l=8, r=14, t=44, b=44))
     return fig
 
 
@@ -646,13 +645,13 @@ def fig_level_history(M: pd.DataFrame, industry: str,
     _pad = max((_hi - _lo) * 0.22, 0.8)
     fig.update_yaxes(title_text="占前十大组合 %", range=[_lo - _pad, _hi + _pad],
                      tickfont=dict(size=11))
-    # 每期都标：只标 Q1 会跳过三个季度，读不出「高点在哪一季」
-    _tk = list(s.index)
+    # 31 个季度标签全标会糊成一片：只标每年 Q1 + 末期
+    _tk = [q for q in s.index if str(q).endswith("Q1")] + [s.index[-1]]
     fig.update_xaxes(tickmode="array", tickvals=_tk, ticktext=_tk,
-                     tickangle=-90, tickfont=dict(size=8.5))
-    fig = _base(fig, f"{industry} 配置比例的历史位置{title_extra}", 400)
+                     tickangle=-45, tickfont=dict(size=10))
+    fig = _base(fig, f"{industry} 配置比例的历史位置{title_extra}", 380)
     # 右侧要放「历史均值」标注，不留边距会被裁成「历…」
-    fig.update_layout(margin=dict(l=6, r=86, t=48, b=56),
+    fig.update_layout(margin=dict(l=6, r=86, t=48, b=46),
                       hoverlabel=dict(font_size=11))
     return fig
 
@@ -780,7 +779,6 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         return _base(go.Figure(), "数据未就绪")
     d = H.dropna(how="all")
     fig = go.Figure()
-    _title_txt = ""
 
     # 阈值背景带：先把「哪里是危险区」画出来，再看线怎么走
     for lo, hi, color, lab in CSI_BANDS:
@@ -817,22 +815,12 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
 
     if sel and sel in d.columns:
         s = d[sel]
+        _c = CSI_COLORS.get("中性", "#1F6FEB")
         fig.add_trace(go.Scatter(
             x=list(d.index), y=s.values, mode="lines+markers", name=sel,
             line=dict(color="#1F6FEB", width=2.8),
             marker=dict(size=3.5, color="#1F6FEB"),
             hovertemplate=f"<b>{sel}</b><br>%{{x}}：%{{y:.1f}}<extra></extra>"))
-        # 「现在多少分、在自身历史与全行业里各是什么位置」放进标题：
-        # 放在图内会压在折线上（末点常落在 70–90 的拥挤带里），标题位置永远干净。
-        _v = s.dropna()
-        if len(_v):
-            _cur = float(_v.iloc[-1])
-            _own = float((_v <= _cur).mean() * 100)
-            _lastrow = d.iloc[-1]
-            _rank = int((_lastrow > _cur).sum()) + 1
-            _nvalid = int(_lastrow.notna().sum())
-            _title_txt = (f"{sel}：当前 {_cur:.0f} 分｜自身历史第 {_own:.0f} 分位"
-                          f"｜全行业第 {_rank}/{_nvalid}")
         # 穿过 80 的时点：上穿红三角、下穿绿三角，一眼看出「什么时候变挤/变松」
         up, dn = [], []
         for i in range(1, len(s)):
@@ -860,15 +848,13 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
 
     fig.update_yaxes(title_text="CSI（0＝最冷，100＝最挤）", range=[0, 104],
                      tickfont=dict(size=10))
-    # x 轴**每一期都标**：只看年份 Q1 会跳过三个季度，读者无法判断
-    # 「这次上穿是 2020Q3 还是 2020Q4」。40 个标签旋转 90° 后每个只占约 10px，
-    # 1100px 宽度放得下，不需要抽稀。
-    _ticks = list(d.index)
+    # x 轴只标每年 Q1 + 末期：31 个标签全打出来会挤成一片，
+    # 读图只需要知道「大概哪一年」。
+    _ticks = [q for q in d.index if str(q).endswith("Q1")] + [d.index[-1]]
     fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
-                     tickangle=-90, tickfont=dict(size=8.5))
-    fig = _base(fig, _title_txt if sel and sel in d.columns else
-                "全市场 31 个行业的拥挤度中位：看整体水位怎么变", 540, legend=True)
-    fig.update_layout(margin=dict(l=56, r=18, t=62, b=66),
+                     tickangle=-45, tickfont=dict(size=9.5))
+    fig = _base(fig, "", 520, legend=True)
+    fig.update_layout(margin=dict(l=56, r=18, t=56, b=62),
                       legend=dict(orientation="h", yanchor="bottom", y=1.01,
                                   x=0, font=dict(size=10)))
     return fig
@@ -937,66 +923,13 @@ def fig_csi_heatmap(H: pd.DataFrame, small: list[str] | None = None,
                       tickfont=dict(size=9.5), outlinewidth=0,
                       tickvals=[12, 35, 55, 72, 90],
                       ticktext=["冷门", "偏冷", "中性", "拥挤", "极度"])))
-    # 热力图每列是一个季度，全部标出（旋转 90° 后每列约 10px，放得下）
-    _ticks = list(d.index)
+    _ticks = [q for q in d.index if str(q).endswith("Q1")] + [d.index[-1]]
     fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
-                     tickangle=-90, tickfont=dict(size=8.5), side="bottom")
+                     tickangle=-45, tickfont=dict(size=9.5), side="bottom")
     fig.update_yaxes(tickfont=dict(size=10), autorange="reversed")
     fig = _base(fig, "", height)
     # 右边必须留够：colorbar 在坐标区外，r=16 会把它切掉一半
     fig.update_layout(margin=dict(l=92, r=86, t=16, b=62))
-    return fig
-
-
-def fig_csi_position(s: pd.Series, name: str) -> go.Figure:
-    """把「当前值在自身历史中的位置」画成一把尺子（rug + 分位线）。
-
-    为什么单画一张：折线能看「怎么走到今天」，但回答不了「现在这个数
-    在它自己历史上算不算高」——那需要把 40 期历史值铺在同一条 0–100 的轴上。
-    每个历史期画一根竖线（rug），P25/P50/P75 三条参考线，当前值用红色菱形。
-    一眼能看出：当前是处在历史的高端、中段，还是刚从低位起来。
-    """
-    v = pd.Series(s).dropna().astype(float)
-    if v.empty:
-        return _base(go.Figure(), "数据未就绪")
-    cur = float(v.iloc[-1])
-    n = len(v)
-    pct = float((v <= cur).mean() * 100)
-    p25, p50, p75 = (float(np.percentile(v, k)) for k in (25, 50, 75))
-
-    fig = go.Figure()
-    # 五档底色：把「分数」与「等级」对上，读者不用记 80/65/45/25
-    for lo, hi, color, _lab in CSI_BANDS:
-        fig.add_vrect(x0=lo, x1=hi, y0=-0.5, y1=0.5, fillcolor=color,
-                      line_width=0, layer="below")
-    # 历史各期：一根竖线
-    fig.add_trace(go.Scatter(
-        x=v.values, y=np.zeros(n), mode="markers", name="历史各期",
-        marker=dict(symbol="line-ns-open", size=19, color="#7C8B9C",
-                    line=dict(width=1.1)),
-        hovertemplate="历史 %{x:.1f}<extra></extra>"))
-    # 分位参考线
-    for x, lab in ((p25, "P25"), (p50, "P50"), (p75, "P75")):
-        fig.add_vline(x=x, line=dict(color="#AEB8C4", width=1, dash="dot"),
-                      annotation_text=f"{lab} {x:.0f}", annotation_position="top",
-                      annotation_font=dict(size=9, color="#5A6B7D"))
-    # 当前值
-    fig.add_trace(go.Scatter(
-        x=[cur], y=[0], mode="markers+text", name="当前",
-        text=[f"当前 {cur:.0f}"], textposition="bottom center",
-        textfont=dict(size=10.5, color=C.COLOR["up"]),
-        marker=dict(symbol="diamond", size=13, color=C.COLOR["up"],
-                    line=dict(width=1.2, color="#FFFFFF")),
-        hovertemplate=(f"当前 {cur:.0f}<br>自身历史分位 {pct:.0f}"
-                       f"（{n} 期中第 {int((v <= cur).sum())} 高）"
-                       f"<extra></extra>")))
-    fig.update_yaxes(visible=False, range=[-0.62, 0.62])
-    fig.update_xaxes(range=[-2, 102], title_text="CSI（0＝最冷，100＝最挤）",
-                     tickfont=dict(size=9.5), dtick=10)
-    fig = _base(fig, f"{name}：当前 {cur:.0f} 分，处在自身 {n} 期历史的"
-                     f"第 {pct:.0f} 分位（P25 {p25:.0f}｜P50 {p50:.0f}｜P75 {p75:.0f}）",
-                148, legend=False)
-    fig.update_layout(margin=dict(l=44, r=14, t=46, b=34))
     return fig
 
 
