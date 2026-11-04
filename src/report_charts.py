@@ -17,6 +17,20 @@ from plotly.subplots import make_subplots
 import config as C
 
 
+def _vline(fig: go.Figure, x: float, xref: str = "x",
+            color: str | None = None, width: float = 1.0,
+            dash: str = "solid") -> None:
+    """在（子）图上画一条竖参考线。
+
+    为什么不直接用 `fig.add_vline(..., row=, col=)`：plotly 7.1 里带 row/col 的
+    `add_vline / add_hline / add_hrect` 会**静默丢弃**——`fig.layout.shapes` 变成 0，
+    图上什么都不画，也不报错。手写 `add_shape` 才能落到指定子图。
+    """
+    fig.add_shape(type="line", xref=xref, x0=x, x1=x, yref="y domain",
+                  y0=0, y1=1,
+                  line=dict(color=color or C.COLOR["line"], width=width, dash=dash))
+
+
 def _base(fig: go.Figure, title: str, h: int = 420, legend: bool = False) -> go.Figure:
     fig.update_layout(
         title=dict(text=title, font=dict(size=13, color=C.COLOR["text"]), x=0.005, y=0.97),
@@ -207,7 +221,7 @@ def fig_stock_flow(d: pd.DataFrame, top: int = 10,
                            "（Δ %{x:+.0f}）<br>"
                            "本期持仓 %{customdata[3]:.1f} 亿<extra></extra>"),
         ), row=1, col=_col)
-        fig.add_vline(x=0, line=dict(color=C.COLOR["line"], width=1), row=1, col=_col)
+        _vline(fig, 0, xref="x" if _col == 1 else f"x{_col}")
     fig.update_yaxes(tickfont=dict(size=9))
     # 条端数字画在坐标区外，右侧必须留白，否则会被裁掉。
     # 注意：必须放在 _base 之后——_base 会重写 margin。
@@ -610,7 +624,7 @@ def fig_compare_two(comp: pd.DataFrame, top: int = 16) -> go.Figure:
             textfont=dict(size=9),
             hovertemplate=f"%{{y}}<br>{name} %{{x:+.2f}}pp<extra></extra>"),
             row=1, col=col + 1)
-        fig.add_vline(x=0, line=dict(color=C.COLOR["line"], width=1), row=1, col=col + 1)
+        _vline(fig, 0, xref="x" if col == 0 else f"x{col + 1}")
         fig.update_xaxes(title_text="pp", row=1, col=col + 1)
     # 不再放总标题：两个子图标题本身已经说清「与谁比」，
     # 再加一行总标题必然和子图标题重叠（调 margin 也压不住）。
@@ -768,38 +782,70 @@ CSI_BANDS = [(80, 101, "rgba(198,40,40,0.16)", "≥80 极度拥挤"),
              (0, 25, "rgba(31,78,156,0.16)", "<25 冷门")]
 
 
+def _expanding_pct(s: pd.Series) -> pd.Series:
+    """扩张窗口的「自身历史分位」：第 i 期只跟自己及之前比，不用未来数据。
+
+    全样本排名（`(s <= 当期).mean()`）会让 2017 年的分位用上 2026 年的数据，
+    在图上表现为「早期就已经知道自己处在历史高位」——那是前视偏差。
+    """
+    v = s.dropna().astype(float)
+    out = pd.Series(np.nan, index=s.index, dtype=float)
+    if v.empty:
+        return out
+    arr = v.values
+    pct = np.empty(len(arr))
+    for i in range(len(arr)):
+        pct[i] = float((arr[: i + 1] <= arr[i]).mean() * 100)
+    out.loc[v.index] = pct
+    return out
+
+
 def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
-                  show_band: bool = True) -> go.Figure:
-    """全样本期 CSI 折线：看「拥挤度怎么变」，而不是只看当期一个点。
+                  show_band: bool = True,
+                  rank_universe: list[str] | None = None) -> go.Figure:
+    """上：CSI 水位怎么走；下：这个水位在「自己的历史」里排第几。
 
     为什么必须画折线：CSI 是一个 0–100 的水位，单看当期数字无法判断
     「它是在涨还是在退」。同样的 88 分，从 60 涨上来和从 95 跌下来，
     含义完全相反。
+
+    为什么还要第二条：水位高不等于「对它自己来说异常」。一个常年 70 分的行业，
+    70 分只是常态；一个常年 20 分的行业，55 分已经是历史新高。下图的
+    「自身历史分位」把这件事画成曲线，读者能直接看到「分位是什么时候抬起来的」。
+    选「全市场中位」时，下图改为「31 个行业里 ≥65 分的占比」——整体水位没有
+    「自身分位」的概念，看广度更有意义。
     """
     if H.empty:
         return _base(go.Figure(), "数据未就绪")
     d = H.dropna(how="all")
-    fig = go.Figure()
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        row_heights=[0.70, 0.30], vertical_spacing=0.045)
     _title_txt = ""
 
-    # 阈值背景带：先把「哪里是危险区」画出来，再看线怎么走
+    # 阈值背景带：先把「哪里是危险区」画出来，再看线怎么走。
+    # 注意：plotly 7.1 的 add_hrect/add_hline 带 row/col 时会**静默丢弃**
+    # （shapes 变成 0，图上什么都不画），必须手写 add_shape 并指定 yref。
     for lo, hi, color, lab in CSI_BANDS:
-        fig.add_hrect(y0=lo, y1=hi, fillcolor=color, line_width=0,
-                      layer="below", showlegend=False)
+        fig.add_shape(type="rect", xref="x domain", x0=0, x1=1,
+                      yref="y", y0=lo, y1=hi, fillcolor=color,
+                      line_width=0, layer="below")
     # 阈值标注放**图内左上**：放右侧会被坐标区裁掉（只露出「拥挤度」三个字），
     # 放左侧四条线互不遮挡，也不占右边距。
     for y, txt in [(80, "80 极度拥挤"), (65, "65 拥挤"), (45, "45 中性"), (25, "25 冷门")]:
-        fig.add_hline(y=y, line=dict(color="#9AA6B2", width=0.9, dash="dot"),
-                      annotation_text=txt, annotation_position="top left",
-                      annotation_font=dict(size=8, color="#5A6B7D"),
-                      annotation_bgcolor="rgba(255,255,255,0.75)")
+        fig.add_shape(type="line", xref="x domain", x0=0, x1=1,
+                      yref="y", y0=y, y1=y,
+                      line=dict(color="#9AA6B2", width=0.9, dash="dot"))
+        fig.add_annotation(x=0, xref="x domain", y=y, yref="y", text=txt,
+                           showarrow=False, xanchor="left", yanchor="bottom",
+                           font=dict(size=8, color="#5A6B7D"),
+                           bgcolor="rgba(255,255,255,0.75)")
 
     # 全市场中位：代表「整体水位」，是所有行业的共同背景
     med = d.median(axis=1)
     fig.add_trace(go.Scatter(
         x=list(d.index), y=med.values, mode="lines", name="全市场中位",
         line=dict(color="#7C8B9C", width=2.4),
-        hovertemplate="%{x}<br>全市场中位 %{y:.1f}<extra></extra>"))
+        hovertemplate="%{x}<br>全市场中位 %{y:.1f}<extra></extra>"), row=1, col=1)
 
     # 不画 31 条线——那是一团蜘蛛网，谁在涨谁在跌都看不出来。
     # 改成「31 个行业的 25–75% 分位带」：它表达的是「市场整体的分布宽度」，
@@ -813,7 +859,7 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
             y=list(q3.values) + list(q1.values)[::-1],
             fill="toself", fillcolor="rgba(124,139,156,0.20)",
             line=dict(width=0), hoverinfo="skip", showlegend=True,
-            name="31 行业中 25–75% 区间"))
+            name="31 行业中 25–75% 区间"), row=1, col=1)
 
     if sel and sel in d.columns:
         s = d[sel]
@@ -821,16 +867,21 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
             x=list(d.index), y=s.values, mode="lines+markers", name=sel,
             line=dict(color="#1F6FEB", width=2.8),
             marker=dict(size=3.5, color="#1F6FEB"),
-            hovertemplate=f"<b>{sel}</b><br>%{{x}}：%{{y:.1f}}<extra></extra>"))
+            hovertemplate=f"<b>{sel}</b><br>%{{x}}：%{{y:.1f}}<extra></extra>"),
+            row=1, col=1)
         # 「现在多少分、在自身历史与全行业里各是什么位置」放进标题：
         # 放在图内会压在折线上（末点常落在 70–90 的拥挤带里），标题位置永远干净。
         _v = s.dropna()
         if len(_v):
             _cur = float(_v.iloc[-1])
             _own = float((_v <= _cur).mean() * 100)
-            _lastrow = d.iloc[-1]
+            # 排名口径与页面 KPI 一致：只跟「可评级」的行业比，
+            # 否则小样本行业会把名次整体推后一位。
+            _pool = [i for i in (rank_universe or list(d.columns))
+                     if i in d.columns and np.isfinite(d.iloc[-1].get(i, np.nan))]
+            _lastrow = d.iloc[-1][_pool]
             _rank = int((_lastrow > _cur).sum()) + 1
-            _nvalid = int(_lastrow.notna().sum())
+            _nvalid = len(_pool)
             _title_txt = (f"{sel}：当前 {_cur:.0f} 分｜自身历史第 {_own:.0f} 分位"
                           f"｜全行业第 {_rank}/{_nvalid}")
         # 穿过 80 的时点：上穿红三角、下穿绿三角，一眼看出「什么时候变挤/变松」
@@ -849,28 +900,62 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
                 name="上穿 80", marker=dict(symbol="triangle-up", size=10,
                                             color=C.COLOR["up"],
                                             line=dict(width=1, color="#FFFFFF")),
-                hovertemplate="%{x}<br>上穿 80：%{y:.1f}<extra></extra>"))
+                hovertemplate="%{x}<br>上穿 80：%{y:.1f}<extra></extra>"),
+                row=1, col=1)
         if dn:
             fig.add_trace(go.Scatter(
                 x=[x for x, _ in dn], y=[y for _, y in dn], mode="markers",
                 name="下穿 80", marker=dict(symbol="triangle-down", size=10,
                                             color=C.COLOR["down"],
                                             line=dict(width=1, color="#FFFFFF")),
-                hovertemplate="%{x}<br>下穿 80：%{y:.1f}<extra></extra>"))
+                hovertemplate="%{x}<br>下穿 80：%{y:.1f}<extra></extra>"),
+                row=1, col=1)
+
+    # ---- 下图：位置怎么变 ----
+    if sel and sel in d.columns:
+        pct = _expanding_pct(d[sel])
+        fig.add_shape(type="rect", xref="x2 domain", x0=0, x1=1,
+                      yref="y2", y0=80, y1=100,
+                      fillcolor="rgba(198,40,40,0.10)", line_width=0,
+                      layer="below")
+        fig.add_trace(go.Scatter(
+            x=list(pct.index), y=pct.values, mode="lines", name="自身历史分位",
+            line=dict(color="#8A5A00", width=2.0),
+            fill="tozeroy", fillcolor="rgba(200,150,60,0.10)",
+            hovertemplate="%{x}<br>自身历史分位 %{y:.0f}<extra></extra>"),
+            row=2, col=1)
+        fig.add_shape(type="line", xref="x2 domain", x0=0, x1=1,
+                      yref="y2", y0=80, y1=80,
+                      line=dict(color="#C62828", width=1, dash="dot"))
+        fig.update_yaxes(title_text="自身历史分位", range=[0, 104],
+                         tickfont=dict(size=9.5), row=2, col=1)
+    else:
+        cnt = d.notna().sum(axis=1)
+        share = (d >= 65).sum(axis=1) / cnt.replace(0, np.nan) * 100
+        fig.add_trace(go.Scatter(
+            x=list(share.index), y=share.values, mode="lines",
+            name="≥65 分的行业占比",
+            line=dict(color="#B25E00", width=2.0),
+            fill="tozeroy", fillcolor="rgba(200,150,60,0.10)",
+            hovertemplate="%{x}<br>≥65 分的行业 %{y:.0f}%<extra></extra>"),
+            row=2, col=1)
+        fig.update_yaxes(title_text="≥65 分占比 %", range=[0, 104],
+                         tickfont=dict(size=9.5), row=2, col=1)
 
     fig.update_yaxes(title_text="CSI（0＝最冷，100＝最挤）", range=[0, 104],
-                     tickfont=dict(size=10))
+                     tickfont=dict(size=10), row=1, col=1)
     # x 轴**每一期都标**：只看年份 Q1 会跳过三个季度，读者无法判断
-    # 「这次上穿是 2020Q3 还是 2020Q4」。40 个标签旋转 90° 后每个只占约 10px，
-    # 1100px 宽度放得下，不需要抽稀。
+    # 「这次上穿是 2020Q3 还是 2020Q4」。40 个标签旋转 90° 后每个只占约 25px，
+    # 1000px 宽度放得下，不需要抽稀。
     _ticks = list(d.index)
     fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
-                     tickangle=-90, tickfont=dict(size=8.5))
+                     tickangle=-90, tickfont=dict(size=9.5), row=2, col=1)
+    fig.update_xaxes(showticklabels=False, row=1, col=1)
     fig = _base(fig, _title_txt if sel and sel in d.columns else
-                "全市场 31 个行业的拥挤度中位：看整体水位怎么变", 540, legend=True)
-    fig.update_layout(margin=dict(l=56, r=18, t=62, b=66),
-                      legend=dict(orientation="h", yanchor="bottom", y=1.01,
-                                  x=0, font=dict(size=10)))
+                "全市场 31 个行业的拥挤度中位：看整体水位怎么变", 620, legend=True)
+    fig.update_layout(margin=dict(l=76, r=18, t=64, b=80),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.005,
+                                  x=0, font=dict(size=9.5)))
     return fig
 
 
@@ -980,15 +1065,14 @@ def fig_csi_position(s: pd.Series, name: str) -> go.Figure:
         fig.add_vline(x=x, line=dict(color="#AEB8C4", width=1, dash="dot"),
                       annotation_text=f"{lab} {x:.0f}", annotation_position="top",
                       annotation_font=dict(size=9, color="#5A6B7D"))
-    # 当前值
+    # 当前值：只画菱形，不写字——数值与分位已经在标题里，
+    # 图内的「当前 45」会压在 P50 虚线和 rug 上，反而看不清。
     fig.add_trace(go.Scatter(
-        x=[cur], y=[0], mode="markers+text", name="当前",
-        text=[f"当前 {cur:.0f}"], textposition="bottom center",
-        textfont=dict(size=10.5, color=C.COLOR["up"]),
-        marker=dict(symbol="diamond", size=13, color=C.COLOR["up"],
-                    line=dict(width=1.2, color="#FFFFFF")),
+        x=[cur], y=[0], mode="markers", name="当前",
+        marker=dict(symbol="diamond", size=14, color=C.COLOR["up"],
+                    line=dict(width=1.4, color="#FFFFFF")),
         hovertemplate=(f"当前 {cur:.0f}<br>自身历史分位 {pct:.0f}"
-                       f"（{n} 期中第 {int((v <= cur).sum())} 高）"
+                       f"（由低到高第 {int((v <= cur).sum())} 位，共 {n} 期）"
                        f"<extra></extra>")))
     fig.update_yaxes(visible=False, range=[-0.62, 0.62])
     fig.update_xaxes(range=[-2, 102], title_text="CSI（0＝最冷，100＝最挤）",

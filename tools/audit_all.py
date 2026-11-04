@@ -290,6 +290,53 @@ def stage_consistency() -> None:
 
 
 # ---------------------------------------------------------------------------
+def stage_charts() -> None:
+    """图表结构自检：不渲染页面，只检查图对象「该有的元素在不在」。
+
+    为什么需要：plotly 7.1 的 `add_hrect / add_vline / add_hline` 一旦带
+    `row / col` 参数就会**静默丢弃**——图照画、不报错，只是背景带与参考线
+    全没了。这种缺失人眼看截图很容易漏（以为「本来就这样」），
+    必须用 shapes / annotations 的数量兜住。
+    """
+    try:
+        import canon as cn
+        import report_charts as rc
+    except Exception as e:  # pragma: no cover
+        rec("图表", "模块可导入", False, f"{type(e).__name__}: {e}")
+        return
+
+    H = cn.csi_history()
+    qs = cn.quarters()
+
+    f = rc.fig_csi_trend(H, "电子", True)
+    # 5 条档位背景 + 4 条阈值线 = 9；两条面板各 1 条参考线也算在内
+    n_shape = len(f.layout.shapes or [])
+    rec("图表", "拥挤度折线：五档背景 + 阈值线", n_shape >= 9, f"shapes={n_shape}")
+    rec("图表", "拥挤度折线：双面板（CSI + 分位）", len(f.layout.annotations or []) >= 4,
+        f"traces={len(f.data)}")
+
+    f2 = rc.fig_csi_trend(H, None, True)
+    rec("图表", "拥挤度折线（全市场）：下图为广度",
+        any("≥65" in str(getattr(t, "name", "")) for t in f2.data),
+        "；".join(str(getattr(t, "name", "")) for t in f2.data))
+
+    if len(qs) >= 2:
+        d = cn.stock_flow(qs[-2], qs[-1])
+        f3 = rc.fig_stock_flow(d)
+        rec("图表", "个股净流向：两栏零线", len(f3.layout.shapes or []) == 2,
+            f"shapes={len(f3.layout.shapes or [])}")
+    c = cn.compare_periods()
+    f4 = rc.fig_compare_two(c)
+    rec("图表", "两栏对比：两栏零线", len(f4.layout.shapes or []) == 2,
+        f"shapes={len(f4.layout.shapes or [])}")
+
+    # 分位尺：档位底色 5 + P25/P50/P75 三条 = 8
+    ser = H["电子"].dropna() if "电子" in H.columns else H.median(axis=1).dropna()
+    f5 = rc.fig_csi_position(ser, "电子")
+    rec("图表", "分位尺：五档底色 + 三条分位线",
+        len(f5.layout.shapes or []) >= 8, f"shapes={len(f5.layout.shapes or [])}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--fast", action="store_true", help="跳过控件交互")
@@ -299,6 +346,7 @@ def main() -> int:
     stage_static()
     stage_selfcheck()
     stage_data()
+    stage_charts()
     stage_pages(args.fast)
     stage_consistency()
 

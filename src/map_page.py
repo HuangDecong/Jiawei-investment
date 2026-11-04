@@ -247,7 +247,7 @@ def render(h) -> None:
     # =====================================================================
     H = cn.csi_history()
     _nq = len(H) if not H.empty else len(cn.quarters())
-    h(f'<div class="sec">① 拥挤度怎么变：{_nq} 期折线，以及它什么时候穿过阈值</div>')
+    h(f'<div class="sec">① 拥挤度怎么变：{_nq} 期折线 + 它自己的历史分位</div>')
     _gap = len(cn.quarters()) - _nq if not H.empty else 0
     if _gap > 0:
         h(f'<div class="tiny" style="margin:-2px 0 5px">'
@@ -269,8 +269,15 @@ def render(h) -> None:
                                 help="灰色带是 31 个行业每一期的 25–75% 分位区间，"
                                      "表示「市场整体的分布宽度」；不画 31 条线是因为会糊成一片")
         _sel_t = None if _focus == _opts[0] else _focus
-        st.plotly_chart(rc.fig_csi_trend(H, _sel_t, _band), width="stretch",
-                        config={"displayModeBar": False})
+        # 排名与广度只在「可评级」的行业里比：小样本（十几只基金）和
+        # 数据不足（三项分位不齐）的分值噪声大，混进来会让第 3 名变第 5 名。
+        _lastrow = H.iloc[-1]
+        _ok = [i for i in H.columns if np.isfinite(_lastrow.get(i, np.nan))]
+        if not csi.empty and "等级" in csi.columns:
+            _ok = [i for i in _ok if i in csi.index
+                   and str(csi.loc[i, "等级"]) not in ("小样本", "数据不足")]
+        st.plotly_chart(rc.fig_csi_trend(H, _sel_t, _band, rank_universe=_ok),
+                        width="stretch", config={"displayModeBar": False})
 
         # ---- 现在处于什么分位：时间维度（自身历史）× 截面维度（全行业） ----
         _med = H.median(axis=1).dropna()
@@ -280,9 +287,8 @@ def render(h) -> None:
         _ns = len(_series)
         _own = float((_series <= _cur).mean() * 100)
         _kth = int((_series <= _cur).sum())
-        _lastrow = H.iloc[-1]
-        _rank = int((_lastrow > _cur).sum()) + 1
-        _nvalid = int(_lastrow.notna().sum())
+        _rank = int((_lastrow[_ok] > _cur).sum()) + 1
+        _nvalid = len(_ok)
         _chg4 = _cur - float(_series.iloc[-5]) if _ns >= 5 else np.nan
         _n80 = int((_series >= 80).sum())
         _imax = int(np.argmax(_series.values))
@@ -290,36 +296,48 @@ def render(h) -> None:
         _lv_now = ""
         if _sel_t and "等级" in csi.columns and _sel_t in csi.index:
             _lv_now = str(csi.loc[_sel_t, "等级"])
+        # 横截面的「广度」：当期有多少行业已经进入拥挤区（≥65）。
+        # 全市场视角下这比「中位排第几」有意义——中位天然在 16 名附近，不是信息。
+        _crowd = _lastrow[_ok][_lastrow[_ok] >= 65]
+        _crowd_txt = f"{len(_crowd)}/{_nvalid}"
 
         st.plotly_chart(rc.fig_csi_position(_series, _name), width="stretch",
                         config={"displayModeBar": False})
-        h(ui.stat_strip([
-            ("当前 CSI", f"{_cur:.0f}", f"{_name}" + (f"｜{_lv_now}" if _lv_now else "")),
-            ("自身历史分位", f"{_own:.0f}", f"{_ns} 期中第 {_kth} 高"),
-            ("全行业排名", f"第 {_rank}/{_nvalid}", "同一时点横截面"),
-            ("近 4 期变化", (f"{_chg4:+.0f}" if np.isfinite(_chg4) else "—"), "与前 4 个季度比"),
-            ("历史触及 ≥80", f"{_n80} 期", f"占 {_n80 / _ns * 100:.0f}%"),
-        ]))
+        _kpis = [("当前 CSI", f"{_cur:.0f}",
+                  f"{_name}" + (f"｜{_lv_now}" if _lv_now else "")),
+                 ("自身历史分位", f"{_own:.0f}", f"{_ns} 期中第 {_kth} 低")]
+        if _sel_t:
+            _kpis.append(("全行业排名", f"第 {_rank}/{_nvalid}", "同一时点横截面"))
+        else:
+            _kpis.append(("≥65 分行业", _crowd_txt,
+                          f"占 {len(_crowd) / max(_nvalid, 1) * 100:.0f}%，拥挤广度"))
+        _kpis += [("近 4 期变化", (f"{_chg4:+.0f}" if np.isfinite(_chg4) else "—"),
+                   "与前 4 个季度比"),
+                  ("历史触及 ≥80", f"{_n80} 期", f"占 {_n80 / _ns * 100:.0f}%")]
+        h(ui.stat_strip(_kpis))
 
         if _sel_t:
             _d1 = float(_series.iloc[-1] - _series.iloc[-2]) if _ns > 1 else np.nan
             _n_up = sum(1 for i in range(1, _ns) if _series.iloc[i - 1] < 80 <= _series.iloc[i])
             _n_dn = sum(1 for i in range(1, _ns) if _series.iloc[i - 1] >= 80 > _series.iloc[i])
-            _txt2 = (f'<b>{_sel_t}</b> 最新 <b>{_cur:.0f}</b> 分（{_lv_now}），'
-                     f'上期 {_series.iloc[-2]:.0f}（{_d1:+.0f}）。'
-                     f'两个分位同时给出来：<b>自身历史第 {_own:.0f} 分位</b>'
-                     f'（{_ns} 期里第 {_kth} 高）、<b>全行业第 {_rank}/{_nvalid}</b>。'
+            _txt2 = (f'上半图是<b>{_sel_t}</b> 的拥挤度水位：最新 <b>{_cur:.0f}</b> 分（{_lv_now}），'
+                     f'上期 {_series.iloc[-2]:.0f}（{_d1:+.0f}）。两个分位同时给出来：'
+                     f'<b>自身历史第 {_own:.0f} 分位</b>（由低到高第 {_kth} 位，共 {_ns} 期）、'
+                     f'<b>全行业第 {_rank}/{_nvalid}</b>。'
                      f'历史最高 {_series.iloc[_imax]:.0f}（{_series.index[_imax]}）、'
                      f'最低 {_series.iloc[_imin]:.0f}（{_series.index[_imin]}）；'
                      f'{_ns} 期里上穿 80 共 <b>{_n_up}</b> 次、下穿 <b>{_n_dn}</b> 次'
                      f'（红三角＝上穿、绿三角＝下穿）。')
         else:
             _txt2 = (f'灰粗线是<b>全市场中位</b>：最新 <b>{_cur:.0f}</b> 分，'
-                     f'在 {_ns} 期里排第 <b>{_own:.0f}</b> 分位；'
+                     f'处在自身 {_ns} 期历史的第 <b>{_own:.0f}</b> 分位；'
                      f'历史最高 {_series.iloc[_imax]:.0f}（{_series.index[_imax]}）、'
                      f'最低 {_series.iloc[_imin]:.0f}（{_series.index[_imin]}）。'
-                     f'它代表「31 个行业的拥挤度中位数」，是判断整体水位的背景线；'
-                     f'单看它看不出谁在变挤，要在上面选一个行业。')
+                     f'下半图是<b>拥挤广度</b>：当期 {_nvalid} 个行业里有 '
+                     f'<b>{len(_crowd)} 个</b>已经 ≥65 分'
+                     f'（{len(_crowd) / max(_nvalid, 1) * 100:.0f}%）。'
+                     f'中位只说明「整体水位」，广度才说明「是几个行业在挤，还是全都挤」；'
+                     f'单看中位看不出谁在变挤，要在上面选一个行业。')
 
         # 投资含义随所选行业变化：同一个分数，上行与下行对应完全相反的动作
         _inv3 = (f' 你选的 <b>{_sel_t}</b> 最新 {_cur:.0f} 分、'
@@ -331,10 +349,11 @@ def render(h) -> None:
                     "<b>基本走平</b>——按水位办事即可，不需要因为这张图调仓。")
                  ) if _sel_t and _ns > 1 else ''
         _read(h, _txt2,
-              f'<b>折线回答「方向」，两条分位回答「位置」。</b>「自身历史分位」是时间维度：'
-              f'这个行业现在的拥挤度，在它自己过去 {_ns} 个季度里排第几——'
-              f'回答「对它自己来说，现在是不是异常」。「全行业排名」是截面维度：'
-              f'同一时点 31 个行业里排第几——回答「在同行里，它是不是最挤的那个」。'
+              f'<b>上半图回答「方向」，下半图回答「位置」。</b>'
+              f'「自身历史分位」是时间维度：这个行业现在的拥挤度，在它自己过去 {_ns} 个季度里排第几——'
+              f'回答「对它自己来说，现在是不是异常」。它用<b>扩张窗口</b>逐期计算'
+              f'（第 i 期只跟第 i 期及以前比），不用未来数据，所以曲线是可以「当时就看见」的。'
+              f'「全行业排名」是截面维度：同一时点 31 个行业里排第几——回答「在同行里，它是不是最挤的那个」。'
               f'两者会背离：小行业可能「自身 95 分位、全行业第 20 名」（配置只有 1%，挤也挤不到哪去），'
               f'大行业也可能「自身 60 分位、全行业第 3 名」（它一直很重，但没比过去更重）。'
               f'背离时以<b>全行业排名</b>为准——组合的风险来自「大家都挤在一起」，不是「它自己创了新高」。',
