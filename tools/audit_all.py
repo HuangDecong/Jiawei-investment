@@ -340,6 +340,17 @@ def stage_charts() -> None:
     except Exception as e:
         rec("图表", "仓位图：分布栏中位虚线", False, f"{type(e).__name__}: {e}")
 
+    # 排名不能超过分母：曾经出现过「第 27/26」（选中行业被排除在排名池外）
+    import re as _re
+    bad = []
+    for _ind in H.columns:
+        _t = rc.fig_csi_trend(H, _ind, False).layout.title.text or ""
+        _m = _re.search(r"全行业第 (\d+)/(\d+)", _t)
+        if _m and int(_m.group(1)) > int(_m.group(2)):
+            bad.append(f"{_ind} {_m.group(0)}")
+    rec("图表", "拥挤度排名不超过分母（逐个行业）", not bad,
+        "；".join(bad[:3]) if bad else f"{len(H.columns)} 个行业全部合法")
+
     # 分位尺：档位底色 5 + P25/P50/P75 三条 = 8
     ser = H["电子"].dropna() if "电子" in H.columns else H.median(axis=1).dropna()
     f5 = rc.fig_csi_position(ser, "电子")

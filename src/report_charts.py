@@ -784,11 +784,14 @@ CSI_BANDS = [(80, 101, "rgba(198,40,40,0.16)", "≥80 极度拥挤"),
              (0, 25, "rgba(31,78,156,0.16)", "<25 冷门")]
 
 
-def _expanding_pct(s: pd.Series) -> pd.Series:
-    """扩张窗口的「自身历史分位」：第 i 期只跟自己及之前比，不用未来数据。
+def _expanding_pct(s: pd.Series, window: int | None = None) -> pd.Series:
+    """逐期的「自身历史分位」：第 i 期只跟第 i 期及之前比，不用未来数据。
 
     全样本排名（`(s <= 当期).mean()`）会让 2017 年的分位用上 2026 年的数据，
     在图上表现为「早期就已经知道自己处在历史高位」——那是前视偏差。
+
+    `window` 给了就只用最近 N 期（滚动窗口）：窗口越短，分位对近期变化越敏感，
+    但也越容易把「一次季度波动」读成「历史新高」。默认 None＝全部历史。
     """
     v = s.dropna().astype(float)
     out = pd.Series(np.nan, index=s.index, dtype=float)
@@ -797,14 +800,34 @@ def _expanding_pct(s: pd.Series) -> pd.Series:
     arr = v.values
     pct = np.empty(len(arr))
     for i in range(len(arr)):
-        pct[i] = float((arr[: i + 1] <= arr[i]).mean() * 100)
+        lo = 0 if not window else max(0, i - window + 1)
+        seg = arr[lo: i + 1]
+        pct[i] = float((seg <= arr[i]).mean() * 100)
     out.loc[v.index] = pct
     return out
 
 
+def pct_of(s: pd.Series, cur: float | None = None,
+           window: int | None = None) -> tuple[float, int, int]:
+    """当前值的分位、参与比较的期数、由低到高排第几。
+
+    三处（KPI / 分位尺 / 折线标题）必须用同一套算法，否则同一页会出现两个分位。
+    """
+    v = pd.Series(s).dropna().astype(float)
+    if v.empty:
+        return float("nan"), 0, 0
+    cur = float(v.iloc[-1]) if cur is None else float(cur)
+    if window:
+        v = v.tail(int(window))
+    k = int((v <= cur).sum())
+    return float(k / len(v) * 100), len(v), k
+
+
 def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
                   show_band: bool = True,
-                  rank_universe: list[str] | None = None) -> go.Figure:
+                  rank_universe: list[str] | None = None,
+                  window: int | None = None,
+                  thr: float = 80) -> go.Figure:
     """上：CSI 水位怎么走；下：这个水位在「自己的历史」里排第几。
 
     为什么必须画折线：CSI 是一个 0–100 的水位，单看当期数字无法判断
@@ -842,6 +865,17 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
                            font=dict(size=8, color="#5A6B7D"),
                            bgcolor="rgba(255,255,255,0.75)")
 
+    # 自定义阈值：只在偏离 80 时额外画一条，避免和「80 极度拥挤」那条重叠
+    if abs(thr - 80) > 0.1:
+        fig.add_shape(type="line", xref="x domain", x0=0, x1=1,
+                      yref="y", y0=thr, y1=thr,
+                      line=dict(color="#C62828", width=1.2, dash="dashdot"))
+        fig.add_annotation(x=1, xref="x domain", y=thr, yref="y",
+                           text=f"阈值 {thr:.0f}", showarrow=False,
+                           xanchor="right", yanchor="bottom",
+                           font=dict(size=8.5, color="#C62828"),
+                           bgcolor="rgba(255,255,255,0.8)")
+
     # 全市场中位：代表「整体水位」，是所有行业的共同背景
     med = d.median(axis=1)
     fig.add_trace(go.Scatter(
@@ -876,15 +910,18 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         _v = s.dropna()
         if len(_v):
             _cur = float(_v.iloc[-1])
-            _own = float((_v <= _cur).mean() * 100)
-            # 排名口径与页面 KPI 一致：只跟「可评级」的行业比，
-            # 否则小样本行业会把名次整体推后一位。
+            _own, _nw, _k = pct_of(s, _cur, window)
+            # 排名口径与页面 KPI 一致：跟「当期有值」的全部行业比。
+            # 不能排除选中行业自己——它若不在池子里，就会出现「第 27/26」。
             _pool = [i for i in (rank_universe or list(d.columns))
                      if i in d.columns and np.isfinite(d.iloc[-1].get(i, np.nan))]
+            if sel not in _pool and np.isfinite(d.iloc[-1].get(sel, np.nan)):
+                _pool = _pool + [sel]
             _lastrow = d.iloc[-1][_pool]
             _rank = int((_lastrow > _cur).sum()) + 1
             _nvalid = len(_pool)
-            _title_txt = (f"{sel}：当前 {_cur:.0f} 分｜自身历史第 {_own:.0f} 分位"
+            _win_txt = f"近 {_nw} 期" if window else "全历史"
+            _title_txt = (f"{sel}：当前 {_cur:.0f} 分｜{_win_txt}第 {_own:.0f} 分位"
                           f"｜全行业第 {_rank}/{_nvalid}")
         # 穿过 80 的时点：上穿红三角、下穿绿三角，一眼看出「什么时候变挤/变松」
         up, dn = [], []
@@ -892,30 +929,30 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
             a, b = s.iloc[i - 1], s.iloc[i]
             if not (np.isfinite(a) and np.isfinite(b)):
                 continue
-            if a < 80 <= b:
+            if a < thr <= b:
                 up.append((s.index[i], b))
-            elif a >= 80 > b:
+            elif a >= thr > b:
                 dn.append((s.index[i], b))
         if up:
             fig.add_trace(go.Scatter(
                 x=[x for x, _ in up], y=[y for _, y in up], mode="markers",
-                name="上穿 80", marker=dict(symbol="triangle-up", size=10,
+                name=f"上穿 {thr:.0f}", marker=dict(symbol="triangle-up", size=10,
                                             color=C.COLOR["up"],
                                             line=dict(width=1, color="#FFFFFF")),
-                hovertemplate="%{x}<br>上穿 80：%{y:.1f}<extra></extra>"),
+                hovertemplate=f"%{{x}}<br>上穿 {thr:.0f}：%{{y:.1f}}<extra></extra>"),
                 row=1, col=1)
         if dn:
             fig.add_trace(go.Scatter(
                 x=[x for x, _ in dn], y=[y for _, y in dn], mode="markers",
-                name="下穿 80", marker=dict(symbol="triangle-down", size=10,
+                name=f"下穿 {thr:.0f}", marker=dict(symbol="triangle-down", size=10,
                                             color=C.COLOR["down"],
                                             line=dict(width=1, color="#FFFFFF")),
-                hovertemplate="%{x}<br>下穿 80：%{y:.1f}<extra></extra>"),
+                hovertemplate=f"%{{x}}<br>下穿 {thr:.0f}：%{{y:.1f}}<extra></extra>"),
                 row=1, col=1)
 
     # ---- 下图：位置怎么变 ----
     if sel and sel in d.columns:
-        pct = _expanding_pct(d[sel])
+        pct = _expanding_pct(d[sel], window)
         fig.add_shape(type="rect", xref="x2 domain", x0=0, x1=1,
                       yref="y2", y0=80, y1=100,
                       fillcolor="rgba(198,40,40,0.10)", line_width=0,
@@ -929,7 +966,8 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         fig.add_shape(type="line", xref="x2 domain", x0=0, x1=1,
                       yref="y2", y0=80, y1=80,
                       line=dict(color="#C62828", width=1, dash="dot"))
-        fig.update_yaxes(title_text="自身历史分位", range=[0, 104],
+        fig.update_yaxes(title_text=("近 %d 期分位" % window) if window
+                         else "自身历史分位", range=[0, 104],
                          tickfont=dict(size=9.5), row=2, col=1)
     else:
         cnt = d.notna().sum(axis=1)
@@ -1036,7 +1074,8 @@ def fig_csi_heatmap(H: pd.DataFrame, small: list[str] | None = None,
     return fig
 
 
-def fig_csi_position(s: pd.Series, name: str) -> go.Figure:
+def fig_csi_position(s: pd.Series, name: str, window: int | None = None,
+                     thr: float = 80) -> go.Figure:
     """把「当前值在自身历史中的位置」画成一把尺子（rug + 分位线）。
 
     为什么单画一张：折线能看「怎么走到今天」，但回答不了「现在这个数
@@ -1044,12 +1083,13 @@ def fig_csi_position(s: pd.Series, name: str) -> go.Figure:
     每个历史期画一根竖线（rug），P25/P50/P75 三条参考线，当前值用红色菱形。
     一眼能看出：当前是处在历史的高端、中段，还是刚从低位起来。
     """
-    v = pd.Series(s).dropna().astype(float)
-    if v.empty:
+    v_all = pd.Series(s).dropna().astype(float)
+    if v_all.empty:
         return _base(go.Figure(), "数据未就绪")
-    cur = float(v.iloc[-1])
+    cur = float(v_all.iloc[-1])
+    v = v_all.tail(int(window)) if window else v_all
     n = len(v)
-    pct = float((v <= cur).mean() * 100)
+    pct, _, _k = pct_of(v_all, cur, window)
     p25, p50, p75 = (float(np.percentile(v, k)) for k in (25, 50, 75))
 
     fig = go.Figure()
@@ -1077,11 +1117,16 @@ def fig_csi_position(s: pd.Series, name: str) -> go.Figure:
         hovertemplate=(f"当前 {cur:.0f}<br>自身历史分位 {pct:.0f}"
                        f"（由低到高第 {int((v <= cur).sum())} 位，共 {n} 期）"
                        f"<extra></extra>")))
+    # 自定义阈值线：一眼看出「离那条线还有多远」
+    fig.add_vline(x=thr, line=dict(color="#C62828", width=1.2, dash="dash"),
+                  annotation_text=f"{thr:.0f}", annotation_position="top",
+                  annotation_font=dict(size=9, color="#C62828"))
     fig.update_yaxes(visible=False, range=[-0.62, 0.62])
     fig.update_xaxes(range=[-2, 102], title_text="CSI（0＝最冷，100＝最挤）",
                      tickfont=dict(size=9.5), dtick=10)
-    fig = _base(fig, f"{name}：当前 {cur:.0f} 分，处在自身 {n} 期历史的"
-                     f"第 {pct:.0f} 分位（P25 {p25:.0f}｜P50 {p50:.0f}｜P75 {p75:.0f}）",
+    _wlab = f"近 {n} 期" if window else f"自身 {n} 期历史"
+    fig = _base(fig, f"{name}：当前 {cur:.0f} 分，处在{_wlab}的第 {pct:.0f} 分位"
+                     f"（P25 {p25:.0f}｜P50 {p50:.0f}｜P75 {p75:.0f}）",
                 148, legend=False)
     fig.update_layout(margin=dict(l=44, r=14, t=46, b=34))
     return fig
