@@ -1084,15 +1084,16 @@ def fig_fund_crowding_rank(rk: pd.DataFrame, med: float, thr: float = 80,
     if rk.empty:
         return _base(go.Figure(), "数据未就绪")
     d = rk.head(top).iloc[::-1]
-    names = [str(x)[:14] for x in d["名称"].fillna(pd.Series(d.index, index=d.index))]
+    full = [str(x) for x in d["名称"].fillna(pd.Series(d.index, index=d.index))]
+    names = [x[:14] for x in full]        # 轴标签截断，hover 里给全名
     cols = ["#C62828" if v >= 80 else "#E8710A" if v >= 50 else "#8A97A5"
             for v in d["高拥挤仓位"]]
     fig = go.Figure(go.Bar(
         y=names, x=list(d["高拥挤仓位"]), orientation="h", marker_color=cols,
         text=[f'{v:.0f}%（CSI {c:.0f}）' for v, c in zip(d["高拥挤仓位"], d["加权CSI"])],
         textposition="outside", textfont=dict(size=9.5),
-        customdata=[[c, s] for c, s in zip(d["加权CSI"], d["拥挤行业"])],
-        hovertemplate=("<b>%{y}</b><br>高拥挤仓位 %{x:.1f}%<br>"
+        customdata=[[c, s, n] for c, s, n in zip(d["加权CSI"], d["拥挤行业"], full)],
+        hovertemplate=("<b>%{customdata[2]}</b><br>高拥挤仓位 %{x:.1f}%<br>"
                        "加权 CSI %{customdata[0]:.0f}<br>"
                        "押在：%{customdata[1]}<extra></extra>")))
     # 中位为 0 时不画线：线会贴在 y 轴上，看起来像「边框加粗」。
