@@ -832,7 +832,8 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
                   rank_universe: list[str] | None = None,
                   window: int | None = None,
                   thr: float = 80,
-                  show_cross: bool = True) -> go.Figure:
+                  show_cross: bool = True,
+                  ref_levels: tuple[int, ...] = (50, 90)) -> go.Figure:
     """上：CSI 水位怎么走；下：这个水位在「自己的历史」里排第几。
 
     为什么必须画折线：CSI 是一个 0–100 的水位，单看当期数字无法判断
@@ -988,6 +989,17 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         fig.add_shape(type="line", xref="x2 domain", x0=0, x1=1,
                       yref="y2", y0=80, y1=80,
                       line=dict(color="#C62828", width=1, dash="dot"))
+        # 参考分位线：P90 以上＝「历史上只有 10% 的季度比现在更挤」
+        for _lv in ref_levels:
+            _lv = float(_lv)
+            fig.add_shape(type="line", xref="x2 domain", x0=0, x1=1,
+                          yref="y2", y0=_lv, y1=_lv,
+                          line=dict(color=("#C62828" if _lv >= 80 else "#AEB8C4"),
+                                    width=1, dash="dot"))
+            fig.add_annotation(x=1, xref="x2 domain", y=_lv, yref="y2",
+                               text=f"P{_lv:.0f}", showarrow=False,
+                               xanchor="right", yanchor="bottom",
+                               font=dict(size=8.5, color="#7A5A2A"))
         if show_cross:
             _cr = d.rank(axis=1, pct=True) * 100
             fig.add_trace(go.Scatter(
@@ -1107,50 +1119,52 @@ def fig_csi_heatmap(H: pd.DataFrame, small: list[str] | None = None,
 
 def fig_fund_crowding_rank(rk: pd.DataFrame, med: float, thr: float = 80,
                            top: int = 12) -> go.Figure:
-    """横向条形：哪几只基金把最多的仓位押在拥挤行业上（前十大口径）。
+    """横向条形：持仓加权 CSI 最高的基金，颜色＝多少仓位压在拥挤行业上。
 
-    读法：条长＝高拥挤仓位占比，颜色＝拥挤程度（≥80 红、≥50 橙、其余灰），
-    条端直接写「xx%（CSI yy）」；虚线是全市场中位，用来判断「它是不是异常」。
+    为什么按「加权 CSI」排而不是按「高拥挤仓位」排：阈值一放低（比如 75），
+    大量基金的高拥挤仓位都是 100%，条形一样长、标签一堆「100%」，
+    既看不出差别，也读不出谁更危险。加权 CSI 是连续的，不会并列。
+
+    `med` 是**加权 CSI 的全市场中位**，虚线用来判断「它是不是比同行更堵」。
     """
     if rk.empty:
         return _base(go.Figure(), "数据未就绪")
-    d = rk.head(top).iloc[::-1]
+    d = rk.sort_values("加权CSI", ascending=False).head(top).iloc[::-1]
     full = [str(x) for x in d["名称"].fillna(pd.Series(d.index, index=d.index))]
     names = [x[:14] for x in full]        # 轴标签截断，hover 里给全名
-    cols = ["#C62828" if v >= 80 else "#E8710A" if v >= 50 else "#8A97A5"
+    cols = ["#C62828" if v >= 75 else "#E8710A" if v >= 40 else "#8A97A5"
             for v in d["高拥挤仓位"]]
     fig = go.Figure(go.Bar(
-        y=names, x=list(d["高拥挤仓位"]), orientation="h", marker_color=cols,
-        text=[f'{v:.0f}%（CSI {c:.0f}）' for v, c in zip(d["高拥挤仓位"], d["加权CSI"])],
+        y=names, x=list(d["加权CSI"]), orientation="h", marker_color=cols,
+        text=[f"高拥挤 {v:.0f}%" for v in d["高拥挤仓位"]],
         textposition="outside", textfont=dict(size=9.5),
-        customdata=[[c, s, n] for c, s, n in zip(d["加权CSI"], d["拥挤行业"], full)],
-        hovertemplate=("<b>%{customdata[2]}</b><br>高拥挤仓位 %{x:.1f}%<br>"
-                       "加权 CSI %{customdata[0]:.0f}<br>"
+        customdata=[[v, s, n] for v, s, n in zip(d["高拥挤仓位"], d["拥挤行业"], full)],
+        hovertemplate=("<b>%{customdata[2]}</b><br>加权 CSI %{x:.1f}<br>"
+                       "高拥挤仓位 %{customdata[0]:.1f}%<br>"
                        "押在：%{customdata[1]}<extra></extra>")))
-    # 中位为 0 时不画线：线会贴在 y 轴上，看起来像「边框加粗」。
-    # 这时「大多数基金一股没押」本身就是结论，写在图下方的说明里更清楚。
-    if med >= 1:
+    if np.isfinite(med):
         fig.add_shape(type="line", xref="x", x0=med, x1=med, yref="y domain",
                       y0=0, y1=1, line=dict(color="#7C8B9C", width=1, dash="dot"))
-        fig.add_annotation(x=med, y=1, yref="y domain", text=f"全市场中位 {med:.0f}%",
+        fig.add_annotation(x=med, y=1, yref="y domain", text=f"全市场中位 {med:.0f}",
                            showarrow=False, yanchor="bottom", xanchor="center",
                            font=dict(size=9, color="#5A6B7D"))
-    fig.update_xaxes(title_text=f"高拥挤仓位（%，前十大口径，阈值 CSI ≥ {thr:.0f}）",
-                     range=[0, 122])
+    fig.update_xaxes(title_text=(f"持仓加权 CSI（0–100）｜条端＝落在 CSI ≥ {thr:.0f} "
+                                 f"行业的仓位"),
+                     range=[0, 118])
     fig.update_yaxes(tickfont=dict(size=10))
     fig = _base(fig, "", 430)
-    fig.update_layout(margin=dict(l=8, r=90, t=30, b=44))
+    fig.update_layout(margin=dict(l=8, r=96, t=30, b=44))
     return fig
 
 
 def fig_csi_position(s: pd.Series, name: str, window: int | None = None,
                      thr: float = 80) -> go.Figure:
-    """把「当前值在自身历史中的位置」画成一把尺子（rug + 分位线）。
+    """当前值在自身历史中的位置——用**箱线图**，不用 40 根竖线。
 
-    为什么单画一张：折线能看「怎么走到今天」，但回答不了「现在这个数
-    在它自己历史上算不算高」——那需要把 40 期历史值铺在同一条 0–100 的轴上。
-    每个历史期画一根竖线（rug），P25/P50/P75 三条参考线，当前值用红色菱形。
-    一眼能看出：当前是处在历史的高端、中段，还是刚从低位起来。
+    为什么改：原来每个历史期画一根竖线（rug），40 根挤在 70–90 的窄区间里，
+    看上去是一团灰条，P25/P50/P75 的标注也压在条上，反而看不清。
+    箱线图把 40 个数压成 5 个数字（P10/P25/P50/P75/P90），
+    读者只需判断「当前值在箱体的左边、里面还是右边」。
     """
     v_all = pd.Series(s).dropna().astype(float)
     if v_all.empty:
@@ -1159,46 +1173,64 @@ def fig_csi_position(s: pd.Series, name: str, window: int | None = None,
     v = v_all.tail(int(window)) if window else v_all
     n = len(v)
     pct, _, _k = pct_of(v_all, cur, window)
-    p25, p50, p75 = (float(np.percentile(v, k)) for k in (25, 50, 75))
+    p10, p25, p50, p75, p90 = (float(np.percentile(v, k))
+                               for k in (10, 25, 50, 75, 90))
+    vmin, vmax = float(v.min()), float(v.max())
 
     fig = go.Figure()
     # 五档底色：把「分数」与「等级」对上，读者不用记 80/65/45/25
     for lo, hi, color, _lab in CSI_BANDS:
         fig.add_vrect(x0=lo, x1=hi, y0=-0.5, y1=0.5, fillcolor=color,
                       line_width=0, layer="below")
-    # 历史各期：一根竖线
+    # 须：P10–P90；两端加短竖线当帽
+    fig.add_shape(type="line", xref="x", x0=p10, x1=p90, yref="y", y0=0, y1=0,
+                  line=dict(color="#7C8B9C", width=1.3))
+    for _p in (p10, p90):
+        fig.add_shape(type="line", xref="x", x0=_p, x1=_p, yref="y",
+                      y0=-0.09, y1=0.09, line=dict(color="#7C8B9C", width=1.3))
+    # 箱：P25–P75
+    fig.add_shape(type="rect", xref="x", x0=p25, x1=p75, yref="y",
+                  y0=-0.17, y1=0.17, line=dict(color="#1F6FEB", width=1.2),
+                  fillcolor="rgba(31,111,235,0.12)")
+    # 中位：P50
+    fig.add_shape(type="line", xref="x", x0=p50, x1=p50, yref="y",
+                  y0=-0.17, y1=0.17, line=dict(color="#1F6FEB", width=2.2))
+    # 当前值：菱形放在箱体上方，用虚线连到轴上，位置一眼可读
+    fig.add_shape(type="line", xref="x", x0=cur, x1=cur, yref="y",
+                  y0=-0.30, y1=0.30, line=dict(color=C.COLOR["up"], width=1,
+                                              dash="dot"))
     fig.add_trace(go.Scatter(
-        x=v.values, y=np.zeros(n), mode="markers", name="历史各期",
-        marker=dict(symbol="line-ns-open", size=19, color="#7C8B9C",
-                    line=dict(width=1.1)),
-        hovertemplate="历史 %{x:.1f}<extra></extra>"))
-    # 分位参考线
-    for x, lab in ((p25, "P25"), (p50, "P50"), (p75, "P75")):
-        fig.add_vline(x=x, line=dict(color="#AEB8C4", width=1, dash="dot"),
-                      annotation_text=f"{lab} {x:.0f}", annotation_position="top",
-                      annotation_font=dict(size=9, color="#5A6B7D"))
-    # 当前值：只画菱形，不写字——数值与分位已经在标题里，
-    # 图内的「当前 45」会压在 P50 虚线和 rug 上，反而看不清。
-    fig.add_trace(go.Scatter(
-        x=[cur], y=[0], mode="markers", name="当前",
-        marker=dict(symbol="diamond", size=14, color=C.COLOR["up"],
-                    line=dict(width=1.4, color="#FFFFFF")),
-        hovertemplate=(f"当前 {cur:.0f}<br>自身历史分位 {pct:.0f}"
-                       f"（由低到高第 {int((v <= cur).sum())} 位，共 {n} 期）"
-                       f"<extra></extra>")))
-    # 自定义阈值线：一眼看出「离那条线还有多远」
-    fig.add_vline(x=thr, line=dict(color="#C62828", width=1.2, dash="dash"),
-                  annotation_text=f"{thr:.0f}", annotation_position="top",
-                  annotation_font=dict(size=9, color="#C62828"))
+        x=[cur], y=[0.36], mode="markers+text", name="当前",
+        text=[f"当前 {cur:.0f}"], textposition="top center",
+        textfont=dict(size=10, color=C.COLOR["up"]),
+        marker=dict(symbol="diamond", size=12, color=C.COLOR["up"],
+                    line=dict(width=1.2, color="#FFFFFF")),
+        customdata=[[pct, _k, n, p10, p50, p90]],
+        hovertemplate=(f"当前 {cur:.0f}<br>自身分位 %{{customdata[0]:.0f}}"
+                       "（由低到高第 %{customdata[1]} 位 / %{customdata[2]} 期）"
+                       "<br>P10 %{customdata[3]:.0f}｜P50 %{customdata[4]:.0f}"
+                       "｜P90 %{customdata[5]:.0f}<extra></extra>")))
+    # 阈值线
+    fig.add_shape(type="line", xref="x", x0=thr, x1=thr, yref="y",
+                  y0=-0.44, y1=0.44,
+                  line=dict(color="#C62828", width=1.1, dash="dash"))
+    fig.add_annotation(x=thr, y=0.46, yref="y", text=f"阈值 {thr:.0f}",
+                       showarrow=False, yanchor="bottom",
+                       font=dict(size=8.5, color="#C62828"))
+    # 三个关键分位的刻度值放在轴下方，不再压在图里
+    for _x, _lab in ((p10, "P10"), (p50, "P50"), (p90, "P90")):
+        fig.add_annotation(x=_x, y=-0.38, yref="y", text=f"{_lab} {_x:.0f}",
+                           showarrow=False, yanchor="top",
+                           font=dict(size=9, color="#5A6B7D"))
     fig.update_yaxes(visible=False, range=[-0.62, 0.62])
     fig.update_xaxes(range=[-2, 102], title_text="CSI（0＝最冷，100＝最挤）",
                      tickfont=dict(size=9.5), dtick=10)
     _wlab = f"近 {n} 期" if window else f"自身 {n} 期历史"
     _ptxt = f"第 {pct:.0f} 分位" if np.isfinite(pct) else "分位不可用（样本不足 4 期）"
     fig = _base(fig, f"{name}：当前 {cur:.0f} 分，处在{_wlab}的{_ptxt}"
-                     f"（P25 {p25:.0f}｜P50 {p50:.0f}｜P75 {p75:.0f}）",
-                148, legend=False)
-    fig.update_layout(margin=dict(l=44, r=14, t=46, b=34))
+                     f"（箱体＝中间 50%，须＝P10–P90，范围 {vmin:.0f}–{vmax:.0f}）",
+                150, legend=False)
+    fig.update_layout(margin=dict(l=44, r=14, t=48, b=34))
     return fig
 
 

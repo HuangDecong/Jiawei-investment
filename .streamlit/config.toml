@@ -1,0 +1,13 @@
+# 交互体验相关配置
+[runner]
+# 新交互到来时立即打断旧的一次运行，而不是排队等它跑完。
+# 快速连点下拉/滑块时，排队会让页面长时间空白，看起来像「白屏」。
+fastReruns = true
+
+[client]
+# 隐藏右上角工具栏（Deploy / Rerun 等），减少误触
+toolbarMode = "minimal"
+
+[server]
+# 关闭每次保存自动重跑（线上不需要，本地会打断测试）
+runOnSave = false
