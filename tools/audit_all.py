@@ -157,9 +157,17 @@ def stage_data() -> None:
         rec("数据", "拥挤暴露在 0–100（抽样一只基金）", False,
             f"{type(e).__name__}: {e}")
 
-    # 基金层面的拥挤暴露榜：两个口径都要落在 0–100
-    try:
+    # 基金层面的拥挤暴露榜：两个口径都要落在 0–100。
+    # 这张榜要现场查持仓表，降级（无库）模式拿不到数据——跳过而不是判失败，
+    # 否则「线上只带快照」时审计会天天报一条假失败。
+    if not cn.available():
+        rec("数据", "基金拥挤暴露榜在 0–100", True, "降级模式跳过（无持仓库）")
+        _rk = None
+    else:
         _rk = cn.fund_crowding_rank(top=5000)
+    try:
+        if _rk is None:
+            raise StopIteration
         _ok = (not _rk.empty
                and float(_rk["高拥挤仓位"].min()) >= -0.01
                and float(_rk["高拥挤仓位"].max()) <= 100.01
@@ -168,6 +176,8 @@ def stage_data() -> None:
         rec("数据", "基金拥挤暴露榜在 0–100", _ok,
             f"{len(_rk):,} 只，榜首 {float(_rk['高拥挤仓位'].max()):.0f}%"
             if not _rk.empty else "空表")
+    except StopIteration:
+        pass
     except Exception as e:
         rec("数据", "基金拥挤暴露榜在 0–100", False, f"{type(e).__name__}: {e}")
 

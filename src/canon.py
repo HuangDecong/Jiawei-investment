@@ -1670,26 +1670,35 @@ def fund_crowding_rank(q: str | None = None, thr: float = 80.0,
     口径与 `crowding_exposure` 一致：分母是该基金前十大中**有行业映射**的
     权重合计（港股/未映射不计入分母，避免把港股仓位错算成「不拥挤」）。
     """
-    if not available():
-        return pd.DataFrame()
     q = q or latest()
-    sql = """
-        SELECT code, industry, SUM(weight_pct) AS w
-        FROM (
-            SELECT code, industry, weight_pct,
-                   ROW_NUMBER() OVER (PARTITION BY code
-                                      ORDER BY weight_pct DESC, stock_code) rn
-            FROM fund_holdings
-            WHERE quarter = ? AND industry IS NOT NULL
-        )
-        WHERE rn <= 10
-        GROUP BY code, industry
-    """
-    try:
-        with _con() as con:
-            d = pd.read_sql(sql, con, params=(q,), dtype={"code": str})
-    except Exception:
-        return pd.DataFrame()
+    if available():
+        # 必须**先在全部持仓（含港股）里取前 10 只**，再把 A 股行业汇总：
+        # 若先剔除无行业映射的港股再排名，第 11、12 只 A 股会被顶进来，
+        # 前十大合计凭空变大（007306 曾因此从 27.8 变成 33.5），与快照不一致。
+        sql = """
+            SELECT code, industry, SUM(weight_pct) AS w
+            FROM (
+                SELECT code, industry, weight_pct,
+                       ROW_NUMBER() OVER (PARTITION BY code
+                                          ORDER BY weight_pct DESC, stock_code) rn
+                FROM fund_holdings
+                WHERE quarter = ?
+            )
+            WHERE rn <= 10 AND industry IS NOT NULL
+            GROUP BY code, industry
+        """
+        try:
+            with _con() as con:
+                d = pd.read_sql(sql, con, params=(q,), dtype={"code": str})
+        except Exception:
+            return pd.DataFrame()
+    else:
+        # 无库（线上只带快照）：canon_top10.csv.gz 已经是「基金×期×行业」的前十大
+        # 权重合计，直接按季度切片即可，不必再算 ROW_NUMBER。
+        d0 = _fb("top10")
+        if d0.empty or q not in set(d0["quarter"].unique()):
+            return pd.DataFrame()
+        d = d0[d0["quarter"] == q][["code", "industry", "w"]].copy()
     if d.empty:
         return pd.DataFrame()
     csi = csi_history()
