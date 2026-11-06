@@ -71,3 +71,9 @@ data/db/*.db-shm
 # 净值缓存（体积小但可重抓，避免仓库膨胀）
 data/cache/fund_nav/
 data/cache/fund_name_em.csv
+
+# 视觉走查截图（本地生成，不入库）
+tools/shots/
+
+# 页面文本导出（本地核对用，不入库）
+output/pagetext/

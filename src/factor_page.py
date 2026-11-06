@@ -24,6 +24,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+import canon as cn
 import config as C
 import report_charts as rc
 import ui
@@ -192,10 +193,15 @@ def render(h, B=None, IND=None) -> None:
         f'{d["sample"]["q0"]}–{d["sample"]["q1"]} 上检验：'
         f'{len(_ok)} 个可用、{len(_aux)} 个仅辅助、{len(_rev)} 个反向显著、'
         f'{len(_no)} 个无效。',
-        f'<b>唯一接近显著的是「{_best["name"]}」，但方向是负的</b>'
-        f'（IC {_best["ic_mean"]:+.3f}、t {_best["t"]:+.2f}、p {_best["p"]:.3f}）：'
-        f'加仓越一致的行业，次季反而越弱。这不是模型坏了，'
-        f'而是<b>「共识形成」本身就意味着边际买家已经不多</b>——这是行为金融里的典型现象。',
+        # 方向必须跟着数据走：偶尔一次重算会把 IC 由负转正，
+        # 写死「方向是负的」就会与同一页的卡片、分层收益自相矛盾。
+        (f'<b>唯一接近显著的是「{_best["name"]}」，方向为'
+         + ("正" if _best["ic_mean"] >= 0 else "负") + '</b>'
+         f'（IC {_best["ic_mean"]:+.3f}、t {_best["t"]:+.2f}、p {_best["p"]:.3f}）：'
+         + (f'加仓越一致的行业，次季<b>略强</b>——这与「共识形成＝边际买家减少」的'
+            f'假设相反；但 t 未过 1.96、p={_best["p"]:.2f}，不能当买入信号。'
+            if _best["ic_mean"] >= 0 else
+            f'加仓越一致的行业，次季反而更弱——这是「共识形成」的典型现象。')),
         f'<b>所以这套系统的定位是「读季报」，不是「选行业」。</b>'
         f'因子在这里的作用有三个：描述机构在做什么（广度/主动净额）、'
         f'度量风险积累到什么程度（CSI/分位）、约束仓位（拥挤度惩罚）。'
@@ -304,6 +310,8 @@ def render(h, B=None, IND=None) -> None:
     # 为什么不用旧因子
     # =====================================================================
     with st.expander("附：为什么换掉早期那套因子（F1 / F2 / F11）", expanded=False):
+        # 期数不能写死：每过一个季度就会变，写死会在下一季变成错数。
+        _n_csi = len(cn.csi_history())
         h('<div class="cg-note" style="font-size:12.5px">'
           '早期用的是 <b>F1 超配比例</b>（基金配置 − 基准权重）、<b>F2 超配 Z</b>、'
           '<b>F3 超配分位</b>、<b>F11 综合拥挤度</b>（多分量加权）、<b>F15 拥挤背离</b>，'
@@ -315,7 +323,7 @@ def render(h, B=None, IND=None) -> None:
           '③ <b>含价格漂移</b>：旧超配比例没剥离涨跌，行业涨了没人买也会显示超配上升。<br>'
           '④ <b>依赖 Wind 授权</b>：接口会截断、换机器就跑不了；新因子只用东财公开披露。<br>'
           '<b>代价</b>：算不了「相对沪深300 的超配」（只能用同行平均作基准）；'
-          '期数口径也随之改变（旧：Wind 43 期；新：东财持仓，CSI 可算 36 期）；'
+          f'期数口径也随之改变（旧：Wind 43 期；新：东财持仓，CSI 当前可算 {_n_csi} 期）；'
           '没有换手率/成交额类「交易拥挤」因子——'
           '这是取舍，不是单向升级。</div>')
 

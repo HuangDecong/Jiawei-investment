@@ -115,7 +115,7 @@ def _chips(cs: pd.DataFrame, comp: pd.DataFrame) -> str:
         _tip = (f'全市场仅 {_num(r.get("持有基金数"))} 只基金持有，'
                 f'前十配置 {_num(r.get("配置_前十", r.get("配置")), 2)}%；'
                 f'按三分位本应判为「{r.get("原等级", "—")}」，'
-                f'但样本不足，不评级' if _is_small else f'CSI {r["CSI"]:.0f}（{r["等级"]}）')
+                f'但样本不足，不评级' if _is_small else f'CSI {rc.csi_text(r["CSI"])}（{r["等级"]}）')
         _lvl = "小样本·不评级" if _is_small else r["等级"]
         # 小样本整段排在最后，中间插一条分隔说明：
         # 否则读者会疑惑「为什么 83 分的灰色排在一堆 20 分后面」。
@@ -131,7 +131,7 @@ def _chips(cs: pd.DataFrame, comp: pd.DataFrame) -> str:
             f'border-radius:6px;padding:6px 7px;line-height:1.35">'
             f'<div style="font-size:11px;font-weight:700">{i}'
             f'{"†" if _is_small else ""}</div>'
-            f'<div style="font-size:15px;font-weight:700">{r["CSI"]:.0f}</div>'
+            f'<div style="font-size:15px;font-weight:700">{rc.csi_text(r["CSI"])}</div>'
             f'<div style="font-size:9px;opacity:.92">{_lvl}　'
             f'{_aq:+.2f}pp</div></div>')
     return ('<div style="display:flex;gap:5px;flex-wrap:wrap;margin:4px 0 6px">'
@@ -292,12 +292,15 @@ def render(h) -> None:
                      "近 20/12 期只看近期，适合判断「这一轮周期里它走到哪了」，"
                      "但一两次季度波动就可能把分位推到 0 或 100")
         with _r1c3:
-            # 参考分位线：让读者自己挑「看哪几条线」
-            _ref_sel = st.multiselect(
-                "参考分位线（下图）", ["P10", "P25", "P50", "P75", "P90"],
-                default=["P50", "P90"], key="csi_ref",
-                help="P90＝历史上只有 10% 的季度比现在更挤；P50＝中位；"
-                     "P10＝只有 10% 的季度更冷。选几条就画几条")
+            # 参考分位线：和拥挤阈值一样可以自己拖，不再锁死在五个固定档。
+            # 两个把手＝两条线（默认 P50 中位 + P90 拥挤线）；
+            # 想看第三条（比如 P10）时，把其中一个把手拖过去即可。
+            _ref_lo, _ref_hi = st.slider(
+                "参考分位线（下图，自由拖动）", 0, 100, (50, 90), step=5,
+                key="csi_ref_rng",
+                help="两个把手画出一条紫色参考带：上沿、下沿各一条虚线。"
+                     "可拖到任意分位（如 85）。P90＝历史上只有 10% 的季度比现在更挤；"
+                     "P50＝中位；P10＝只有 10% 的季度更冷。两个把手重合时只画一条")
         _r2c1, _r2c2, _r2c3 = st.columns([0.44, 0.36, 0.20])
         with _r2c1:
             # 明确给出「看哪条线」的开关：读者不用去理解「加画」这种措辞，
@@ -314,7 +317,7 @@ def render(h) -> None:
                                   "五档底色仍按固定档位（80/65/45/25）")
         with _r2c3:
             _band = st.checkbox("显示 31 行业分位带", value=True, key="csi_band",
-                                help="灰色带是 31 个行业每一期的 25–75% 分位区间，"
+                                help="紫色带是 31 个行业每一期的 25–75% 分位区间，"
                                      "表示「市场整体的分布宽度」；不画 31 条线是因为会糊成一片")
         _sel_t = None if _focus == _opts[0] else _focus
         _window = {"全部历史": None, "近 20 期（5 年）": 20, "近 12 期（3 年）": 12}[_win_lab]
@@ -322,34 +325,44 @@ def render(h) -> None:
         # 否则它不在池子里时会出现「第 27/26」这种不可能的名次。
         _lastrow = H.iloc[-1]
         _ok = [i for i in H.columns if np.isfinite(_lastrow.get(i, np.nan))]
-        _refs = tuple(int(x[1:]) for x in _ref_sel)
+        _refs = tuple(sorted({int(round(x)) for x in (_ref_lo, _ref_hi)}))
         _show_own = _mode != "只看全行业"
         _show_cross = _mode != "只看自身"
+        # 不评级的行业既不进广度的分子，也不进分母（下面 KPI 用同一份名单）
+        _small_set = (set(csi.index[csi["等级"].isin(["小样本", "数据不足"])])
+                      if "等级" in csi.columns else set())
+        _rated_all = [i for i in H.columns if i not in _small_set]
         st.plotly_chart(rc.fig_csi_trend(H, _sel_t, _band, rank_universe=_ok,
                                          window=_window, thr=float(_thr),
                                          show_cross=_show_cross, ref_levels=_refs,
-                                         show_own=_show_own),
+                                         show_own=_show_own,
+                                         rated_only=_rated_all),
                         width="stretch", config={"displayModeBar": False,
                                                  "scrollZoom": False,
                                                  "doubleClick": "reset"})
-        _REF_DESC = {10: "只有 10% 的季度比现在更冷",
-                     25: "下四分位（1/4 的季度比现在冷）",
-                     50: "历史中位",
-                     75: "上四分位（1/4 的季度比现在挤）",
-                     90: "只有 10% 的季度比现在更挤"}
-        _ref_txt = ("、".join(f"<b>P{k}</b>＝{_REF_DESC[k]}" for k in sorted(_refs))
-                    if _refs else "未选（可在上方「参考分位线」里勾选）")
+        # 任意分位都要能解释，不能只写死 10/25/50/75/90 五档
+        def _ref_desc(k: int) -> str:
+            if k == 50:
+                return "历史中位（一半季度比现在冷、一半比现在挤）"
+            if k > 50:
+                return f"历史上只有 {100 - k}% 的季度比现在更挤"
+            return f"历史上只有 {k}% 的季度比现在更冷"
+
+        _ref_txt = "、".join(f"<b>P{k}</b>＝{_ref_desc(k)}" for k in _refs)
         if _sel_t:
             _line_txt = ('橙线＝<b>它自己的历史分位</b>（时间维度：在它过去若干期里排第几）；'
                          '蓝虚线＝<b>当期全行业分位</b>（截面维度：31 个行业里排第几）。'
                          '两条都高＝「对自己、对同行都到顶」；只有一条高＝另一维度还是常态。')
         else:
             _line_txt = ('橙线＝<b>全市场中位自己的历史分位</b>（时间维度：整体水位在历史上排第几）；'
-                         '蓝虚线＝<b>≥65 分行业占比</b>（广度：31 个行业里有几个已经偏挤）。'
+                         f'蓝虚线＝<b>≥65 分行业占比</b>（广度：可评级的 {len(_rated_all)} 个行业里'
+                         f'有几个已经偏挤；不评级的 {len(_small_set)} 个不计入）。'
                          '橙线高＝整体水位在历史高位；蓝虚线高＝拥挤是普遍现象，不是个别行业。')
         h('<div class="tiny" style="margin:-6px 0 6px">'
           '<b>下图怎么读</b>：' + _line_txt +
-          '点线是你勾选的参考位——' + _ref_txt + '。'
+          '<b>紫色色带</b>＝你拖出来的参考区间：' + _ref_txt + '。'
+          '线落在带内＝还在你划定的常态里；冲出上沿＝已经比这个区间更极端；'
+          '跌破下沿＝比区间更冷。'
           '　两条线的量纲都是 0–100，可以直接叠着比。'
           '（图表已锁定，鼠标拖动不会缩放；阈值有没有预测力见页尾「附：阈值分档实证」。）</div>')
 
@@ -377,8 +390,12 @@ def render(h) -> None:
             _lv_now = str(csi.loc[_sel_t, "等级"])
         # 横截面的「广度」：当期有多少行业已经进入拥挤区（≥65）。
         # 全市场视角下这比「中位排第几」有意义——中位天然在 16 名附近，不是信息。
-        _crowd = _lastrow[_ok][_lastrow[_ok] >= 65]
-        _crowd_txt = f"{len(_crowd)}/{_nvalid}"
+        #
+        # 分子分母都要剔除「不评级」的小样本：综合只有 58 只基金持有、配置 0.12%，
+        # 它的 CSI 79 会把广度从 9/26 推到 10/31，可同一页又写着「不参与排名」。
+        _rated = [i for i in _ok if i not in _small_set]
+        _crowd = _lastrow[_rated][_lastrow[_rated] >= 65]
+        _crowd_txt = f"{len(_crowd)}/{len(_rated)}"
 
         st.plotly_chart(rc.fig_csi_position(_series, _name, window=_window,
                                             thr=float(_thr)),
@@ -396,7 +413,8 @@ def render(h) -> None:
                           f"第 {_rank}/{_nvalid}｜同一时点横截面"))
         else:
             _kpis.append(("≥65 分行业", _crowd_txt,
-                          f"占 {len(_crowd) / max(_nvalid, 1) * 100:.0f}%，拥挤广度"))
+                          f"占 {len(_crowd) / max(len(_rated), 1) * 100:.0f}%，"
+                          f"拥挤广度（仅可评级；{len(_small_set)} 个不评级）"))
         _kpis += [("近 4 期变化", (f"{_chg4:+.0f}" if np.isfinite(_chg4) else "—"),
                    "与前 4 个季度比"),
                   (f"历史触及 ≥{_thr:.0f}", f"{_n80} 期",
@@ -427,9 +445,9 @@ def render(h) -> None:
                      f'最低 {_series.iloc[_imin]:.0f}（{_series.index[_imin]}）。'
                      f'下半图有两条线：<b>橙线</b>是中位自己的历史分位（最新 '
                      + (f'{_own:.0f}' if np.isfinite(_own) else '样本不足') +
-                     f'），<b>蓝虚线</b>是拥挤广度——当期 {_nvalid} 个行业里有 '
+                     f'），<b>蓝虚线</b>是拥挤广度——当期可评级的 {len(_rated)} 个行业里有 '
                      f'<b>{len(_crowd)} 个</b>已经 ≥65 分'
-                     f'（{len(_crowd) / max(_nvalid, 1) * 100:.0f}%）。'
+                     f'（{len(_crowd) / max(len(_rated), 1) * 100:.0f}%）。'
                      f'中位只说明「整体水位」，广度才说明「是几个行业在挤，还是全都挤」；'
                      f'单看中位看不出谁在变挤，要在上面选一个行业，'
                      f'或直接查下面的对照表。')
@@ -501,10 +519,17 @@ def render(h) -> None:
       f'窗口＝{_win_show}；均值、标准差、分位数都按<b>同一窗口</b>计算'
       f'（换窗口这几列会一起变）；'
       f'<b>z 值＝(当前−均值)/标准差</b>，＋1 表示比自己的常态挤一个标准差；'
-      f'「排名」＝当期在 {len(_ok)} 个行业里的名次（1＝最挤）。'
+      f'「排名」＝当期在 {len(_ok)} 个行业里的名次（1＝最挤）；'
+      f'「CSI 分位」＝当前 CSI 在自己历史里的排名，'
+      f'「全行业分位」＝当期 31 个行业里的排名——'
+      f'两个都不是「配置分位」（那是 CSI 的输入之一）。'
       f'点表头可排序；表格下方按钮可下载 CSV。</div>')
     _tbl = rc.csi_stat_table(H, window=_window, thr=float(_thr),
                              universe=_ok, selected=_sel_t)
+    # 屏幕表头叫「CSI 分位」，下载的 CSV 也必须是同一个名字，
+    # 否则导出的表头还写着「当前分位」，又要解释一遍它是什么。
+    if not _tbl.empty:
+        _tbl = _tbl.rename(columns={"当前分位": "CSI 分位"})
     if _tbl.empty:
         h('<div class="cg-note">本期数据不足，无法生成对照表。</div>')
     else:
@@ -526,9 +551,10 @@ def render(h) -> None:
                 "最大": st.column_config.NumberColumn("最大", format="%.1f"),
                 # 用数字而不是进度条：列宽只有 ~90px 时进度条会把数值挤掉，
                 # 而这张表的用途就是「核对数字」，看不到数字等于没做。
-                "当前分位": st.column_config.NumberColumn(
-                    "当前分位", format="%.0f",
-                    help="当前值在「这个窗口」里由低到高排第几（0–100）"),
+                "CSI 分位": st.column_config.NumberColumn(
+                    "CSI 分位", format="%.0f",
+                    help="当前 CSI 在「这个窗口」里由低到高排第几（0–100）——"
+                         "注意它不是「配置分位」，两者不是一回事"),
                 "全行业分位": st.column_config.NumberColumn(
                     "全行业分位", format="%.0f",
                     help="当期在 31 个行业里的百分位（截面）"),
@@ -544,16 +570,25 @@ def render(h) -> None:
         # ---- 全景热力图：替代「31 条线叠加」 ----
         _small = ([i for i in csi.index if csi.loc[i, "等级"] == "小样本"]
                   if not csi.empty and "等级" in csi.columns else [])
-        h('<div style="font-size:14px;font-weight:700;margin:14px 0 4px">'
-          '31 个行业全景：颜色＝档位，一屏看出「谁、什么时候」变红</div>')
-        st.plotly_chart(rc.fig_csi_heatmap(H, _small, bad=cn.csi_invalid()),
+        _h1, _h2 = st.columns([0.7, 0.3])
+        with _h1:
+            h('<div style="font-size:14px;font-weight:700;margin:14px 0 4px">'
+              '31 个行业全景：颜色＝档位、格内＝CSI 数值，一屏看出「谁、什么时候」变红</div>')
+        with _h2:
+            _show_val = st.checkbox("格内标数值（关掉更清爽）", value=True,
+                                    key="csi_heat_text",
+                                    help="颜色只分五档，66 与 79 同色；数值看具体位置。"
+                                         "39 期时每格约 26px，用整数；鼠标悬停给到 0.1")
+        st.plotly_chart(rc.fig_csi_heatmap(H, _small, bad=cn.csi_invalid(),
+                                           show_text=_show_val),
                         width="stretch",
                         config={"displayModeBar": False})
         h('<div class="tiny" style="margin:-4px 0 6px">'
           '<b>空白格＝数据不足，不评级</b>：① 序列最前 7 期历史不足 8 个观测；'
           '② 美容护理 / 石油石化 / 环保是 2021 年新设的一级行业，指数 2022 年才有，'
           '之前只有「配置 + 资金」两项，凑不出可比的三项平均。'
-          '灰色 † 是小样本（持有 &lt;150 只基金或配置 &lt;0.5%）。</div>')
+          '灰色 † 是小样本（持有 &lt;150 只基金或配置 &lt;0.5%）。'
+          '格内为 CSI 整数；落在档位边界（25/45/65/80）附近的值保留一位小数，否则「44.9 显示成 45 偏冷」会与阈值表（45–65 中性）矛盾；悬停可看原始精度。</div>')
 
         # ---- 最新一期读数：只用文字，不重复画图 ----
         # 原来这里还有一张「同期横向对比」条形图，和 ④ 的排名图是同一份数据画两遍，
@@ -748,7 +783,7 @@ def render(h) -> None:
           f'{_qtitle}：≥80 极度拥挤的有 <b>{len(_hi)} 个</b>：'
           + ("、".join(f'{i}（{r["CSI"]:.0f}）' for i, r in _hi.iterrows()) or "无")
           + f'；&lt;25 冷门的有 <b>{len(_lo)} 个</b>：'
-          + ("、".join(f'{i}（{r["CSI"]:.0f}）' for i, r in _lo.iterrows()) or "无")
+          + ("、".join(f'{i}（{r["CSI"]:.1f}）' for i, r in _lo.iterrows()) or "无")
           + f'；其余 {len(_c_ok) - len(_hi) - len(_lo)} 个落在中间段。'
           + (f' 另有 {_sm_n} 个小样本行业（†）不评级。' if _sm_n else ''),
           f'CSI 把「配置、价格、资金」三个维度压成一个 0–100 的分数，'
@@ -855,17 +890,23 @@ def render(h) -> None:
 
 
     h('<div class="sec">⑥ 两把尺子：相对自己历史 vs 相对全市场同行</div>')
-    st.plotly_chart(rc.fig_dual_percentile(comp, comp["横截面分位"]),
+    # 小样本行业不参与：它们的自身分位由几十只基金决定，和 31 个行业的横截面
+    # 排名画在一张图上，会让人把小行业的统计噪音当成「真拥挤」。
+    _comp_ok = (comp[~comp["等级"].isin(["小样本", "数据不足"])]
+                if "等级" in comp.columns else comp)
+    st.plotly_chart(rc.fig_dual_percentile(_comp_ok, _comp_ok["横截面分位"]),
                     width="stretch", config={"displayModeBar": False})
-    _both_high = comp[(comp["历史分位"] >= 80) & (comp["横截面分位"] >= 80)]
-    _self_only = comp[(comp["历史分位"] >= 80) & (comp["横截面分位"] < 50)]
-    _mt_high = comp[(comp["历史分位"] < 50) & (comp["横截面分位"] >= 70)]
+    _both_high = _comp_ok[(_comp_ok["历史分位"] >= 80) & (_comp_ok["横截面分位"] >= 80)]
+    _self_only = _comp_ok[(_comp_ok["历史分位"] >= 80) & (_comp_ok["横截面分位"] < 50)]
+    _mt_high = _comp_ok[(_comp_ok["历史分位"] < 50) & (_comp_ok["横截面分位"] >= 70)]
     _read(h,
           f'两边都 ≥80（自身历史高位 + 当期绝对重仓）的有 <b>{len(_both_high)} 个</b>：'
           + ("、".join(_both_high.index) or "无")
           + f'。自身分位高、但横截面不到 50 的有 {len(_self_only)} 个；'
           f'自身分位低、横截面 ≥70 的有 {len(_mt_high)} 个（'
-          + ("、".join(_mt_high.index) or "无") + '）。',
+          + ("、".join(_mt_high.index) or "无") + '）。'
+          + (f'　已剔除 {len(comp) - len(_comp_ok)} 个小样本行业（不评级）。'
+             if len(comp) > len(_comp_ok) else ''),
           f'「重不重」有两个完全不同的参照系。相对自己：这个行业在它过去 {_nq} 期里算不算高位，'
           f'回答「机构是不是刚开始重视它」；相对同行：它在当期 31 个行业里排第几，'
           f'回答「它是不是组合里的大块头」。小行业可以在自己历史上创纪录，'
@@ -881,29 +922,35 @@ def render(h) -> None:
     # =====================================================================
     if not idx.empty:
         h('<div class="sec">⑦ 第三把尺子：价格贵不贵——配置分位 × 指数分位</div>')
-        st.plotly_chart(rc.fig_crowding_map(comp, idx), width="stretch",
+        st.plotly_chart(rc.fig_crowding_map(_comp_ok, idx), width="stretch",
                         config={"displayModeBar": False})
-        _d = comp.dropna(subset=["历史分位", "指数分位"])
+        _d = _comp_ok.dropna(subset=["历史分位", "指数分位"])
         _crowd = _d[(_d["历史分位"] >= 50) & (_d["指数分位"] >= 50)]
         _hold = _d[(_d["历史分位"] >= 50) & (_d["指数分位"] < 50)]
         _miss = _d[(_d["历史分位"] < 50) & (_d["指数分位"] >= 50)]
         _cold = _d[(_d["历史分位"] < 50) & (_d["指数分位"] < 50)]
+        # 四象限用中位数切分，只说明「相对位置」；真正到极值要另看 80/90 线。
+        _ext = _crowd[(_crowd["历史分位"] >= 80) | (_crowd["指数分位"] >= 90)]
         _read(h,
-              f'右上·真拥挤 <b>{len(_crowd)} 个</b>：'
+              f'右上·双高（配置与价格都高于中位）<b>{len(_crowd)} 个</b>：'
               + ("、".join(f"{i}（配置 {r['历史分位']:.0f} / 指数 {r['指数分位']:.0f}）"
                           for i, r in _crowd.nlargest(4, "指数分位").iterrows()) or "无")
-              + f'；右下·抱团没赚 {len(_hold)} 个；左上·机构踏空 {len(_miss)} 个：'
-              + ("、".join(_miss.head(3).index) or "无")
-              + f'；左下·冷门 {len(_cold)} 个。',
+              + f'；右下·配置重价格不贵 {len(_hold)} 个；左上·配置轻价格贵 {len(_miss)} 个：'
+              + ("、".join(_miss.index) or "无")
+              + f'；左下·双低 {len(_cold)} 个。'
+              f'<br>注意：这张图用<b>中位数</b>切四象限，只表示相对位置；'
+              f'右上 {len(_crowd)} 个里真正到极值（配置≥80 或 指数≥90）的是 '
+              f'<b>{len(_ext)} 个</b>，它们才是 ① 里「别追高」的候选（还需资金仍在进）。',
               f'配置分位和价格分位回答两个独立的问题：<b>机构押得多重</b>、<b>价格贵不贵</b>。'
-              f'两者交叉出四种完全不同的处境。右上角是「重仓 + 高位」——机构已经赚到了，'
-              f'价格也反映了乐观预期，此时买入是替别人接棒；右下角是「重仓 + 低位」——'
+              f'两者交叉出四种完全不同的处境。右上角是「配置重 + 价格高」——机构已经赚到了，'
+              f'价格也反映了乐观预期，此时买入是替别人接棒；右下角是「配置重 + 价格低」——'
               f'机构押了但市场没认，可能是左侧布局，也可能是判断错了；'
-              f'左上角是「轻仓 + 高位」——价格先涨、仓位没跟，机构踏空；'
-              f'左下角是「轻仓 + 低位」，没人关注也没人赚钱。',
+              f'左上角是「配置轻 + 价格高」——价格先涨、仓位没跟，机构踏空；'
+              f'左下角是「配置轻 + 价格低」，没人关注也没人赚钱。',
               f'只看配置分位，会把「抱团没涨」误判成拥挤，过早卖出还可能踏空；'
               f'只看价格分位，会把「一直很重」当成「现在才贵」。两个一起看，'
-              f'才知道该减谁：右上角那 {len(_crowd)} 个才是真要压仓位的。'
+              f'才知道该减谁：右上 {len(_crowd)} 个里，到极值的 {len(_ext)} 个才要压仓位，'
+              f'其余只是「略高于中位」，按 ① 的规则处理，不必一刀切。'
               f'右下的 {len(_hold)} 个不要急着卖——它们是「闷在里面」的，'
               f'一旦行业景气反转，弹性和右上角一样大，只是时点未知。')
 
@@ -1050,7 +1097,7 @@ def render(h) -> None:
               f'说明它正在替你押拥挤交易，把仓位打七折；'
               f'② 中位数以下的基金不是「更安全」，它可能只是押了冷门行业，'
               f'冷门同样会跌，要看 CSI 本身；'
-              f'② 本榜只覆盖前十大（季报口径），中小盘基金前十大占比低，'
+              f'③ 本榜只覆盖前十大（季报口径），中小盘基金前十大占比低，'
               f'读数会被低估，别拿它横向比不同风格的基金。')
 
     with st.expander(f"附：阈值分档实证——{_thr_rk:.0f} 分这条线到底有没有用？", expanded=False):
@@ -1079,9 +1126,11 @@ def render(h) -> None:
                     _sig_txt = ("有 <b>" + str(len(_sig)) + " 档</b>的 |t| ≥1.65（"
                                 + "、".join(f'{r["CSI 档位"]} t={r["t 值"]:+.2f}'
                                             for _, r in _sig.iterrows())
-                                + f'），但五档不单调、样本只有 {int(_sig["样本数"].min())}–'
-                                  f'{int(_sig["样本数"].max())} 个，按 5 次检验的多重比较看，'
-                                  f'更可能是一次偶然。')
+                                + ("），但五档不单调、样本只有 "
+                                   + (f'{int(_sig["样本数"].min())}–{int(_sig["样本数"].max())} 个'
+                                      if int(_sig["样本数"].min()) != int(_sig["样本数"].max())
+                                      else f'{int(_sig["样本数"].min())} 个')
+                                   + '，按 5 次检验的多重比较看，更可能是一次偶然。'))
                 else:
                     _sig_txt = "五档的 t 值全部落在 ±1.65 以内，<b>没有一档显著</b>。"
                 _b1 = _bt.iloc[1]
@@ -1111,7 +1160,7 @@ def render(h) -> None:
                       + ("这一档的负超额在统计上已经过线，说明「便宜」本身不是买入理由，"
                          "但只有一档、且不单调，不能反手做空。"
                          if _b1_sig else "没有任何统计优势。")
-                      + '② 任何一档都不构成「买/卖」信号——真正可交易的是'
+                      + '③ 任何一档都不构成「买/卖」信号——真正可交易的是'
                         '「上穿/下穿 80 的方向」，而它也只有四成胜率。'
                         '把这张表当成「别把仓位押在拥挤行业上」的量化依据，'
                         '不要当成选行业模型。')

@@ -14,6 +14,8 @@
 """
 from __future__ import annotations
 
+import pandas as pd
+
 import config as C
 
 # 正文与标题的基准字号：全站只在这里改
@@ -63,12 +65,15 @@ def analysis(h, fact: str, econ: str = "", invest: str = "",
         rows.append((tag2, econ, C.COLOR["accent"], C.COLOR["panel"]))
     if invest:
         rows.append((tag3, invest, C.COLOR["threshold"], "#FFF9F9"))
+    # 标签列宽按最长标签算：固定 62px 时，「五个数字怎么连起来读」会被挤成
+    # 一个字一行的竖排，看起来像排版坏了（读者截图反馈过）。
+    _w = max([62] + [min(112, 14 * len(str(t)) + 12) for t, *_ in rows])
     body = ""
     for tag, txt, col, bg in rows:
         body += (
             f'<div style="display:flex;gap:10px;padding:9px 14px;background:{bg};'
             f'border-top:1px solid {C.COLOR["grid"]}">'
-            f'<div style="flex:0 0 62px;font-size:{FS_SMALL}px;font-weight:700;'
+            f'<div style="flex:0 0 {_w}px;font-size:{FS_SMALL}px;font-weight:700;'
             f'color:{col};line-height:1.85">{tag}</div>'
             f'<div style="flex:1;font-size:{FS_BODY}px;line-height:1.95;'
             f'color:#26374A">{txt}</div></div>')
@@ -100,3 +105,43 @@ def section(title: str, sub: str = "") -> str:
     return (f'<div style="font-size:{FS_TITLE}px;font-weight:700;'
             f'color:{C.COLOR["text"]};margin:16px 0 7px;padding-left:9px;'
             f'border-left:4px solid {C.COLOR["price"]}">{title}{sub_html}</div>')
+
+
+def safe_str(v, default: str = "—") -> str:
+    """把 NaN / None / 空串统一成一个可展示的占位符。
+
+    档案里有几百只基金缺名称、经理、基准（抓取时接口失败）。直接 f-string
+    会显示成「nan」，在页面上和「数据缺失」分不清，审计也会判成 bug。
+    """
+    if v is None:
+        return default
+    try:
+        if pd.isna(v):
+            return default
+    except (TypeError, ValueError):
+        pass
+    s = str(v).strip()
+    return s if s and s.lower() not in ("nan", "none") else default
+
+
+def fund_options(df: pd.DataFrame, with_scale: bool = True) -> list[str]:
+    """基金下拉选项：「代码　名称　规模」。
+
+    为什么不用 pandas 的字符串加法：档案里有 368 只基金的名称是 NaN
+    （抓取时接口失败），`Series + "　"` 会把这些行原样保留成 NaN，
+    下拉框里就出现一个值为 `nan` 的选项；用户选中它，页面在
+    `pick.split("　")` 处直接抛 AttributeError —— 白屏。
+
+    这里逐行构造并给缺失值兜底，保证选项**一定是字符串**。
+    """
+    out = []
+    for r in df.itertuples(index=False):
+        nm = r.name if isinstance(r.name, str) and r.name.strip() else "—"
+        code = str(getattr(r, "code", "")).zfill(6)
+        if with_scale:
+            s = getattr(r, "scale_yi", float("nan"))
+            sc = f"{s:.0f}亿" if pd.notna(s) else "—"
+            out.append(f"{code}　{nm}　{sc}")
+        else:
+            out.append(f"{code}　{nm}")
+    return out

@@ -81,40 +81,55 @@ def fuzz_crowding(at: AppTest, fast: bool) -> None:
 
 
 def fuzz_fund(at: AppTest, fast: bool) -> None:
+    """④ 单只基金：一个选择器、两个视角。
+
+    合并后页面里有两套内容（季报全解 / 持仓结构），控件 key 也不同，
+    所以先切视角，再把当前视角下的控件点一遍。
+    """
     at.radio(key="page").set_value("④ 单只基金")
     run(at, "④ 进入页面")
-    fp = [w for w in at.selectbox if w.key == "fund_pick"][0]
-    opts = list(fp.options)
-    for o in pick(opts, fast or len(opts) > 50):
-        [w for w in at.selectbox if w.key == "fund_pick"][0].set_value(o)
+    hub = [w for w in at.selectbox if w.key == "hub_fund"]
+    if not hub:
+        return
+    for o in pick(list(hub[0].options), True):
+        [w for w in at.selectbox if w.key == "hub_fund"][0].set_value(o)
         run(at, f"④ 基金={o[:16]}")
-    for o in list([w for w in at.radio if w.key == "fund_basis"][0].options):
-        [w for w in at.radio if w.key == "fund_basis"][0].set_value(o)
-        run(at, f"④ 口径={o[:8]}")
-    for key in ("mkt_metric", "mkt_struct_mode", "fund_struct_mode"):
-        ws = [w for w in at.radio if w.key == key]
-        if not ws:
-            continue
-        for o in list(ws[0].options):
-            [w for w in at.radio if w.key == key][0].set_value(o)
-            run(at, f"④ {key}={o[:8]}")
-    mi = [w for w in at.selectbox if w.key == "mkt_ind"]
-    if mi:
-        for o in pick(list(mi[0].options), fast):
-            [w for w in at.selectbox if w.key == "mkt_ind"][0].set_value(o)
-            run(at, f"④ 全市场行业={o[:8]}")
-    fq = [w for w in at.selectbox if w.key == "fund_q_pick"]
-    if fq:
-        for o in pick(list(fq[0].options), fast):
-            [w for w in at.selectbox if w.key == "fund_q_pick"][0].set_value(o)
-            run(at, f"④ 期次={o}")
+    views = [w for w in at.radio if w.key == "hub_view"][0]
+    for v in list(views.options):
+        [w for w in at.radio if w.key == "hub_view"][0].set_value(v)
+        run(at, f"④ 视角={v[:10]}")
+        if v.startswith("持仓结构"):
+            for key in ("fund_basis", "mkt_metric", "mkt_struct_mode",
+                        "fund_struct_mode"):
+                ws = [w for w in at.radio if w.key == key]
+                if not ws:
+                    continue
+                for o in list(ws[0].options):
+                    [w for w in at.radio if w.key == key][0].set_value(o)
+                    run(at, f"④ {key}={o[:8]}")
+            mi = [w for w in at.selectbox if w.key == "mkt_ind"]
+            if mi:
+                for o in pick(list(mi[0].options), fast):
+                    [w for w in at.selectbox if w.key == "mkt_ind"][0].set_value(o)
+                    run(at, f"④ 全市场行业={o[:8]}")
+            fq = [w for w in at.selectbox if w.key == "fund_q_pick"]
+            if fq:
+                for o in pick(list(fq[0].options), fast):
+                    [w for w in at.selectbox if w.key == "fund_q_pick"][0].set_value(o)
+                    run(at, f"④ 结构期次={o}")
+        else:
+            qr = [w for w in at.selectbox if w.key == "qr_q"]
+            if qr:
+                for o in pick(list(qr[0].options), fast):
+                    [w for w in at.selectbox if w.key == "qr_q"][0].set_value(o)
+                    run(at, f"④ 季报季度={o}")
 
 
 def fuzz_misc(at: AppTest) -> None:
     for pm in list([w for w in at.radio if w.key == "pct_mode"][0].options):
         [w for w in at.radio if w.key == "pct_mode"][0].set_value(pm)
         run(at, f"全局 分位口径={pm[:10]}")
-    at.radio(key="page").set_value("② 本期解读")
+    at.radio(key="page").set_value("② 本期解读（全市场）")
     run(at, "② 进入页面")
     for o in list([w for w in at.radio if w.key == "stock_basis"][0].options):
         [w for w in at.radio if w.key == "stock_basis"][0].set_value(o)
@@ -122,6 +137,22 @@ def fuzz_misc(at: AppTest) -> None:
     for pg in ("① 结论总览", "⑤ 因子检验", "⑥ 方法与口径"):
         at.radio(key="page").set_value(pg)
         run(at, f"{pg} 进入页面")
+
+
+def fuzz_qreport(at: AppTest, fast: bool) -> None:
+    """④ 单只基金 · 季报全解：季度选择器现在覆盖全历史（40 期），只抽首/中/末。"""
+    at.radio(key="page").set_value("④ 单只基金")
+    run(at, "④ 进入季报页")
+    for w in [w for w in at.radio if w.key == "hub_view"]:
+        if not str(w.value).startswith("季报全解"):
+            w.set_value([o for o in w.options if str(o).startswith("季报全解")][0])
+            run(at, "④ 切到季报全解")
+    qr = [w for w in at.selectbox if w.key == "qr_q"]
+    if not qr:
+        return
+    for q in pick(list(qr[0].options), fast):
+        [w for w in at.selectbox if w.key == "qr_q"][0].set_value(q)
+        run(at, f"④ 季度={q}")
 
 
 def main() -> int:
@@ -133,6 +164,7 @@ def main() -> int:
     at.run()
     fuzz_crowding(at, args.fast)
     fuzz_fund(at, args.fast)
+    fuzz_qreport(at, args.fast)
     fuzz_misc(at)
     print(f"\n共 {N_RUN} 次渲染，失败 {len(FAILS)} 项，用时 {time.time() - t0:.0f}s")
     for f in FAILS:

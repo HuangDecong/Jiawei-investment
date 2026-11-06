@@ -125,6 +125,12 @@ def rank_ic_panel(factor: pd.DataFrame, fwd: pd.DataFrame, min_obs: int = 8) -> 
     """逐期截面 Spearman RankIC。"""
     out = {}
     for q in factor.index:
+        # 次季收益表比因子表短：最早一期没有「上一期」、最新一期还没走完下一季，
+        # 直接用 fwd.loc[q] 会抛 KeyError（2026-11 实测 2015Q2 触发）。
+        # 缺失期记为 NaN，而不是中断整个 IC 面板。
+        if q not in fwd.index:
+            out[q] = np.nan
+            continue
         a, b = factor.loc[q], fwd.loc[q]
         m = a.notna() & b.notna()
         if m.sum() < min_obs:

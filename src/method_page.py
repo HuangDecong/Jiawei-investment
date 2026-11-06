@@ -10,12 +10,15 @@
     2. 数据从哪来（样本漏斗，回答「为什么只有 4,270 只」）
     3. 五个关键口径（价格中性、广度、分位、CSI、GK）
     4. 自检（现场跑 12 条恒等式）
-    5. 局限（四条硬约束）
+    5. 局限（六条硬约束）
     6. 复现命令
 
 被删掉的内容不是不重要，而是属于「审计留痕」，需要时看 tools/ 下的脚本输出即可。
 """
 from __future__ import annotations
+
+import json
+import os
 
 import pandas as pd
 import streamlit as st
@@ -50,6 +53,12 @@ def render(h, B=None, IND=None) -> None:
     fq = cn.full_quarters()
     n_funds = len(cn.universe(q))
 
+    # 价格漂移贡献：现算，避免写死「ρ=0.73→0.18」这种换个样本就复现不了的数
+    _pe = cn.price_effect()
+    _pe_txt = (f"最近一期 {_pe['q0']}→{_pe['q']}：行业平均 |价格漂移| 占 |原始变化| 的 "
+               f"{_pe['share']:.0f}%；{_pe['top']} {_pe['raw']:+.2f}pp 里 "
+               f"{_pe['mech']:+.2f}pp 是价格，占 {_pe['pct']:.0f}%") if _pe else ""
+
     # =====================================================================
     # 结论
     # =====================================================================
@@ -59,7 +68,7 @@ def render(h, B=None, IND=None) -> None:
         '主动还是被动」；前十大（季报）回答「多少基金在加」；个股（同披露两期）'
         '回答「谁被建仓」。页面上每个数字都标了口径与期次。',
         '<b>两个会系统性骗人的坑已经修掉</b>：加仓占比改成<b>价格中性</b>'
-        '（原始变化与当期行业收益的秩相关 ρ=0.73，中性化后降到 0.18）；'
+        + (f'（{_pe_txt}）；' if _pe_txt else '（行业涨跌会直接改写权重）；') +
         '分位改成<b>扩张窗口</b>（每期只排到当期），否则做检验时会用到未来数据。',
         '<b>它是描述工具，不是预测模型。</b>9 个季报因子在 '
         f'{len(qs)} 期样本上没有一个是正向可用的（见「⑤ 因子检验」）。'
@@ -168,7 +177,7 @@ def render(h, B=None, IND=None) -> None:
                      "主动 Δ = 本期权重 − 反事实权重"),
             ("解决什么", "行业涨了 20%、没人交易，权重也会自动升 2pp。不剥离，"
                         "暴跌季会把「没交易」算成「集体减仓」。"),
-            ("实测", "原始 Δ 与当期行业收益的秩相关 ρ=0.73；中性化后 0.18。"),
+            ("实测", _pe_txt or "行业涨跌会直接改写权重，需用反事实权重剥离。"),
         ], C.COLOR["price"]))
     with c2:
         h(_card("加仓广度", [
@@ -207,9 +216,41 @@ def render(h, B=None, IND=None) -> None:
         ], C.COLOR["level_拥挤"]))
 
     # =====================================================================
+    # 指标词典（全量，可检索）
+    # =====================================================================
+    import glossary as g
+    _ok, _all = g.coverage()
+    h(f'<div class="sec">五、指标词典：页面里出现的每个数，这里都有定义</div>')
+    h(ui.stat_strip([
+        ("词典条目", f"{len(g.ITEMS)}", "按 10 类组织，每条九段"),
+        ("术语覆盖", f"{_ok}/{_all}", "页面文案里出现过的指标与术语"),
+        ("每条的字段", "9", "含义/原理/公式/步骤/阈值/来源/经济/投资/误用"),
+        ("检索", "实时", "输入关键词即可，侧边栏同一份"),
+    ]))
+    if _ok < _all:
+        _miss = [t for t in g.AUDIT_TERMS if not g.search(t)]
+        h(f'<div class="cg-note">以下术语尚未收录：{"、".join(_miss[:12])}</div>')
+    h('<div class="tiny" style="margin:-2px 0 8px">'
+      '这份词典是<b>唯一事实源</b>：侧边栏速查、图上的悬浮说明、本页表格都从这里取，'
+      '改一处全站同步。术语覆盖数是<b>审计结果</b>——页面上写到的每个指标和术语，'
+      '都必须能在下面检索到；缺一条，审计脚本就会报错。</div>')
+    _kw = st.text_input("搜索指标或术语", value="", key="dict_kw",
+                        placeholder="如：净申购 / 规模拆解 / CSI / 分位 / 前十大 / 兑现比例")
+    _keys = g.search(_kw) or list(g.ITEMS)
+    if _kw and not g.search(_kw):
+        h(f'<div class="cg-note">没有匹配「{_kw}」的条目。'
+          f'试试更短的关键词，或直接翻下面的全量清单。</div>')
+    _pick = st.selectbox("选择条目，展开完整说明（九段）", _keys,
+                         format_func=g.label, key="dict_pick")
+    st.markdown(g.card_html(_pick, C.COLOR), unsafe_allow_html=True)
+    with st.expander(f"全量清单：{len(g.ITEMS)} 条，按分类（一屏看完都有哪些）",
+                     expanded=False):
+        st.markdown(g.compact_table(C.COLOR), unsafe_allow_html=True)
+
+    # =====================================================================
     # 自检
     # =====================================================================
-    h('<div class="sec">五、自检：12 条口径恒等式，现场跑一遍</div>')
+    h('<div class="sec">六、自检：12 条口径恒等式，现场跑一遍</div>')
     try:
         import selfcheck as _sc
         _t = _sc.run()
@@ -227,25 +268,57 @@ def render(h, B=None, IND=None) -> None:
           '不是「看起来差不多」。任何一处口径改动，这里会立刻变红。'
           '除这 12 条外，<span class="mono">python tools/audit_all.py</span> 还会跑'
           '「代码可编译、无未定义名、六页渲染无异常、页面无空值与未渲染标签、'
-          '控件逐项点击、跨页数字一致」共 54 项检查。</div>')
+          '控件逐项点击、词典完整性与术语覆盖、跨页数字一致」等全部检查。</div>')
     except Exception as _e:
         h(f'<div class="tiny">自检脚本未通过：{type(_e).__name__}: {_e}</div>')
+
+    # ---- 数据体检（源数据层）：计算对，不代表上游披露没有瑕疵 ----
+    _dh_fn = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "data", "derived", "data_health.json")
+    if os.path.exists(_dh_fn):
+        try:
+            with open(_dh_fn, encoding="utf-8") as f:
+                _dh = json.load(f)
+            _bad = int(_dh.get("bad", 0))
+            with st.expander(f"数据体检：源数据层 {len(_dh.get('rows', []))} 条硬规则"
+                             f"（{_bad} 项需关注）", expanded=False):
+                _dd = pd.DataFrame(_dh["rows"])
+                st.dataframe(_dd, hide_index=True, width="stretch", height=330,
+                             column_config={
+                                 "层": st.column_config.TextColumn(width="small"),
+                                 "结果": st.column_config.TextColumn(width="small"),
+                                 "说明": st.column_config.TextColumn(width="large"),
+                             })
+                h(f'<div class="tiny">这是「计算对不对」之外的「源数据有没有瑕疵」：'
+                  f'生成于 {_dh.get("generated", "—")}。'
+                  f'「需关注」不是代码算错，而是上游披露本身的问题（如 1 行负申购、'
+                  f'港股分类的分母差异）——本库原样保留、不篡改，并在对应页面标注口径。</div>')
+        except Exception:
+            pass
 
     # =====================================================================
     # 局限
     # =====================================================================
-    h('<div class="sec">六、四条硬约束（不写清楚就等于骗人）</div>')
+    h('<div class="sec">七、六条硬约束（不写清楚就等于骗人）</div>')
+    # 样本数写死会在下一季变成错数；这里按当期实际 universe 现算。
+    _q_now = cn.latest()
+    _n_q = len(cn.universe(_q_now))
+    _n_15 = len(cn.universe("2015Q1"))
+    _n_19 = len(cn.universe("2019Q1"))
     h(ui.concl_board([
         '<b>季报只有前十大。</b>Q1/Q3 每只基金只披露 10 只股票，覆盖净值约 20%–50%。'
         '所以季报期的配置一律用来算广度与变化，不用来判断绝对水平。',
         '<b>披露有时滞。</b>季末到数据可得约 3–4 周，你看到时下季度已经过了约 1/3。'
         '所有「本期」都是「上一个已披露期」，不是「今天」。',
         '<b>幸存者偏差 + 样本量递减。</b>已清盘基金不在库内，早期分位会偏乐观——'
-        '活下来的基金天然仓位更高、更集中。样本数逐期变化：2015Q1 只有 428 只、'
-        '2019Q1 1,535 只、2026Q3 4,270 只；早期每期的标准误更大，'
+        f'活下来的基金天然仓位更高、更集中。样本数逐期变化：2015Q1 只有 {_n_15:,} 只、'
+        f'2019Q1 {_n_19:,} 只、{_q_now} {_n_q:,} 只；早期每期的标准误更大，'
         '看方向可以，看小数点后一位没有意义。',
         '<b>只有股票，没有债券与现金。</b>灵活配置型基金的真实股票仓位可能远低于'
         '「各行业之和」，行业占比会被系统性放大。',
+        '<b>A+H 两地上市按「单只占比」排序。</b>官方季报对同一家公司的 A 股与 H 股'
+        '是「合并公允价值参与排序、按不同股票分别披露」，本库只能按单只占比排；'
+        '这类公司的名次会与原文错位（全库 473 个基金×季度），数值本身不受影响。',
         '<b>仓位中位数剔除打新基金。</b>2016–2018 年有大量灵活配置型「打新基金」，'
         '股票只放 20–30%；若一并统计，会把当年中位数压到 76%，'
         '让今天的 89% 显得「史上最高」。本库只统计股票仓位 ≥40% 的基金，'
@@ -258,6 +331,13 @@ python tools/export_canon.py      # 导出压缩快照（无数据库时线上�
 python tools/export_matrix.py     # 预计算行业矩阵与仓位分布
 python tools/export_csi.py        # 预计算 CSI 面板（全期 × 31 行业）+ 三项分位长表
 python tools/run_factor_test.py   # 生成因子检验结果 factor_test.json
+python tools/batch_qreport.py     # 预抓季报（资产配置/行业分类/份额/买卖/债券）
+python tools/repair_qreport.py    # 修复「有仓位却没明细」的基金（列错位脏数据）
+python tools/repair_shares.py     # 份额按 A/C 合并（否则规模拆解会算错份额净值）
+python tools/data_health.py       # 数据体检：边界/恒等式/结构 三层硬规则
+python tools/verify_hold_rows.py  # 深度校验：逐只股票对比源表（联网约 10 分钟）
+python tools/verify_pdf.py        # 原文核对：下载季报 PDF，比对前十大与份额总额
+python tools/audit_glossary.py    # 指标词典：九段完整性 + 页面术语覆盖
 python tools/audit_all.py         # 全站审计：静态/口径/渲染/文本/交互/一致性
 python -c "import sys; sys.path.insert(0,'src'); import selfcheck; print(selfcheck.run())"
 """, language="bash")
@@ -269,7 +349,13 @@ python -c "import sys; sys.path.insert(0,'src'); import selfcheck; print(selfche
           '数据文件：<span class="mono">data/db/fund_ak.db</span>'
           '（SQLite，约 900MB，不入库）；派生快照在 '
           '<span class="mono">data/derived/*.csv.gz</span>（约 12MB，随仓库发布）。'
-          '线上环境没有数据库时自动读快照，两条路径的计算结果已逐格核对一致。</div>')
+          '线上环境没有数据库时自动读快照，两条路径的计算结果已逐格核对一致。<br>'
+          '季报页另有 <span class="mono">data/db/fund_q.db</span>：只存季报披露值'
+          '（股票/债券/现金占净比、证监会门类行业配置、份额变动、前十名股票、'
+          '累计买卖前 20、债券明细），<b>不做任何推算</b>；'
+          '每只基金抓取后缓存 20 小时，字段级来源记在每行的 src 列。'
+          '资产配置与份额一次返回全历史；行业/持仓按年补抓（页面选到早年季度会自动抓，'
+          '也可以点「补齐缺失年份」一次抓完），抓到即写库。</div>')
 
     h('<div class="tiny" style="margin-top:10px">'
       f'版本口径：季度 {qs[0]}–{qs[-1]}（{len(qs)} 期）、CSI 可算 '

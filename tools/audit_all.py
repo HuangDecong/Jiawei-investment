@@ -29,8 +29,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, ROOT)
 
-PAGES = ["① 结论总览", "② 本期解读", "③ 行业拥挤度",
-         "④ 单只基金", "⑤ 因子检验", "⑥ 方法与口径"]
+PAGES = ["① 结论总览", "② 本期解读（全市场）", "③ 行业拥挤度", "④ 单只基金",
+         "⑤ 因子检验", "⑥ 方法与口径"]
 
 # 文本卫生：这些串出现在 HTML 里，说明有变量是 NaN、或 Markdown 没被渲染
 BAD_PATTERNS = [
@@ -107,6 +107,18 @@ def stage_selfcheck() -> None:
     bad = t[t["结果"].astype(str) != "通过"]
     rec("数据", f"口径恒等式 {n}/{m}", n == m,
         "；".join(bad["项目"].tolist()[:4]) if len(bad) else "")
+
+
+def stage_glossary() -> None:
+    """词典：条目完整、术语全覆盖、每条都能渲染。"""
+    import glossary as g
+    from audit_glossary import check_fields, check_terms, check_render
+    bad = check_fields() + check_terms() + check_render()
+    ok, all_ = g.coverage()
+    rec("词典", f"条目 {len(g.ITEMS)} 条 · 九段完整 · 渲染正常", not bad,
+        "；".join(bad[:4]) if bad else f"{len(g.CATS)} 类")
+    rec("词典", f"页面术语覆盖 {ok}/{all_}", ok == all_,
+        "" if ok == all_ else "有术语检索不到")
 
 
 def stage_data() -> None:
@@ -207,12 +219,55 @@ def _bad_text(v: str) -> tuple[str, str] | None:
     return None
 
 
+# 纯文字/纯表格页：① 是结论 + 动作表（证据都在 ②③），⑥ 是口径文档。
+# 这两页没有图是设计选择，不是渲染失败——但「无图」不等于「不检查文本」。
+NO_CHART_PAGES = ("① 结论总览", "⑥ 方法与口径")
+
+
+def _page_text_checks(at, p: str) -> None:
+    """文本卫生：nan/None/未渲染标签/静默失败/写死的期数。
+
+    原实现把 ① 结论总览 排除在循环外（PAGES[1:]），等于首页只查了
+    「不报异常」——读者第一眼看到的那页反而没查文本。这里抽成函数，
+    ① 与其余页走同一套检查。
+    """
+    hits = []
+    # _h() 用的是 st.html，不是 st.markdown，两处都要扫
+    for blk in list(at.markdown) + list(at.get("html")):
+        v = str(getattr(blk, "value", "") or getattr(blk, "body", "") or "")
+        b = _bad_text(v)
+        if b:
+            hits.append(f"{b[0]}:{b[1]}")
+    # 「暂不可用」是各页 try/except 的兜底文案：一旦出现，说明某块静默失败了
+    silent = [w for w in ("暂不可用", "未找到持仓数据", "结果文件为空")
+              if any(w in str(getattr(x, "value", "") or getattr(x, "body", "") or "")
+                     for x in list(at.markdown) + list(at.get("html")))]
+    if silent:
+        hits.append("静默失败：" + "、".join(silent))
+    # 期数已经动态化：文案里再出现写死的「31 期」，说明有地方漏改
+    import canon as _cn
+    _nq = len(_cn.quarters())
+    if _nq != 31:
+        stale = [w for w in ("31 期",)
+                 if any(w in str(getattr(x, "value", "") or getattr(x, "body", "") or "")
+                        for x in list(at.markdown) + list(at.get("html")))]
+        if stale:
+            hits.append("写死的期数：" + "、".join(stale))
+    rec("文本", f"{p} 无 nan/None/未渲染标签/静默失败", not hits, "；".join(hits[:3]))
+
+    n_chart = len(at.get("plotly_chart"))
+    need_chart = p not in NO_CHART_PAGES
+    rec("渲染", f"{p} 图表数量", (n_chart > 0) or (not need_chart),
+        f"{n_chart} 张" if need_chart else f"{n_chart} 张（纯文字/表格页）")
+
+
 def stage_pages(fast: bool = False) -> None:
     from streamlit.testing.v1 import AppTest
     at = AppTest.from_file(os.path.join(ROOT, "app.py"), default_timeout=1500)
     at.run()
     rec("渲染", "① 结论总览", len(at.exception) == 0,
         str(at.exception[0].value)[:200] if at.exception else "")
+    _page_text_checks(at, "① 结论总览")
 
     for p in PAGES[1:]:
         t0 = time.time()
@@ -222,37 +277,7 @@ def stage_pages(fast: bool = False) -> None:
         ok = len(at.exception) == 0
         rec("渲染", p, ok,
             (str(at.exception[0].value)[:200] if at.exception else f"{dt:.1f}s"))
-
-        # 文本卫生：只看 HTML 块，不看 dataframe
-        hits = []
-        # _h() 用的是 st.html，不是 st.markdown，两处都要扫
-        for blk in list(at.markdown) + list(at.get("html")):
-            v = str(getattr(blk, "value", "") or getattr(blk, "body", "") or "")
-            b = _bad_text(v)
-            if b:
-                hits.append(f"{b[0]}:{b[1]}")
-        # 「暂不可用」是各页 try/except 的兜底文案：一旦出现，说明某块静默失败了
-        silent = [w for w in ("暂不可用", "未找到持仓数据", "结果文件为空")
-                  if any(w in str(getattr(x, "value", "") or getattr(x, "body", "") or "")
-                         for x in list(at.markdown) + list(at.get("html")))]
-        if silent:
-            hits.append("静默失败：" + "、".join(silent))
-        # 期数已经动态化：文案里再出现写死的「31 期」，说明有地方漏改
-        import canon as _cn
-        _nq = len(_cn.quarters())
-        if _nq != 31:
-            stale = [w for w in ("31 期",)
-                     if any(w in str(getattr(x, "value", "") or getattr(x, "body", "") or "")
-                            for x in list(at.markdown) + list(at.get("html")))]
-            if stale:
-                hits.append("写死的期数：" + "、".join(stale))
-        rec("文本", f"{p} 无 nan/None/未渲染标签/静默失败", not hits, "；".join(hits[:3]))
-
-        n_chart = len(at.get("plotly_chart"))
-        # ⑥ 方法与口径 是纯文字页，没有图表是正常的
-        need_chart = p not in ("⑥ 方法与口径",)
-        rec("渲染", f"{p} 图表数量", (n_chart > 0) or (not need_chart),
-            f"{n_chart} 张" if need_chart else f"{n_chart} 张（纯文字页）")
+        _page_text_checks(at, p)
 
     if not fast:
         stage_widgets(at)
@@ -319,7 +344,7 @@ def stage_consistency() -> None:
 
     # 期次标签一致：所有页面都用同一个最新季
     q = cn.latest()
-    for p in ["① 结论总览", "② 本期解读", "③ 行业拥挤度", "④ 单只基金"]:
+    for p in ["① 结论总览", "② 本期解读（全市场）", "③ 行业拥挤度", "④ 单只基金"]:
         at.radio(key="page").set_value(p)
         at.run()
         t = "\n".join(str(getattr(x, "value", "") or getattr(x, "body", "") or "")
@@ -440,6 +465,198 @@ def stage_charts() -> None:
         len(f5.layout.shapes or []) >= 8, f"shapes={len(f5.layout.shapes or [])}")
 
 
+def stage_qreport() -> None:
+    """季报页的数据自检：披露值之间必须自洽。
+
+    这一层的错误最隐蔽——单个数字都对，合起来矛盾（行业合计超过股票仓位、
+    名次从 18 开始、份额为负）。所以只查「恒等式与边界」，不重复查业务口径。
+    """
+    import numpy as np
+    try:
+        import qreport as Q
+    except Exception as e:  # pragma: no cover
+        rec("季报", "模块可导入", False, f"{type(e).__name__}: {e}")
+        return
+
+    cov = Q.coverage()
+    if not cov["funds"]:
+        rec("季报", "本地已缓存季报数据", True, "未缓存任何基金（跳过）")
+        return
+    rec("季报", "本地已缓存季报数据", cov["funds"] > 0,
+        f"{cov['funds']} 只基金｜行业 {cov['industry_rows']} 行｜持仓 {cov['hold_rows']} 行")
+
+    with Q._con() as con:
+        codes = [r[0] for r in con.execute(
+            "SELECT DISTINCT code FROM q_asset ORDER BY code LIMIT 12")]
+    bad = []
+    for code in codes:
+        d = Q.load_fund(code)
+        a = d["q_asset"]
+        if a is None or a.empty:
+            continue
+        # 1) 比例边界：>100 是允许的（应付/回购），但不能是负或几百
+        for c in ("stock_pct", "cash_pct", "bond_pct"):
+            v = a[c].dropna()
+            # 上限放到 400%：基金转型/巨额赎回期的临时披露日，现金或债券占净值
+            # 可以远超 100%（000030 在 2019-05-23 现金 202.9%），这是真的，不是错数。
+            if len(v) and (v.min() < -0.01 or v.max() > 400):
+                bad.append(f"{code} {c} 越界 {v.min():.1f}–{v.max():.1f}")
+        # 2) 行业合计不能超过股票仓位（半年报期应几乎相等）
+        for _, r in a.tail(4).iterrows():
+            ind = d["q_industry"]
+            ind = ind[ind["period"] == r["period"]]
+            if ind.empty or not np.isfinite(r["stock_pct"]):
+                continue
+            tot = float(ind["ratio_pct"].sum())
+            if tot > r["stock_pct"] + 2.0:
+                bad.append(f"{code} {r['quarter']} 行业{tot:.1f}%>股票{r['stock_pct']:.1f}%")
+        # 3) 份额边界
+        sh = d["q_shares"]
+        if sh is not None and not sh.empty:
+            for _, r in sh.iterrows():
+                if np.isfinite(r["purchase_yi"]) and r["purchase_yi"] < 0:
+                    bad.append(f"{code} {r['quarter']} 申购为负")
+                if np.isfinite(r["redeem_yi"]) and r["redeem_yi"] < 0:
+                    bad.append(f"{code} {r['quarter']} 赎回为负")
+                if np.isfinite(r["end_share_yi"]) and r["end_share_yi"] <= 0:
+                    bad.append(f"{code} {r['quarter']} 期末份额≤0")
+        # 4) 名次必须从 1 连续（曾因沿用数据源跨季序号出现「第 18 名」排第一）
+        h = d["q_hold"]
+        if h is not None and not h.empty:
+            for q, g in h.groupby("quarter"):
+                rk = sorted(int(x) for x in g["rnk"].dropna())
+                if rk and rk[0] != 1:
+                    bad.append(f"{code} {q} 名次从 {rk[0]} 开始")
+                if rk and rk != list(range(1, len(rk) + 1)):
+                    bad.append(f"{code} {q} 名次不连续")
+                if float(g["ratio_pct"].sum()) > 101:
+                    bad.append(f"{code} {q} 持仓合计 {g['ratio_pct'].sum():.1f}%")
+    rec("季报", "披露值自洽（边界/行业≤仓位/名次连续）", not bad,
+        "；".join(bad[:4]) if bad else f"抽查 {len(codes)} 只基金全部通过")
+
+    # 规模拆解恒等式：份额效应 + 净值效应 + 交叉 = Δ净资产。
+    # 这是页面上唯一一处「自己算」的数，必须逐只对得上。
+    bad2, n_chk = [], 0
+    for code in codes[:6]:
+        d = Q.load_fund(code)
+        a2, sh = d["q_asset"], d["q_shares"]
+        if a2 is None or a2.empty or sh is None or sh.empty:
+            continue
+        a2 = a2.sort_values("period")
+        for i in range(1, len(a2)):
+            ra, rp = a2.iloc[i], a2.iloc[i - 1]
+            rs = sh[sh["quarter"] == ra["quarter"]]
+            if rs.empty or not np.isfinite(ra["nav_yi"]) or not np.isfinite(rp["nav_yi"]):
+                continue
+            e = float(rs["end_share_yi"].iloc[0])
+            b0 = e - float(rs["purchase_yi"].iloc[0]) + float(rs["redeem_yi"].iloc[0])
+            if b0 <= 0 or e <= 0:
+                continue
+            np0, np1 = rp["nav_yi"] / b0, ra["nav_yi"] / e
+            eff = (e - b0) * np0 + b0 * (np1 - np0) + (e - b0) * (np1 - np0)
+            d_nav = ra["nav_yi"] - rp["nav_yi"]
+            n_chk += 1
+            if abs(eff - d_nav) > max(0.02, abs(d_nav) * 1e-4):
+                bad2.append(f"{code} {ra['quarter']} 拆解 {eff:.2f}≠{d_nav:.2f}")
+        # 行业 HHI 必须在 0–1
+        ind = d["q_industry"]
+        if ind is not None and not ind.empty:
+            for q, g in ind.groupby("quarter"):
+                # HHI 必须按「每个 A 股门类各一组 + 港股通合计一组」算；
+                # 按「A股/港股通」两个市场分组得到的只是仓位的平方，不是集中度。
+                v = Q.industry_hhi(g)
+                if not (0 <= v <= 1.0001):
+                    bad2.append(f"{code} {q} HHI={v:.3f}")
+    rec("季报", "规模拆解恒等式与行业 HHI 边界", not bad2,
+        "；".join(bad2[:3]) if bad2 else f"校验 {n_chk} 个季度全部对得上")
+
+    # 5) 期次合法性：数据源「列错位」会写出 quarter='000126' 这种脏行，
+    #    它不撞任何真实季度，但会让「共 N 期」虚高、让按年补抓误判「已抓过」。
+    with Q._con() as con:
+        dirty = []
+        for t in ("q_asset", "q_industry", "q_shares", "q_hold", "q_change",
+                  "q_bond", "q_fin"):
+            n = con.execute(
+                f"SELECT COUNT(*) FROM {t} WHERE quarter NOT GLOB "
+                "'[0-9][0-9][0-9][0-9]Q[1-4]'").fetchone()[0]
+            if n:
+                dirty.append(f"{t} {n}")
+    rec("季报", "所有期次都是合法季度（无列错位脏行）", not dirty,
+        "；".join(dirty) if dirty else "7 张表全部合法")
+
+    # 6) 前十大进出：状态必须自洽（新进/退出/增减持互斥，笔数对得上）
+    bad3, n_df = [], 0
+    for code in codes[:6]:
+        d = Q.load_fund(code)
+        hq = sorted(d["q_hold"]["quarter"].dropna().unique()) \
+            if d["q_hold"] is not None and not d["q_hold"].empty else []
+        for i in range(1, len(hq)):
+            df = Q.top10_diff(d, hq[i], hq[i - 1])
+            if df.empty:
+                continue
+            n_df += 1
+            if df["状态"].isna().any():
+                bad3.append(f"{code} {hq[i]} 有空状态")
+            # 本期在前十里的行：本期% 有值。退出/清仓行本期为空，不计入。
+            import pandas as _pdx
+            cur = df[_pdx.to_numeric(df["本期%"], errors="coerce").notna()]
+            if float(cur["本期%"].sum()) > 100.5:
+                bad3.append(f"{code} {hq[i]} 本期合计 {cur['本期%'].sum():.1f}%")
+            if len(cur) > 10:
+                bad3.append(f"{code} {hq[i]} 本期 {len(cur)} 只 >10")
+    rec("季报", "前十大进出状态自洽", not bad3,
+        "；".join(bad3[:3]) if bad3 else f"校验 {n_df} 组相邻季")
+
+    # 7) 按年补抓必须幂等：已抓过的年份直接返回、不再联网
+    try:
+        with Q._con() as con:
+            r = con.execute("SELECT code, year FROM q_ytry LIMIT 1").fetchone()
+        if r:
+            t0 = time.time()
+            out = Q.ensure_year(r[0], int(r[1]))
+            dt = time.time() - t0
+            rec("季报", "按年补抓幂等（已抓过不重复联网）",
+                out.get("fetched") is False and dt < 1.0,
+                f"{r[0]} {r[1]} {dt:.2f}s")
+    except Exception as e:  # noqa: BLE001
+        rec("季报", "按年补抓幂等", False, f"{type(e).__name__}: {e}")
+
+    # 8) 份额表与资产表必须同口径（都是基金整体净资产）。
+    #    东财 gmbd 按份额类别返回，若不合并 A/C，会得到「67 亿 ÷ 0.03 亿份」
+    #    这种错误；这一条盯的是全量一致率，不抽查。
+    try:
+        import pandas as _pd
+        with Q._con() as con:
+            _a = _pd.read_sql("SELECT code, period, nav_yi FROM q_asset", con)
+            _s = _pd.read_sql("SELECT code, period, end_nav_yi FROM q_shares", con)
+        _m = _a.merge(_s, on=["code", "period"], how="inner")
+        _m = _m[_pd.to_numeric(_m["nav_yi"], errors="coerce") > 0]
+        _e = _pd.to_numeric(_m["end_nav_yi"], errors="coerce")
+        _n = _pd.to_numeric(_m["nav_yi"], errors="coerce")
+        _bad = int(sum(0 if Q.shares_consistent(a, b) else 1
+                       for a, b in zip(_e, _n)))
+        _rate = _bad / max(len(_m), 1)
+        rec("季报", "份额与净资产同口径（全量一致率）", _rate < 0.02,
+            f"{_bad}/{len(_m)} 不一致（{_rate:.1%}）")
+    except Exception as e:  # noqa: BLE001
+        rec("季报", "份额与净资产同口径", False, f"{type(e).__name__}: {e}")
+
+    # 9) 持仓名次必须 1..N 连续（断档＝同一季度混了多套快照，组合是拼接的）
+    try:
+        import pandas as _pd
+        with Q._con() as con:
+            _h = _pd.read_sql("SELECT code, quarter, rnk FROM q_hold", con)
+        _gap = 0
+        for (c, q), g in _h.groupby(["code", "quarter"]):
+            rk = sorted(int(x) for x in g["rnk"].dropna())
+            if rk and (rk[0] != 1 or rk != list(range(1, len(rk) + 1))):
+                _gap += 1
+        rec("季报", "持仓名次连续（全量）", _gap == 0,
+            f"{_gap} 个基金×季度断档" if _gap else f"{_h.groupby(['code','quarter']).ngroups} 个期次全部连续")
+    except Exception as e:  # noqa: BLE001
+        rec("季报", "持仓名次连续", False, f"{type(e).__name__}: {e}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--fast", action="store_true", help="跳过控件交互")
@@ -448,7 +665,9 @@ def main() -> int:
     t0 = time.time()
     stage_static()
     stage_selfcheck()
+    stage_glossary()
     stage_data()
+    stage_qreport()
     stage_charts()
     stage_pages(args.fast)
     stage_consistency()

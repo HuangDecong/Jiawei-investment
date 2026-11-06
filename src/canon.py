@@ -955,14 +955,16 @@ def price_neutral_delta(q0: str, q: str) -> pd.DataFrame:
 
     为什么必须做这一步
     ------------------
-    直接相减（w1 − w0）在暴跌季会把「没交易」误判成「减仓」：
-    电子单季 −32.6%，所有持有人的权重都自动缩水，原始口径算出的
-    「加仓占比 34%」里有一大半只是价格跌出来的。实测三个季度：
+    直接相减（w1 − w0）会把「行业涨跌」和「机构交易」混在一起：
+    电子单季跌 30%，持有它的基金即使一股没卖，权重也会自动缩水。
+    归一化到 100 只能消掉「共同涨跌」，消不掉行业之间的相对涨跌——
+    后者仍然会改写权重。
 
-        原始 Δ 与当期行业收益的 Spearman ρ = 0.73 / 0.69 / 0.51
-        本函数 Δ 与当期行业收益的 Spearman ρ = 0.18 / 0.09 / 0.24
-
-    即原始口径一半以上是价格，价格中性后基本与涨跌无关，剩下的才是交易行为。
+    可复算的分解（`price_effect()`）：把原始变化拆成
+        价格漂移 = 反事实权重 − 上期权重
+        主动变化 = 本期权重 − 反事实权重
+    最近一期行业平均 |价格漂移| 约占 |原始变化| 的 41%（电子 −5.27pp 里
+    2.99pp 是价格），这部分不该算成机构的加减仓。
 
     反事实怎么算
     ------------
@@ -993,6 +995,48 @@ def price_neutral_delta(q0: str, q: str) -> pd.DataFrame:
     ri = (p0 / 100.0 * r).sum(axis=1)            # 每只基金自己的篮子收益
     cf = p0.mul(1 + r, axis=1).div(1 + ri, axis=0)
     return (p1 - cf).reindex(columns=list(C.INDUSTRIES))
+
+
+@lru_cache(maxsize=8)
+def price_effect(q0: str | None = None, q: str | None = None) -> dict:
+    """价格漂移对行业权重变化的贡献：给「为什么要价格中性」一个可复算的数。
+
+    返回最近一对期次的分解摘要：
+        share  行业平均 |价格漂移| ÷ |原始变化|（%）
+        top    原始变化最大的行业；raw/mech/pct 为该行业的原始、价格、占比
+    为什么用「行业平均」而不是「逐基金相关」：前者是可直接复核的会计分解，
+    后者会被「基金是否持有该行业」的 0 值主导，换个样本就变。
+    """
+    qs = quarters()
+    q = q or (qs[-1] if qs else None)
+    if not q or q not in qs:
+        return {}
+    i = qs.index(q)
+    if i < 1:
+        return {}
+    q0 = q0 or qs[i - 1]
+    d = price_neutral_delta(q0, q)
+    p0, p1 = panel_top10(q0), panel_top10(q)
+    if d is None or d.empty or p0.empty or p1.empty:
+        return {}
+    common = p0.index.intersection(p1.index).intersection(d.index)
+    if len(common) < 30:
+        return {}
+    a, b = p0.loc[common], p1.loc[common]
+    act = d.reindex(common)
+    cf = b - act
+    mech = cf - a
+    raw = b - a
+    tbl = pd.DataFrame({"raw": raw.mean(), "mech": mech.mean(),
+                        "act": act.mean()}).dropna()
+    if tbl.empty:
+        return {}
+    share = float(tbl["mech"].abs().sum() / tbl["raw"].abs().sum() * 100)
+    top = str(tbl["raw"].abs().idxmax())
+    r = tbl.loc[top]
+    return {"q0": q0, "q": q, "share": round(share, 1), "top": top,
+            "raw": round(float(r["raw"]), 2), "mech": round(float(r["mech"]), 2),
+            "pct": round(abs(float(r["mech"] / r["raw"])) * 100, 0) if r["raw"] else np.nan}
 
 
 @lru_cache(maxsize=64)
@@ -1189,7 +1233,13 @@ def csi_history() -> pd.DataFrame:
     for q in quarters():
         s = crowding_score(q)
         if not s.empty:
-            rows[q] = s["CSI"]
+            # 与 tools/export_csi.py 完全同一套规则：整期都「数据不足」时
+            # 整行写 NaN，否则前 7 期会拿「价格 + 资金」两项平均当 CSI，
+            # 曲线上多出 7 个点、分位分母从 40 变成 47（实测煤炭 90→89）。
+            _bad = ("等级" in s.columns
+                    and (s["等级"].astype(str) == "数据不足").all())
+            rows[q] = (pd.Series(np.nan, index=s.index)
+                       if _bad else s["CSI"])
     d = pd.DataFrame(rows).T.reindex(columns=list(C.INDUSTRIES))
     return d.dropna(how="all")
 

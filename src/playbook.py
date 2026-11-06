@@ -32,6 +32,9 @@
 """
 from __future__ import annotations
 
+import json
+import os
+
 import numpy as np
 import pandas as pd
 
@@ -240,6 +243,30 @@ def position_band(pct: float, disp: float | None) -> tuple[int, int, bool]:
     return lo, hi, cut
 
 
+def _factor_test() -> list[dict]:
+    """读取因子检验结果（data/derived/factor_test.json）；缺失时返回空列表。"""
+    fn = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      "data", "derived", "factor_test.json")
+    try:
+        with open(fn, encoding="utf-8") as f:
+            return json.load(f).get("factors", [])
+    except Exception:
+        return []
+
+
+def crowding_evidence() -> str:
+    """「拥挤即风险」的实证结论：数字现读 factor_test.json，避免写死后过期。"""
+    _ft = _factor_test()
+    _cf = next((f for f in _ft if "配置分位" in f.get("name", "")), None)
+    if _cf and isinstance(_cf.get("layers"), dict):
+        _L = _cf["layers"]
+        _q1, _q5 = float(_L.get("0", np.nan)), float(_L.get("4", np.nan))
+        return (f"「拥挤即风险」只有方向、没有显著性：配置分位 Q1→Q5 的次季收益从 "
+                f"{_q1:+.2f}% 降到 {_q5:+.2f}%，但 t 只有 {_cf['t']:+.2f}、"
+                f"p={_cf['p']:.2f}，不能当卖出信号。")
+    return "「拥挤即风险」只有方向、没有显著性，不能当卖出信号。"
+
+
 def conclusions(q: str | None = None) -> list[dict]:
     """生成全量结论清单（供「结论总览」页渲染）。
 
@@ -329,6 +356,12 @@ def conclusions(q: str | None = None) -> list[dict]:
 
     # ---- 4. 别追高 ----
     hot = t[t["动作"] == "别追高"]
+    # CSI ≥80 档的次季超额均值：现读阈值实证，写死会随重算过期。
+    try:
+        _bins = cn.csi_threshold().get("bins")
+        _hot_mean = float(_bins.loc[[i for i in _bins.index if "≥80" in str(i)][0], "均值"])
+    except Exception:
+        _hot_mean = float("nan")
     if len(hot):
         out.append(dict(
             tag="别追高",
@@ -338,8 +371,9 @@ def conclusions(q: str | None = None) -> list[dict]:
                 f"{i}：配置 {r['历史分位']:.0f} 分位、指数 {_f(r.get('指数分位'))} 分位、"
                 f"近 3 月 {_f(r.get('近3月涨幅%'), 1, True)}%"
                 for i, r in hot.iterrows()),
-            meaning=("拥挤不等于马上跌——本库自己的数据已经证伪「高配置必跌」"
-                     "（高分位行业次季反而 +0.83%）。所以这里不是看空，而是"
+            meaning=(f"拥挤不等于马上跌——本库自己的数据已经证伪「高配置必跌」"
+                     f"（CSI ≥80 的行业次季超额均值 {_hot_mean:+.2f}%，"
+                     f"与「必跌」相反）。所以这里不是看空，而是"
                      "「同样的钱买不到便宜货」，新增资金不该放这里。"),
             action="已持有的可以拿，不加仓；单行业超过权益 20% 的减到 20% 以内。",
             fail="若价格分位回落到 70 以下而资金仍在进，则升级为「可以跟」。",
@@ -404,9 +438,16 @@ def conclusions(q: str | None = None) -> list[dict]:
                         f"{r['stock_name']}（{r['d_n']:+.0f} 家，{r['industry']}）"
                         for _, r in c3.iterrows())
                         + f"。口径：前十大（两期都只取每只基金最重的 10 只），"
-                          f"样本 {sf.attrs['n_funds'][1]:,} 只基金；"
-                          + ("同比 " + "、".join(
-                              f"{i} {v:+.0f}" for i, v in _yoy.items()) + "。"
+                          f"本期披露前十大的 {sf.attrs['n_funds'][1]:,} 只基金"
+                          f"（上期 {sf.attrs['n_funds'][0]:,} 只；两期并集计数，"
+                          f"新增/清仓都会进 d_n）；"
+                          # 同比必须带上期次、且用股票名称：
+                          # 原来只写「同比 688825 +667」，读者看到的是代码，
+                          # 且不知道是跟哪个季度比。
+                          + (f"同比（{ps[0]}→{ps[1]}，同一批前三名）"
+                             + "、".join(
+                                 f"{a3.loc[i, 'stock_name']} {v:+.0f} 家"
+                                 for i, v in _yoy.items() if i in a3.index) + "。"
                              if len(_yoy) else "")),
                     meaning=(f"加仓前三分布在 {len(ind_a)} 个行业"
                              # 判据是「同一行业至少 2 只」，不是「行业数 ≤2」：
@@ -428,6 +469,15 @@ def conclusions(q: str | None = None) -> list[dict]:
     # ---- 8. 拥挤度 ----
     cs = cn.crowding_score(q)
     if not cs.empty:
+        # 只排「可评级」的行业：小样本（持有 <150 只或配置 <0.5%）与
+        # 数据不足的行业，CSI 由两三个噪声分位平均出来，不能进「最拥挤」。
+        # 之前没过滤，页面会写出「最拥挤：煤炭、石油石化、综合」「最冷门：
+        # 美容护理」，而在 ③ 页这些行业明确标着「不评级」——同一份数据
+        # 两个结论，读者只能信一个。
+        if "等级" in cs.columns:
+            _ok = cs[~cs["等级"].isin(["小样本", "数据不足"])]
+            if len(_ok) >= 6:
+                cs = _ok
         hi = cs.head(3)
         lo = cs.tail(3)
         out.append(dict(
@@ -438,7 +488,7 @@ def conclusions(q: str | None = None) -> list[dict]:
             evidence=("CSI＝(配置分位＋价格分位＋资金分位)/3，等权、不拟合；"
                       "三个分位分别回答「机构押多重」「价格多贵」「钱还在不在进」。"
                       "≥80 极度拥挤、65–80 拥挤、45–65 中性、25–45 偏冷、<25 冷门。"),
-            meaning=("拥挤度只描述状态，不预测收益——本库 30 期数据已证伪"
+            meaning=(f"拥挤度只描述状态，不预测收益——本库 {len(cn.csi_history())} 期数据已证伪"
                      "「高拥挤必然下跌」。它的真正用途是<b>决定仓位大小</b>："
                      "同样看好，拥挤的行业只能给小仓位。"),
             action="拥挤行业单行业上限 10%，冷门行业可给到 15%，其余 12%。",
@@ -446,11 +496,12 @@ def conclusions(q: str | None = None) -> list[dict]:
         ))
 
     # ---- 9. 反面证据 ----
+    _ev = ("加仓广度的 RankIC 长期在 0 附近（详见「因子检验」页的实测值与 p 值）；"
+           + crowding_evidence())
     out.append(dict(
         tag="反面证据",
         claim="这套方法能描述机构在做什么，但不能预测下一季涨什么。",
-        evidence=("加仓广度的 RankIC 长期在 0 附近（详见「因子检验」页的实测值与 p 值）；"
-                  "「拥挤即风险」只有方向、没有显著性：配置分位 Q1→Q5 的次季收益从 +2.39% 降到 +0.51%，但 t 只有 −0.83、p=0.42，不能当卖出信号。"),
+        evidence=_ev,
         meaning=("所以本页所有「可以跟」都是「赔率合适 + 机构在做」的组合，"
                  "不是「必涨」。它的价值在于避免在拥挤处接棒、避免在撤离处抄底，"
                  "而不是抓涨幅。"),

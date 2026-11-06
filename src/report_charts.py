@@ -454,6 +454,31 @@ CSI_COLORS = {
     "小样本": "#9AA6B2",
 }
 
+def csi_text(v) -> str:
+    """CSI 的显示文本：整数；四舍五入会跨档位时保留一位小数。
+
+    为什么需要它：轻工制造实际 44.9，属于「偏冷（25–45）」，但显示成整数
+    就是「45 偏冷」——读者对着阈值表（45–65 中性）会认为我们算错了档位。
+    同类的还有建筑装饰 24.9 显示成「25 冷门」。这类边界值只占少数，
+    保留一位小数既能对齐档位，也不会把整页变成小数堆。
+    """
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    if not np.isfinite(x):
+        return "—"
+    def _band(v: float) -> int:
+        return 4 if v >= 80 else 3 if v >= 65 else 2 if v >= 45 \
+            else 1 if v >= 25 else 0
+
+    r = int(round(x))
+    # 只在「取整后档位会变」时才带小数：44.9→45 会从偏冷变中性，必须写 44.9；
+    # 65.2→65 前后同为拥挤，写整数即可，否则整页都是没必要的 .2/.3。
+    if r != x and _band(x) != _band(float(r)):
+        return f"{x:.1f}"
+    return f"{r:d}"
+
 
 def fig_csi_bar(cs: pd.DataFrame, quarter: str = "") -> go.Figure:
     """按 CSI 排序的横向条形图（最拥挤在最上面），颜色＝拥挤等级。
@@ -504,7 +529,7 @@ def fig_csi_bar(cs: pd.DataFrame, quarter: str = "") -> go.Figure:
         _hv.append(_base_txt)
     fig = go.Figure(go.Bar(
         y=list(d.index), x=d["CSI"], orientation="h", marker_color=cols,
-        text=[f'{v:.0f}　{l}' + ("†" if rel == "小样本" else "")
+        text=[f'{csi_text(v)}　{l}' + ("†" if rel == "小样本" else "")
               for v, l, rel in zip(d["CSI"], d["等级"], d.get("可靠", [""] * len(d)))],
         textposition="outside", textfont=dict(size=10.5),
         customdata=np.array(_hv).reshape(-1, 1),
@@ -740,19 +765,22 @@ def fig_crowding_map(comp: pd.DataFrame, idx: pd.DataFrame) -> go.Figure:
 
     def _q(r):
         hi_c, hi_p = r["历史分位"] >= 50, r["指数分位"] >= 50
+        # 用「中位以上/以下」命名，而不是「真拥挤 / 抱团没赚」：
+        # 50 分位只是相对位置，不等于 80/90 的极值线；叫「真拥挤」会让人
+        # 把一半行业当成要减仓的对象（实测 8 个双高里只有 7 个到极值）。
         if hi_c and hi_p:
-            return "真拥挤（配置高+价格高）"
+            return "双高（配置与价格≥中位）"
         if hi_c and not hi_p:
-            return "抱团没赚（配置高+价格低）"
+            return "配置重·价格不贵"
         if not hi_c and hi_p:
-            return "机构踏空（配置低+价格高）"
-        return "冷门（配置低+价格低）"
+            return "配置轻·价格贵"
+        return "双低·冷门"
 
     d["象限"] = d.apply(_q, axis=1)
-    cmap = {"真拥挤（配置高+价格高）": C.COLOR["up"],
-            "抱团没赚（配置高+价格低）": "#E8710A",
-            "机构踏空（配置低+价格高）": C.COLOR["price"],
-            "冷门（配置低+价格低）": C.COLOR["down"]}
+    cmap = {"双高（配置与价格≥中位）": C.COLOR["up"],
+            "配置重·价格不贵": "#E8710A",
+            "配置轻·价格贵": C.COLOR["price"],
+            "双低·冷门": C.COLOR["down"]}
     fig = go.Figure()
     for tag, g in d.groupby("象限"):
         fig.add_trace(go.Scatter(
@@ -775,7 +803,7 @@ def fig_crowding_map(comp: pd.DataFrame, idx: pd.DataFrame) -> go.Figure:
     fig.update_yaxes(title_text="指数分位（价格相对自己多贵）", range=[-6, 108])
     # 坐标轴标题要留出边距，否则左侧竖排标题会被裁掉
     fig.update_layout(margin=dict(l=64, r=16, t=52, b=54))
-    return _base(fig, "两个分位一起看：只有右上角才是真拥挤", 520, legend=True)
+    return _base(fig, "两个分位一起看：右上＝配置与价格都在中位以上；到极值另看 80/90 线", 520, legend=True)
 
 
 # ---------------------------------------------------------------------------
@@ -786,6 +814,15 @@ CSI_BANDS = [(80, 101, "rgba(198,40,40,0.16)", "≥80 极度拥挤"),
              (45, 65, "rgba(138,151,165,0.04)", "45–65 中性"),
              (25, 45, "rgba(76,141,223,0.12)", "25–45 偏冷"),
              (0, 25, "rgba(31,78,156,0.16)", "<25 冷门")]
+
+# 「分位区间」统一配色：紫罗兰（全局 accent #6E4AB8 压深一档）。
+# 全站只有「分位区间」这一种元素用它，所以不会和已有的四套语义色打架：
+#   红＝拥挤/危险、橙＝自身历史分位、蓝＝截面分位、灰＝网格与背景。
+# 两处使用：① 下图由两个把手拖出来的参考区间；② 上图 31 个行业的 25–75% 分位带。
+REF_BAND = dict(fill="rgba(124,58,237,0.20)",      # 主色带（参考区间内部）
+                fill_soft="rgba(124,58,237,0.075)",  # 更淡（大面积分布带用，避免糊住五档底色）
+                line="#5B21B6",                     # 边界线与图例
+                edge="rgba(91,33,182,0.55)")        # 分布带的上下边界
 
 
 def _expanding_pct(s: pd.Series, window: int | None = None) -> pd.Series:
@@ -825,7 +862,9 @@ def pct_of(s: pd.Series, cur: float | None = None,
     cur = float(v.iloc[-1]) if cur is None else float(cur)
     if window:
         v = v.tail(int(window))
-    k = int((v <= cur).sum())
+    # 同 self_pct：cur 与序列里的同一个数可能差 1e-14，
+    # 不带容差会把「等于自己」漏掉，最高/最低值被算成第 0 名。
+    k = int((v <= cur + 1e-9).sum())
     if len(v) < 4:
         return float("nan"), len(v), k
     return float(k / len(v) * 100), len(v), k
@@ -838,7 +877,8 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
                   thr: float = 80,
                   show_cross: bool = True,
                   ref_levels: tuple[int, ...] = (50, 90),
-                  show_own: bool = True) -> go.Figure:
+                  show_own: bool = True,
+                  rated_only: list[str] | None = None) -> go.Figure:
     """上：CSI 水位怎么走；下：这个水位在「自己的历史」里排第几。
 
     为什么必须画折线：CSI 是一个 0–100 的水位，单看当期数字无法判断
@@ -855,7 +895,7 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         return _base(go.Figure(), "数据未就绪")
     d = H.dropna(how="all")
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                        row_heights=[0.70, 0.30], vertical_spacing=0.045)
+                        row_heights=[0.67, 0.33], vertical_spacing=0.045)
     _title_txt = ""
 
     # 阈值背景带：先把「哪里是危险区」画出来，再看线怎么走。
@@ -897,6 +937,8 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
     # 不画 31 条线——那是一团蜘蛛网，谁在涨谁在跌都看不出来。
     # 改成「31 个行业的 25–75% 分位带」：它表达的是「市场整体的分布宽度」，
     # 只占一层视觉，不跟主角（选中行业）抢注意力。
+    # 颜色与下图参考区间同族（紫），但更淡并加虚线边界：灰底叠在橙/红档位上
+    # 会混成一片土黄（旧版就是这个毛病），紫色叠上去仍能看出带的上下沿在哪。
     if show_band:
         q1 = d.quantile(0.25, axis=1)
         q3 = d.quantile(0.75, axis=1)
@@ -904,9 +946,14 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         fig.add_trace(go.Scatter(
             x=xs + xs[::-1],
             y=list(q3.values) + list(q1.values)[::-1],
-            fill="toself", fillcolor="rgba(124,139,156,0.20)",
+            fill="toself", fillcolor=REF_BAND["fill_soft"],
             line=dict(width=0), hoverinfo="skip", showlegend=True,
-            name="31 行业中 25–75% 区间"), row=1, col=1)
+            name="31 行业中 25–75% 分位带"), row=1, col=1)
+        for _qq, _nm in ((q3, "75%"), (q1, "25%")):
+            fig.add_trace(go.Scatter(
+                x=xs, y=_qq.values, mode="lines", showlegend=False,
+                line=dict(color=REF_BAND["edge"], width=1.1, dash="dot"),
+                hoverinfo="skip", name=f"{_nm} 分位"), row=1, col=1)
 
     if sel and sel in d.columns:
         s = d[sel]
@@ -984,17 +1031,38 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
     # · 选了行业   → 橙＝它自己的历史分位；蓝虚线＝当期在全行业里的分位
     # · 全市场中位 → 橙＝中位自己的历史分位；蓝虚线＝≥65 分行业占比（广度）
     # 两条线的量纲都是 0–100，所以 P10/P50/P90 参考线在两种视角下都成立。
-    for _lv in ref_levels:
-        _lv = float(_lv)
+    # 下图不再铺「80 分位以上红线区」：它和用户自己拖出来的参考区间是同一件事
+    # （都在说「多高算高」），两层半透明底色叠在一起必然混成第三种颜色。
+    # 想以 80 为界，把把手拖到 80 即可——口径留在用户手里，画面只留一层。
+    # 参考分位区间：滑块的两个把手之间＝「我自己认定的常态区」。
+    # 旧版只画两条灰点线 + 8.5px 小字，100% 缩放下几乎看不见，读者根本不知道
+    # 自己拖出来的区间落在哪。改成「紫罗兰色带 + 实线边界 + 反白色块标签」：
+    # 色带用全局 accent（紫），与红/橙/蓝三套语义色都不撞。
+    # 色带用 trace 画（不是 shape）：① shape 不进图例，得再补一个空 trace 才说明得了
+    # 「紫色是什么」，而空 trace（x/y 全 None）挂在 x2 上会让 plotly.js 直接放弃
+    # 整个子图的轨迹层（实测两条线一起消失）；② trace 自带图例色块，一举两得。
+    _refs_x = sorted({float(x) for x in ref_levels})
+    _band_on = len(_refs_x) >= 2 and (_refs_x[-1] - _refs_x[0]) >= 1
+    if _band_on:
+        _xs = list(d.index)
+        fig.add_trace(go.Scatter(
+            x=_xs + _xs[::-1],
+            y=[_refs_x[-1]] * len(_xs) + [_refs_x[0]] * len(_xs),
+            fill="toself", fillcolor=REF_BAND["fill"], line=dict(width=0),
+            name=f"参考区间 P{_refs_x[0]:.0f}–P{_refs_x[-1]:.0f}",
+            hoverinfo="skip", showlegend=True), row=2, col=1)
+    for _i, _lv in enumerate(_refs_x):
         fig.add_shape(type="line", xref="x2 domain", x0=0, x1=1,
                       yref="y2", y0=_lv, y1=_lv,
-                      line=dict(color=("#C62828" if _lv >= 80 else "#B9C3CE"),
-                                width=1.0, dash="dot"))
-        fig.add_annotation(x=1, xref="x2 domain", y=_lv, yref="y2",
+                      line=dict(color=REF_BAND["line"], width=1.7, dash="dash"))
+        # 两条线的标签一上一下错开：把手拖得很近时也不会叠成一团。
+        # 上边界写在线上面，下边界写在线下面（只有一条线时写上面）。
+        _up = (_i == len(_refs_x) - 1)
+        fig.add_annotation(x=0.999, xref="x2 domain", y=_lv, yref="y2",
                            text=f"P{_lv:.0f}", showarrow=False,
-                           xanchor="right", yanchor="bottom",
-                           font=dict(size=8.5, color="#7A5A2A"),
-                           bgcolor="rgba(255,255,255,0.72)")
+                           xanchor="right", yanchor=("bottom" if _up else "top"),
+                           font=dict(size=9.5, color="#FFFFFF"),
+                           bgcolor=REF_BAND["line"], borderpad=2.5)
 
     if sel and sel in d.columns:
         pct = _expanding_pct(d[sel], window)
@@ -1009,21 +1077,25 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         pct = _expanding_pct(med, window)
         _lab_own = "全市场中位的历史分位"
         _hov_own = "%{x}<br>中位的历史分位 %{y:.0f}<extra></extra>"
-        _cnt = d.notna().sum(axis=1)
-        _cross_ser = (d >= 65).sum(axis=1) / _cnt.replace(0, np.nan) * 100
-        _lab_cross = "≥65 分行业占比（广度）"
-        _hov_cross = "%{x}<br>≥65 分的行业占比 %{y:.0f}%<extra></extra>"
+        # 广度只数「可评级」的行业：不评级的小样本（综合 79、美容护理 4）
+        # 分数本身不可信，把它们计入分子分母，会和页面 KPI 的 9/26 打架。
+        _dr = d[[c for c in d.columns if (not rated_only or c in rated_only)]] \
+            if rated_only else d
+        _cnt = _dr.notna().sum(axis=1)
+        _cross_ser = (_dr >= 65).sum(axis=1) / _cnt.replace(0, np.nan) * 100
+        _n_rated = len([c for c in d.columns if (not rated_only or c in rated_only)])
+        _lab_cross = f"≥65 分行业占比（{_n_rated} 个可评级）"
+        _hov_cross = ("%{x}<br>可评级行业中 ≥65 分的占比 %{y:.0f}%"
+                      "<extra></extra>")
         _yt = "分位 / 广度（0–100）"
 
-    # 80 分位以上是红线区：历史上只有两成季度比现在更挤
-    fig.add_shape(type="rect", xref="x2 domain", x0=0, x1=1, yref="y2",
-                  y0=80, y1=100, fillcolor="rgba(198,40,40,0.10)",
-                  line_width=0, layer="below")
+    # 下图只留用户自选的紫色参考带（固定红底已删，理由见上方注释）
     if show_own:
         fig.add_trace(go.Scatter(
             x=list(pct.index), y=pct.values, mode="lines", name=_lab_own,
+            # 去掉原来的土黄面积填充：它把整个下子图铺成米色，两条参考线
+            # 和紫色参考带都压在这层米色上，反而更看不清。线本身足够表达走势。
             line=dict(color="#8A5A00", width=2.0),
-            fill="tozeroy", fillcolor="rgba(200,150,60,0.10)",
             hovertemplate=_hov_own), row=2, col=1)
     if show_cross:
         fig.add_trace(go.Scatter(
@@ -1049,16 +1121,19 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         _mm = med.dropna()
         _cur_m = float(_mm.iloc[-1])
         _own_m, _n_m, _k_m = pct_of(_mm, _cur_m, window)
-        _last_m = d.iloc[-1]
+        # 口径必须与图里的蓝虚线、页面 KPI 一致：不评级的小样本不计入分子分母。
+        _last_m = _dr.iloc[-1] if rated_only else d.iloc[-1]
         _n_hi = int((_last_m >= 65).sum())
         _n_cnt = int(_last_m.notna().sum())
         _w_m = f"近 {_n_m} 期" if window else f"自身 {_n_m} 期"
         _cap = (f"全市场中位 {_cur_m:.0f} 分｜"
                 + (f"{_w_m}第 {_own_m:.0f} 分位" if np.isfinite(_own_m)
                    else f"{_w_m}样本不足")
-                + f"｜31 个行业里 {_n_hi}/{_n_cnt} 个 ≥65 分")
-    fig = _base(fig, _cap, 620, legend=True)
-    fig.update_layout(margin=dict(l=76, r=18, t=64, b=80),
+                + (f"｜可评级的 {_n_cnt} 个行业里 {_n_hi} 个 ≥65 分"
+                   if rated_only else
+                   f"｜31 个行业里 {_n_hi}/{_n_cnt} 个 ≥65 分"))
+    fig = _base(fig, _cap, 650, legend=True)
+    fig.update_layout(margin=dict(l=76, r=18, t=64, b=92),
                       legend=dict(orientation="h", yanchor="bottom", y=1.005,
                                   x=0, font=dict(size=9.5)))
     return fig
@@ -1078,13 +1153,37 @@ _CSI_SCALE = [
 ]
 
 
+def _csi_text_color(v: float) -> str:
+    """格内数值的字色：按底色深浅自动切黑/白。
+
+    不能用统一颜色：深蓝（冷门）与白色（中性）同屏，统一黑字在深蓝上糊成一片，
+    统一白字在近白格上又完全看不见。分档与 _CSI_SCALE 一一对应。
+    """
+    if not np.isfinite(v):
+        return "#5A6B7D"
+    if v >= 80:          # 深红
+        return "#FFFFFF"
+    if v >= 65:          # 橙
+        return "#3B2A12"
+    if v >= 45:          # 近白
+        return "#26374A"
+    if v >= 25:          # 浅蓝
+        return "#1F3A56"
+    return "#FFFFFF"     # 深蓝
+
+
 def fig_csi_heatmap(H: pd.DataFrame, small: list[str] | None = None,
-                    height: int = 700, bad: pd.DataFrame | None = None) -> go.Figure:
-    """31 个行业 × 全样本期的 CSI 热力图：颜色＝档位。
+                    height: int = 700, bad: pd.DataFrame | None = None,
+                    show_text: bool = True) -> go.Figure:
+    """31 个行业 × 全样本期的 CSI 热力图：颜色＝档位，格内标数值。
 
     为什么用它替代「31 条线叠加」：叠加 31 条线谁都看不清（蜘蛛网），
     而热力图一屏就能看出「哪一行什么时候变红」——这是横向对比最有效的编码。
     行按当期 CSI 降序排（不评级的排最后），列按时间。
+
+    为什么格内要标数字：颜色只能分五档，同一档里 66 分和 79 分看起来一样，
+    但「快挤了」和「刚过线」是两个判断。数字用整数（hover 给到 0.1），
+    39 列时每格约 26px，一位小数会挤成一团。
     """
     if H.empty:
         return _base(go.Figure(), "数据未就绪")
@@ -1129,6 +1228,26 @@ def fig_csi_heatmap(H: pd.DataFrame, small: list[str] | None = None,
                       ticktext=["冷门", "偏冷", "中性", "拥挤", "极度"])))
     # 热力图每列是一个季度，全部标出（旋转 90° 后每列约 10px，放得下）
     _ticks = list(d.index)
+    # 格内数值：单独一条 text trace，而不是把 text 塞进 Heatmap——
+    # Heatmap 的 textfont 是全局单色，没法按格子深浅切换黑白。
+    if show_text:
+        _xs, _ys, _ts, _cs = [], [], [], []
+        _ncol = len(d.index)
+        _fs = 9.4 if _ncol <= 20 else 8.8 if _ncol <= 32 else 8.2 if _ncol <= 46 else 7.2
+        for _i, _ind in enumerate(ylab):
+            for _j, _q in enumerate(d.index):
+                _v = z[_i, _j]
+                if not np.isfinite(_v):
+                    continue          # 空白格＝数据不足，留空比标「—」更干净
+                _xs.append(_q)
+                _ys.append(_ind)
+                _ts.append(csi_text(_v))
+                _cs.append(_csi_text_color(_v))
+        if _ts:
+            fig.add_trace(go.Scatter(
+                x=_xs, y=_ys, mode="text", text=_ts,
+                textfont=dict(size=_fs, color=_cs),
+                hoverinfo="skip", showlegend=False))
     fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
                      tickangle=-90, side="bottom",
                      tickfont=dict(size=9, color="#40505F"))

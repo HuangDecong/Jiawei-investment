@@ -92,7 +92,7 @@ def _top_holdings(code: str, q: str) -> pd.DataFrame:
     return d
 
 
-def render(h) -> None:
+def render(h, code: str | None = None, show_picker: bool = True) -> None:
     funds = _funds()
     q = cn.latest()
     pf = cn.pair_full()
@@ -103,21 +103,40 @@ def render(h) -> None:
     qf = pf[1]
 
     # ---------------- 选择器 ----------------
-    c1, c2 = st.columns([0.5, 0.5])
-    with c1:
-        opts = (funds["code"] + "　" + funds["name"].astype(str)
-                + "　" + funds["scale_yi"].map(lambda x: f"{x:.1f}亿"))
-        pick = st.selectbox("选择基金（可直接输入代码或名称搜索，按规模排序）",
-                            opts.tolist(), index=0, key="fund_pick")
-        code = pick.split("　")[0].strip()
-    with c2:
-        _mode = st.radio("结构口径",
-                         [f"前十大（{len(cn.quarters())} 期，季频）",
-                          f"全持仓（{len(cn.full_quarters())} 期，半年频）"],
-                         horizontal=True, key="fund_basis",
-                         help="前十大：每期只取最重的 10 只再归一化，季频、最长，"
-                              "看「股票里怎么分」；全持仓：半年报全部持仓占净值比，"
-                              "最准但一年只有两次，看「净值里放了多少股票」。")
+    # 与「季报全解」合并成一页后，基金由上面的统一选择器传入，
+    # 这里不再重复放一个选择框（两个框会各记一份状态，切换时容易对不上）。
+    def _picker() -> str:
+        _i = 0
+        if code:
+            _hit = [j for j, s in enumerate(opts) if s.startswith(str(code) + "　")]
+            _i = _hit[0] if _hit else 0
+        return st.selectbox("选择基金（可直接输入代码或名称搜索，按规模排序）",
+                            opts, index=_i, key="fund_pick").split("　")[0].strip()
+
+    opts = ui.fund_options(funds)
+    if show_picker or not code:
+        c1, c2 = st.columns([0.5, 0.5])
+        with c1:
+            code = _picker()
+        with c2:
+            _mode = st.radio(
+                "结构口径",
+                [f"前十大（{len(cn.quarters())} 期，季频）",
+                 f"全持仓（{len(cn.full_quarters())} 期，半年频）"],
+                horizontal=True, key="fund_basis",
+                help="前十大：每期只取最重的 10 只再归一化，季频、最长，"
+                     "看「股票里怎么分」；全持仓：半年报全部持仓占净值比，"
+                     "最准但一年只有两次，看「净值里放了多少股票」。")
+    else:
+        code = str(code).zfill(6)
+        _mode = st.radio(
+            "结构口径",
+            [f"前十大（{len(cn.quarters())} 期，季频）",
+             f"全持仓（{len(cn.full_quarters())} 期，半年频）"],
+            horizontal=True, key="fund_basis",
+            help="前十大：每期只取最重的 10 只再归一化，季频、最长，"
+                 "看「股票里怎么分」；全持仓：半年报全部持仓占净值比，"
+                 "最准但一年只有两次，看「净值里放了多少股票」。")
 
     basis = "top10" if _mode.startswith("前十大") else "full"
     hist = cn.fund_structure(code, basis)
@@ -128,12 +147,12 @@ def render(h) -> None:
 
     prof = cn.profiles()
     row = prof[prof["code"] == code]
-    nm = row["name"].iloc[0] if len(row) else code
-    typ = row["ftype"].iloc[0] if len(row) else "—"
+    nm = ui.safe_str(row["name"].iloc[0], code) if len(row) else code
+    typ = ui.safe_str(row["ftype"].iloc[0]) if len(row) else "—"
     inc = row["inception"].iloc[0] if len(row) else pd.NaT
     scale = row["scale_yi"].iloc[0] if len(row) else np.nan
-    mgr = row["managers"].iloc[0] if len(row) else "—"
-    bench = row["benchmark"].iloc[0] if len(row) else "—"
+    mgr = ui.safe_str(row["managers"].iloc[0]) if len(row) else "—"
+    bench = ui.safe_str(row["benchmark"].iloc[0]) if len(row) else "—"
     style = cn.benchmark_style(code)
 
     cur = hist.iloc[-1]
@@ -353,19 +372,39 @@ def render(h) -> None:
         # ---------------- 单个行业：全市场 vs 这只基金 ----------------
         h('<div style="font-size:12px;font-weight:700;margin:8px 0 3px">'
           '也可以只看一个行业：全市场平均 vs 这只基金</div>')
-        _ind = st.selectbox("选择行业（可输入搜索）", list(cmp_m.index), key="mkt_ind")
+        _ind_opts = list(cmp_m.index)
+        # 默认选「这只基金最新一期最重的行业」，而不是列表第一个。
+        # 排第一的往往是「农林牧渔」这类它根本不持有的行业，一进来就是一条
+        # 贴着 0 的平线，看起来像数据缺失（读者截图反馈过）。
+        _default = (_ind_opts[0] if not len(hist)
+                    else (hist.iloc[-1].idxmax() if hist.iloc[-1].notna().any()
+                          else _ind_opts[0]))
+        # 换基金时重置到新基金最重的行业；同一只基金内保留用户选择。
+        if (st.session_state.get("_mkt_fund") != code
+                or st.session_state.get("mkt_ind") not in _ind_opts):
+            st.session_state["_mkt_fund"] = code
+            st.session_state["mkt_ind"] = _default
+        _ind = st.selectbox("选择行业（可输入搜索）", _ind_opts, key="mkt_ind")
         _f = hist[_ind] if _ind in hist.columns else pd.Series(dtype=float)
         _m = Mkt[_ind] if _ind in Mkt.columns else pd.Series(dtype=float)
+        _f_max = float(pd.to_numeric(_f, errors="coerce").max()) if len(_f) else np.nan
+        _never = bool(np.isfinite(_f_max) and _f_max <= 0.001)
         _fig2 = go.Figure()
         _fig2.add_trace(go.Scatter(x=list(_m.index), y=_m.values, mode="lines+markers",
                                    name="全市场平均", line=dict(color=C.COLOR["text_dim"], width=2),
                                    marker=dict(size=4),
                                    hovertemplate="%{x}　全市场 %{y:.2f}%<extra></extra>"))
-        if len(_f):
+        if len(_f) and not _never:
             _fig2.add_trace(go.Scatter(x=list(_f.index), y=_f.values, mode="lines+markers",
                                        name=nm, line=dict(color=C.COLOR["price"], width=2),
                                        marker=dict(size=4),
                                        hovertemplate="%{x}　本基金 %{y:.2f}%<extra></extra>"))
+        elif _never:
+            # 不画一条贴 0 的平线（读者会误以为缺数据），改为在 0 处标一条虚线 + 说明
+            _fig2.add_hline(y=0, line=dict(color=C.COLOR["price"], width=1.4, dash="dot"),
+                            annotation_text=f"{nm}：{len(_f)} 期均为 0（从未持有）",
+                            annotation_position="bottom left",
+                            annotation_font=dict(size=9, color=C.COLOR["price"]))
         _fig2.update_yaxes(title_text="占前十大 %", tickfont=dict(size=11))
         # 31 个季度标签全标会糊成一片，只标每年 Q1 + 末期
         _tk2 = [x for x in _m.index if str(x).endswith("Q1")] + [list(_m.index)[-1]]
@@ -380,10 +419,17 @@ def render(h) -> None:
                           ("基本重合，说明它在这个行业上没有主动判断。"
                            if abs(_mf - _mm) < 1.5 else
                            "长期分离，说明这是它持续的超配/低配方向。"))
+        if _never:
+            h(f'<div class="cg-note" style="margin:-4px 0 12px">'
+              f'<b>{_ind}：本基金 {len(_f)} 期前十大里从未出现该行业</b>，所以蓝线是 0——'
+              f'这不是缺数据，是它确实没买。上面默认已选它最新一期最重的行业；'
+              f'想看它的行业押注，请换一个有持仓的行业。全市场平均 '
+              f'{_mm:.2f}%，说明这个行业并非没人要，只是这只基金不做。</div>')
         _read(h,
-              f'灰线是全市场平均，蓝线是这只基金。最新一期：全市场 '
-              f'{_mm:.2f}%、本基金 {_mf:.2f}%，偏离 <b>{_mf - _mm:+.2f}pp</b>。'
-              + _hist_note,
+              f'灰线是全市场平均' + ('' if _never else '，蓝线是这只基金') +
+              f'。最新一期：全市场 {_mm:.2f}%、本基金 {_mf:.2f}%，'
+              f'偏离 <b>{_mf - _mm:+.2f}pp</b>。'
+              + ('' if _never else _hist_note),
               f'<b>「全部」看结构，「单个」看偏离。</b>单看这只基金的曲线，无法判断它是'
               f'「主动超配」还是「全市场都这样」；叠上全市场平均，才知道哪些是它的判断。'
               f'这也是为什么本页先给全市场、再给单只基金。',
