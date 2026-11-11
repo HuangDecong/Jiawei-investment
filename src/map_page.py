@@ -327,11 +327,17 @@ def render(h) -> None:
         _ok = [i for i in H.columns if np.isfinite(_lastrow.get(i, np.nan))]
         _refs = tuple(sorted({int(round(x)) for x in (_ref_lo, _ref_hi)}))
         _show_own = _mode != "只看全行业"
-        _show_cross = _mode != "只看自身"
         # 不评级的行业既不进广度的分子，也不进分母（下面 KPI 用同一份名单）
         _small_set = (set(csi.index[csi["等级"].isin(["小样本", "数据不足"])])
                       if "等级" in csi.columns else set())
+        _is_small_sel = bool(_sel_t and _sel_t in _small_set)
+        # 选中小样本时不画「全行业分位」：那条线的分母是可评级行业，
+        # 小样本本来就不在池子里，画出来会变成一个「第 1 名」的假位置。
+        _show_cross = _mode != "只看自身" and not _is_small_sel
         _rated_all = [i for i in H.columns if i not in _small_set]
+        # 当期「可评级且有值」的行业数：图标题、KPI、表说明、正文全用这一个分母，
+        # 否则同一页会出现「第 1/26」和「31 个行业里排第几」两种说法。
+        _n_rated = len([i for i in _ok if i not in _small_set])
         st.plotly_chart(rc.fig_csi_trend(H, _sel_t, _band, rank_universe=_rated_all,
                                          window=_window, thr=float(_thr),
                                          show_cross=_show_cross, ref_levels=_refs,
@@ -351,7 +357,7 @@ def render(h) -> None:
         _ref_txt = "、".join(f"<b>P{k}</b>＝{_ref_desc(k)}" for k in _refs)
         if _sel_t:
             _line_txt = ('橙线＝<b>它自己的历史分位</b>（时间维度：在它过去若干期里排第几）；'
-                         '蓝虚线＝<b>当期全行业分位</b>（截面维度：31 个行业里排第几）。'
+                         f'蓝虚线＝<b>当期全行业分位</b>（截面维度：可评级的 {_n_rated} 个行业里排第几）。'
                          '两条都高＝「对自己、对同行都到顶」；只有一条高＝另一维度还是常态。')
         else:
             _line_txt = ('橙线＝<b>全市场中位自己的历史分位</b>（时间维度：整体水位在历史上排第几）；'
@@ -376,7 +382,6 @@ def render(h) -> None:
         _own, _nw, _kth = rc.pct_of(_series, _cur, _window)
         # 截面排名只在可评级行业里算：小样本（综合 58 只、0.12%）不占位次。
         _rated_cols = [i for i in _ok if i not in _small_set]
-        _is_small_sel = bool(_sel_t and _sel_t in _small_set)
         _rank = (np.nan if _is_small_sel
                  else int((_lastrow[_rated_cols] > _cur).sum()) + 1)
         _nvalid = len(_rated_cols)
@@ -482,7 +487,7 @@ def render(h) -> None:
                 + (f'当前选的是<b>近 {_window} 期窗口</b>（只跟最近这段时间比），'
                    f'窗口越短越敏感，适合看「这一轮周期走到哪了」。'
                    if _window else '当前选的是<b>全部历史</b>，最稳，适合做仓位决策。')
-                + f'蓝虚线是<b>全行业分位</b>（截面维度）：同一时点 31 个行业里排第几，'
+                + f'蓝虚线是<b>全行业分位</b>（截面维度）：同一时点可评级的 {_n_rated} 个行业里排第几，'
                 f'回答「在同行里，它是不是最挤的那个」。'
                 f'两条线都用<b>扩张窗口</b>逐期计算（第 i 期只跟第 i 期及以前比），'
                 f'不用未来数据，所以曲线是「当时就能看见」的。'

@@ -1014,15 +1014,20 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         # 每一个点的悬浮都要能回答「当期多少分、在自己历史排第几、在同行里排第几」，
         # 这样「看每一季度」才不只是看折线，而是看每一季的位置。
         _own_s = _expanding_pct(d[sel], window)
-        _cross_s = d.rank(axis=1, pct=True) * 100
+        # 截面分位的分母＝可评级行业（rank_universe）。用全部 31 列算，
+        # 综合这类小样本会占掉一个位次，和 KPI/对照表的「/26」对不上。
+        _runiv = [c for c in (rank_universe or list(d.columns)) if c in d.columns]
+        _cross_s = d[_runiv].rank(axis=1, pct=True) * 100
         _cd = []
         for _q in d.index:
             _v = d.at[_q, sel]
             if not np.isfinite(_v):
                 _cd.append([np.nan, np.nan, np.nan, np.nan])
                 continue
-            _row = d.loc[_q].dropna()
-            _cd.append([float(_own_s.loc[_q]), float(_cross_s.at[_q, sel]),
+            _row = d.loc[_q, _runiv].dropna()
+            _cd.append([float(_own_s.loc[_q]),
+                        (float(_cross_s.at[_q, sel])
+                         if sel in _cross_s.columns else np.nan),
                         int((_row > _v).sum()) + 1, int(len(_row))])
         _ht = (f"<b>{sel}</b>　%{{x}}<br>CSI %{{y:.1f}}"
                "<br>自身历史分位 %{customdata[0]:.0f}"
@@ -1125,10 +1130,11 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         pct = _expanding_pct(d[sel], window)
         _lab_own = "自身历史分位"
         _hov_own = "%{x}<br>自身历史分位 %{y:.0f}<extra></extra>"
-        _lab_cross = "全行业分位（横截面）"
+        _lab_cross = f"全行业分位（{len(_runiv)} 个可评级）"
         _hov_cross = ("%{x}<br>全行业分位 %{y:.0f}"
-                      "（当期 31 个行业里排第几）<extra></extra>")
-        _cross_ser = (d.rank(axis=1, pct=True) * 100)[sel]
+                      f"（当期 {len(_runiv)} 个可评级行业里排第几）<extra></extra>")
+        _cross_ser = _cross_s[sel] if sel in _cross_s.columns else \
+            pd.Series(np.nan, index=d.index)
         _yt = "分位（0–100）"
     else:
         pct = _expanding_pct(med, window)
