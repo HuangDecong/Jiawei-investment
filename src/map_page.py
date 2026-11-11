@@ -332,7 +332,7 @@ def render(h) -> None:
         _small_set = (set(csi.index[csi["等级"].isin(["小样本", "数据不足"])])
                       if "等级" in csi.columns else set())
         _rated_all = [i for i in H.columns if i not in _small_set]
-        st.plotly_chart(rc.fig_csi_trend(H, _sel_t, _band, rank_universe=_ok,
+        st.plotly_chart(rc.fig_csi_trend(H, _sel_t, _band, rank_universe=_rated_all,
                                          window=_window, thr=float(_thr),
                                          show_cross=_show_cross, ref_levels=_refs,
                                          show_own=_show_own,
@@ -374,8 +374,12 @@ def render(h) -> None:
         _ns = len(_series)
         # 分位与排名必须与图里同一套算法（pct_of），否则同一页会出现两个分位
         _own, _nw, _kth = rc.pct_of(_series, _cur, _window)
-        _rank = int((_lastrow[_ok] > _cur).sum()) + 1
-        _nvalid = len(_ok)
+        # 截面排名只在可评级行业里算：小样本（综合 58 只、0.12%）不占位次。
+        _rated_cols = [i for i in _ok if i not in _small_set]
+        _is_small_sel = bool(_sel_t and _sel_t in _small_set)
+        _rank = (np.nan if _is_small_sel
+                 else int((_lastrow[_rated_cols] > _cur).sum()) + 1)
+        _nvalid = len(_rated_cols)
         _chg4 = _cur - float(_series.iloc[-5]) if _ns >= 5 else np.nan
         _n80 = int((_series >= _thr).sum())
         _win_txt = f"近 {_nw} 期" if _window else f"自身 {_nw} 期历史"
@@ -407,10 +411,17 @@ def render(h) -> None:
                   (f"{_nw} 期中第 {_kth} 低" if np.isfinite(_own)
                    else f"不足 4 期（现有 {_nw} 期），不打分位"))]
         if _sel_t:
-            _cr_cur = float(H.iloc[-1].rank(pct=True).get(_sel_t, np.nan) * 100) \
-                if _sel_t in H.columns else np.nan
-            _kpis.append(("全行业分位", (f"{_cr_cur:.0f}" if np.isfinite(_cr_cur) else "—"),
-                          f"第 {_rank}/{_nvalid}｜同一时点横截面"))
+            if _is_small_sel:
+                # 小样本不给截面分位：它排在前面只说明「没人买、样本少」，
+                # 不是「大家都在押」。
+                _kpis.append(("全行业分位", "—",
+                              f"小样本·不评级｜不参与 {_nvalid} 个行业的排名"))
+            else:
+                _cr_cur = float(_lastrow[_rated_cols].rank(pct=True)
+                                .get(_sel_t, np.nan) * 100)
+                _kpis.append(("全行业分位",
+                              (f"{_cr_cur:.0f}" if np.isfinite(_cr_cur) else "—"),
+                              f"第 {_rank}/{_nvalid}｜同一时点横截面"))
         else:
             _kpis.append(("≥65 分行业", _crowd_txt,
                           f"占 {len(_crowd) / max(len(_rated), 1) * 100:.0f}%，"
@@ -432,7 +443,9 @@ def render(h) -> None:
                      + (f'<b>{_win_txt}第 {_own:.0f} 分位</b>（由低到高第 {_kth} 位，'
                         f'共 {_nw} 期）、' if np.isfinite(_own)
                         else f'{_win_txt}样本不足 4 期、不打分位，')
-                     + f'<b>全行业第 {_rank}/{_nvalid}</b>。'
+                     + (f'<b>全行业第 {_rank}/{_nvalid}</b>。' if np.isfinite(_rank)
+                        else '<b>小样本，不参与全行业排名</b>（持仓基金数与前十配置'
+                             '都太小，分位只反映样本噪音）。')
                      + f'历史最高 {_series.iloc[_imax]:.0f}（{_series.index[_imax]}）、'
                      f'最低 {_series.iloc[_imin]:.0f}（{_series.index[_imin]}）；'
                      f'{_ns} 期里上穿 {_thr:.0f} 共 <b>{_n_up}</b> 次、'
@@ -519,13 +532,18 @@ def render(h) -> None:
       f'窗口＝{_win_show}；均值、标准差、分位数都按<b>同一窗口</b>计算'
       f'（换窗口这几列会一起变）；'
       f'<b>z 值＝(当前−均值)/标准差</b>，＋1 表示比自己的常态挤一个标准差；'
-      f'「排名」＝当期在 {len(_ok)} 个行业里的名次（1＝最挤）；'
+      f'「排名」＝当期在 <b>{len(_rated_all)} 个可评级行业</b>里的名次（1＝最挤）；'
+      f'<b>小样本行业</b>（持有 &lt;150 只基金或前十配置 &lt;0.5%：'
+      f'{"、".join(sorted(_small_set)) if _small_set else "无"}）'
+      f'不参与排名与全行业分位，整段排在表尾并标注「小样本·不评级」——'
+      f'它们的分位高低只反映样本噪音，不代表拥挤。'
       f'「CSI 分位」＝当前 CSI 在自己历史里的排名，'
-      f'「全行业分位」＝当期 31 个行业里的排名——'
+      f'「全行业分位」＝当期在可评级行业里的排名——'
       f'两个都不是「配置分位」（那是 CSI 的输入之一）。'
       f'点表头可排序；表格下方按钮可下载 CSV。</div>')
     _tbl = rc.csi_stat_table(H, window=_window, thr=float(_thr),
-                             universe=_ok, selected=_sel_t)
+                             universe=_ok, selected=_sel_t,
+                             small=sorted(_small_set))
     # 屏幕表头叫「CSI 分位」，下载的 CSV 也必须是同一个名字，
     # 否则导出的表头还写着「当前分位」，又要解释一遍它是什么。
     if not _tbl.empty:
@@ -539,6 +557,10 @@ def render(h) -> None:
                 "行业": st.column_config.TextColumn("行业", width="small"),
                 "选中": st.column_config.TextColumn("本次", width="small",
                                                    help="● 为当前选中的行业"),
+                "评级": st.column_config.TextColumn(
+                    "评级", width="small",
+                    help="小样本＝持有 <150 只基金或前十配置 <0.5%："
+                         "不参与排名与全行业分位，只看数值，不下结论"),
                 "当前": st.column_config.NumberColumn("当前 CSI", format="%.1f"),
                 "历史均值": st.column_config.NumberColumn("历史均值", format="%.1f"),
                 "标准差": st.column_config.NumberColumn("标准差 σ", format="%.1f"),

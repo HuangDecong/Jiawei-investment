@@ -290,6 +290,34 @@ def ind_color(name: str) -> str:
     return IND_COLORS.get(name, "#B7C1CC")
 
 
+# 堆叠图专用：12 色高对比调色板，**按堆叠顺序取色**（不是按行业固定色）。
+#
+# 为什么要有第二套：IND_COLORS 是按「上游—中游—科技—消费—金融—公用」分色系的，
+# 同一色系内靠明度区分——于是食品饮料 #8C1F1F、医药生物 #A8322D、汽车 #C94A3F、
+# 家用电器 #E0705F 是四个相近的红，电子 #1F3F8F / 通信 #3B5FC0 / 计算机 #5B7FE0
+# 是三个相近的蓝。堆叠图一次只画 10 段，相邻两段常常正好落在同一色系里，
+# 读者反馈「颜色相近，根本辨别不出来」（2026-11-11）。
+#
+# 换成按位置取色后，同一张图的 10 段必然分属 10 个不同色相；代价是同一行业
+# 在不同基金/页面上不一定同色——但图例就贴在图下方逐行写着行业名与占比，
+# 「可辨」比「跨图同色」更重要。31 个行业全画（>12 段）时仍回落到 IND_COLORS：
+# 12 色循环两次反而更乱，那时按板块分色系更好读。
+_STACK12 = ["#4E79A7", "#F28E2B", "#59A14F", "#B07AA1", "#EDC948", "#76B7B2",
+            "#FF9DA7", "#9C755F", "#A0CBE8", "#8CD17D", "#D37295", "#B6992D"]
+
+
+def stack_palette(order: list[str], merged_label: str | None = None) -> dict[str, str]:
+    """按堆叠顺序分配颜色；「其他 N 个行业」永远是浅灰，不占色位。"""
+    out, i = {}, 0
+    for n in order:
+        if merged_label and n == merged_label:
+            out[n] = "#C9D3DE"
+        else:
+            out[n] = _STACK12[i % len(_STACK12)]
+            i += 1
+    return out
+
+
 def fig_ind_structure(M: pd.DataFrame, title: str = "",
                       residual_label: str = "其他（港股/未映射/现金）",
                       label_top: int = 4,
@@ -317,15 +345,32 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
     if M.empty:
         return _base(go.Figure(), "数据未就绪")
     d = M.copy()
+    # 全 0 / 全空的行业直接不画：x-unified 悬浮会把每条轨迹都列一行，
+    # 一只只持有一个行业的基金因此会在悬浮里出现十行「0.00%」+ 十个相近色块，
+    # 真正有值的那一段反而被淹没（2026-11-11 读者截图）。
+    d = d.loc[:, d.abs().sum(axis=0) > 0]
+    if d.empty:
+        return _base(go.Figure(), "数据未就绪")
     order = d.mean().sort_values(ascending=False).index.tolist()
     merged_label = None
     if max_items and len(order) > max_items:
-        keep = order[:max_items]
-        rest = order[max_items:]
+        # 峰值不到 0.5% 的行业不单独占一段：画出来只有 1–2px 宽，
+        # 却要多一行悬浮、多一个颜色。并进「其他」，总量不变。
+        keep = [i for i in order[:max_items] if float(d[i].max()) >= 0.5]
+        if not keep:
+            keep = order[:max_items]
+        rest = [i for i in order if i not in keep]
         merged_label = f"其他 {len(rest)} 个行业"
         d = d[keep].copy()
         d[merged_label] = M[rest].sum(axis=1)
         order = keep + [merged_label]
+
+    # ≤12 段用高对比调色板（按顺序取色），更多段回落到行业分色系
+    if len(order) <= 12:
+        _cmap = stack_palette(order, merged_label)
+    else:
+        _cmap = {i: ("#C9D3DE" if i == merged_label else ind_color(i))
+                 for i in order}
 
     fig = go.Figure()
     _n = len(d)
@@ -340,8 +385,7 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
                                   if float(s_.iloc[-1]) >= 4 else ""]
         fig.add_trace(go.Bar(
             x=list(d.index), y=s_.values, name=ind,
-            marker=dict(color="#C9D3DE" if ind == merged_label else ind_color(ind),
-                        line=dict(width=0)),
+            marker=dict(color=_cmap[ind], line=dict(width=0)),
             text=_txt, textposition="inside", insidetextanchor="middle",
             textfont=dict(size=10, color="#FFFFFF"),
             hovertemplate=_tpl + ind + "</extra>"))
@@ -365,6 +409,12 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
                      tickangle=-90, tickfont=dict(size=9, color="#40505F"))
     fig = _base(fig, title, 520)
     fig.update_layout(margin=dict(l=8, r=14, t=44, b=56))
+    # 把「这一版用的颜色」挂在图对象上：页面紧接着要画 HTML 图例（色块+占比），
+    # 它必须和柱子的颜色一一对上；重新按行业固定色去画就会出现
+    # 「图例是红、柱子是蓝」的错位。
+    fig.layout.meta = {"ind_colors": _cmap,
+                       "merged": merged_label or "",
+                       "order": list(order)}
     return fig
 
 
@@ -408,12 +458,16 @@ def ind_legend_html(names: list[str],
                     values: "pd.Series | None" = None,
                     changes: "pd.Series | None" = None,
                     cols: int = 4,
-                    min_value: float = 0.05) -> str:
+                    min_value: float = 0.05,
+                    colors: dict[str, str] | None = None) -> str:
     """行业图例：色块 + 名称 + 当前占比（+ 区间变化）。
 
     只列「有持仓」的行业（默认 >0.05%）：单只基金常常只持有 8–12 个行业，
     把 31 个全列出来会有一半是 0.0%，图例比图还长，反而看不清。
     想核对全部 31 个，用上方的堆叠图或下面的季度条形图。
+
+    colors : 与堆叠图完全相同的「行业→颜色」映射（取自 fig.layout.meta）。
+             不传就退回按行业固定色——只在没有配套堆叠图时才该这样用。
     """
     cells = []
     for n in names:
@@ -432,7 +486,7 @@ def ind_legend_html(names: list[str],
             f'<div style="display:flex;align-items:center;gap:7px;padding:4px 5px;'
             f'border-bottom:1px solid {C.COLOR["grid"]};min-width:0">'
             f'<span style="width:11px;height:11px;border-radius:2px;flex:0 0 11px;'
-            f'background:{ind_color(n)};display:inline-block"></span>'
+            f'background:{(colors or {}).get(n) or ind_color(n)};display:inline-block"></span>'
             f'<span style="font-size:12.5px;color:#37485C;white-space:nowrap;'
             f'overflow:hidden;text-overflow:ellipsis">{n}</span>'
             f'<span style="margin-left:auto;font-size:12.5px;color:#1F2D3D;'
@@ -986,18 +1040,21 @@ def fig_csi_trend(H: pd.DataFrame, sel: str | None = None,
         if len(_v):
             _cur = float(_v.iloc[-1])
             _own, _nw, _k = pct_of(s, _cur, window)
-            # 排名口径与页面 KPI 一致：跟「当期有值」的全部行业比。
-            # 不能排除选中行业自己——它若不在池子里，就会出现「第 27/26」。
+            # 排名口径与页面 KPI、下方对照表一致：只在「可评级且当期有值」的
+            # 行业里排。`rank_universe` 传进来的就是这份名单；选中行业若不在
+            # 名单里（小样本），不再硬塞进去凑一个名次，改为明写「不参与排名」。
             _pool = [i for i in (rank_universe or list(d.columns))
                      if i in d.columns and np.isfinite(d.iloc[-1].get(i, np.nan))]
-            if sel not in _pool and np.isfinite(d.iloc[-1].get(sel, np.nan)):
-                _pool = _pool + [sel]
             _lastrow = d.iloc[-1][_pool]
             _rank = int((_lastrow > _cur).sum()) + 1
             _nvalid = len(_pool)
             _win_txt = f"近 {_nw} 期" if window else "全历史"
-            _title_txt = (f"{sel}：当前 {_cur:.0f} 分｜{_win_txt}第 {_own:.0f} 分位"
-                          f"｜全行业第 {_rank}/{_nvalid}")
+            if sel in _pool:
+                _title_txt = (f"{sel}：当前 {_cur:.0f} 分｜{_win_txt}第 {_own:.0f} 分位"
+                              f"｜全行业第 {_rank}/{_nvalid}")
+            else:
+                _title_txt = (f"{sel}：当前 {_cur:.0f} 分｜{_win_txt}第 {_own:.0f} 分位"
+                              f"｜小样本·不参与全行业排名")
         # 穿过 80 的时点：上穿红三角、下穿绿三角，一眼看出「什么时候变挤/变松」
         up, dn = [], []
         for i in range(1, len(s)):
@@ -1300,7 +1357,8 @@ def fig_fund_crowding_rank(rk: pd.DataFrame, med: float, thr: float = 80,
 
 def csi_stat_table(H: pd.DataFrame, window: int | None = None,
                    thr: float = 80, universe: list[str] | None = None,
-                   selected: str | None = None) -> pd.DataFrame:
+                   selected: str | None = None,
+                   small: list[str] | None = None) -> pd.DataFrame:
     """31 个行业的描述统计：均值、标准差、z 值、分位数、当前分位、排名。
 
     为什么单列一张表：图上只能给「当前值 + 一条箱线」，读者想核对
@@ -1314,15 +1372,23 @@ def csi_stat_table(H: pd.DataFrame, window: int | None = None,
              否则「全历史均值」与「近 12 期分位」混在一张表里会自相矛盾。
     thr    : 拥挤阈值，用于「触及次数」列。
     universe : 参与排名的行业（当期有值的全部行业）。
+    small  : 小样本行业（持有基金数 <150 或前十配置 <0.5%）。
+             它们**不参与排名与全行业分位**，并单列「评级」标出来——
+             2026-11-11 读者截图里，仅 58 只基金持有、合计 0.12% 的「综合」
+             排在银行前面第 3 名，读者以为是真拥挤。
     """
     if H.empty:
         return pd.DataFrame()
     d = H.dropna(how="all")
     last = d.iloc[-1]
+    small_set = set(small or [])
     pool = [i for i in (universe or list(d.columns))
             if i in d.columns and np.isfinite(last.get(i, np.nan))]
-    rk = last.reindex(pool).rank(ascending=False, method="min")
-    xrank = last.reindex(pool).rank(pct=True) * 100
+    # 排名与截面分位只在「可评级」的行业里算：把 0.12% 仓位的小样本
+    # 混进来，等于让噪音去挤占真行业的位次。
+    pool_rated = [i for i in pool if i not in small_set]
+    rk = last.reindex(pool_rated).rank(ascending=False, method="min")
+    xrank = last.reindex(pool_rated).rank(pct=True) * 100
     rows = []
     for ind in d.columns:
         s_all = d[ind].dropna().astype(float)
@@ -1334,11 +1400,13 @@ def csi_stat_table(H: pd.DataFrame, window: int | None = None,
         mu = float(v.mean())
         sd = float(v.std(ddof=1)) if len(v) > 1 else float("nan")
         q = {p: float(np.percentile(v, p)) for p in (10, 50, 90)}
+        _is_small = ind in small_set
         rows.append({
             "行业": ind,
             # 「选中」放第二列：表格默认横向滚动，放最后一列会被滚出视野，
             # 读者就找不到「我在看的那个行业是哪一行」。
             "选中": "●" if ind == selected else "",
+            "评级": "小样本·不评级" if _is_small else "",
             "当前": round(cur, 1),
             "历史均值": round(mu, 1),
             "标准差": round(sd, 1),
@@ -1349,8 +1417,13 @@ def csi_stat_table(H: pd.DataFrame, window: int | None = None,
             "最小": round(float(v.min()), 1),
             "最大": round(float(v.max()), 1),
             "当前分位": round(pct, 1) if np.isfinite(pct) else np.nan,
-            "全行业分位": round(float(xrank.get(ind, np.nan)), 1),
-            "排名": int(rk.get(ind)) if np.isfinite(rk.get(ind, np.nan)) else np.nan,
+            # 小样本不给截面分位：它本来就是「没人买」的行业，
+            # 分位高低只反映样本噪音，不反映拥挤。
+            "全行业分位": (np.nan if _is_small
+                          else round(float(xrank.get(ind, np.nan)), 1)),
+            "排名": (np.nan if _is_small
+                    else (int(rk.get(ind)) if np.isfinite(rk.get(ind, np.nan))
+                          else np.nan)),
             "近4期变化": (round(cur - float(s_all.iloc[-5]), 1)
                           if len(s_all) >= 5 else np.nan),
             # 用全历史计数（与 KPI「历史触及 ≥80」同口径），列名写明「全历史」，
@@ -1361,8 +1434,17 @@ def csi_stat_table(H: pd.DataFrame, window: int | None = None,
     out = pd.DataFrame(rows)
     if out.empty:
         return out
-    out = out.sort_values(["当前", "行业"], ascending=[False, True]).reset_index(drop=True)
-    out.attrs["n_pool"] = len(pool)
+    # 可评级的按当前 CSI 降序在前，小样本整段沉底：
+    # 灰色行夹在正常行业中间，读者第一眼就会问「这个为什么排第 3」。
+    out["_sm"] = out["行业"].isin(small_set).astype(int)
+    out = out.sort_values(["_sm", "当前", "行业"],
+                          ascending=[True, False, True]).drop(columns="_sm")
+    out = out.reset_index(drop=True)
+    # 排名有 NaN（小样本），默认会整列变 float，「第 3 名」显示成 3.0；
+    # 转成可空整数列，表格与 CSV 都是干净的整数。
+    out["排名"] = out["排名"].astype("Int64")
+    out.attrs["n_pool"] = len(pool_rated)
+    out.attrs["n_small"] = len([i for i in pool if i in small_set])
     out.attrs["window"] = int(window) if window else int(len(d))
     return out
 

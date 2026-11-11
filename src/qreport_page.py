@@ -116,13 +116,26 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     code = str(code).zfill(6)
     with st.spinner("读取季报数据…"):
         d = Q.fetch_fund(code)
-    if d.get("errors"):
-        h(f'<div class="cg-note">部分接口未取到：{"；".join(d["errors"][:3])}'
-          f'（该部分显示为「暂无」，不做替代）</div>')
+    _errs = d.get("errors") or []
+    if _errs:
+        # 缺依赖与「某个接口偶发失败」要分开说：前者读者改不了数据，
+        # 只能改部署；后者重选一次基金就可能恢复。
+        if d.get("no_deps"):
+            h(f'<div class="cg-note"><b>季报无法现场抓取</b>：{Q.dep_hint()}。'
+              f'取不到的部分显示「暂无」，不做替代口径。</div>')
+        else:
+            h(f'<div class="cg-note">部分接口未取到：{"；".join(_errs[:3])}'
+              f'（取不到的部分显示「暂无」，不做替代口径）</div>')
 
     qs = Q.all_quarters(code)
     if not qs:
-        h('<div class="cg-note">该基金在数据源里没有季报记录（可能是新成立或已清盘）。</div>')
+        if _errs:
+            # 旧文案在这里写「可能是新成立或已清盘」，把「抓取失败」说成了
+            # 「基金没有数据」——005827 这种旗舰基金因此被误判，必须分开。
+            h('<div class="cg-note">这次是<b>接口未取到</b>，不是「数据源里没有这只基金」；'
+              '按上面的提示修复后重新选择即可。已缓存的历史期次仍会正常显示。</div>')
+        else:
+            h('<div class="cg-note">该基金在数据源里没有季报记录（可能是新成立或已清盘）。</div>')
         return
 
     prof = cn.profiles()

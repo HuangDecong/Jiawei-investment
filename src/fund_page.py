@@ -257,13 +257,16 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         _mk_last = Mkt.iloc[-1]
         _mk_chg_all = (Mkt.iloc[-1] - Mkt.iloc[0]).dropna()
         _mk_ord = _mk_last.sort_values(ascending=False).index.tolist()
-        st.plotly_chart(
-            rc.fig_ind_structure(
-                Mkt, f"全市场行业结构（{Mkt.index[0]}–{Mkt.index[-1]}，前十大等权平均）",
-                residual_label="其他（港股/未映射）", label_top=4,
-                max_items=10 if _mk_mode.startswith("前 10") else None),
-            width="stretch", config={"displayModeBar": False})
-        h(rc.ind_legend_html(_mk_ord, _mk_last, _mk_chg_all, cols=4))
+        _mk_fig = rc.fig_ind_structure(
+            Mkt, f"全市场行业结构（{Mkt.index[0]}–{Mkt.index[-1]}，前十大等权平均）",
+            residual_label="其他（港股/未映射）", label_top=4,
+            max_items=10 if _mk_mode.startswith("前 10") else None)
+        st.plotly_chart(_mk_fig, width="stretch",
+                        config={"displayModeBar": False})
+        # 图例必须用「这张图实际用的颜色」：堆叠图按顺序取 12 色高对比调色板，
+        # 图例若还按行业固定色画，就会出现「柱子是蓝、图例是红」。
+        h(rc.ind_legend_html(_mk_ord, _mk_last, _mk_chg_all, cols=4,
+                             colors=(_mk_fig.layout.meta or {}).get("ind_colors")))
         _mk_top = _mk_last.nlargest(4)
         _mk_chg = _mk_chg_all.sort_values()
         _read(h,
@@ -490,7 +493,8 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     _first, _last = hist.iloc[0], hist.iloc[-1]
     _chg_all = (_last - _first).dropna()
     _ord = _last.sort_values(ascending=False).index.tolist()
-    h(rc.ind_legend_html(_ord, _last, _chg_all, cols=4))
+    h(rc.ind_legend_html(_ord, _last, _chg_all, cols=4,
+                         colors=(fig.layout.meta or {}).get("ind_colors")))
     h('<div class="tiny" style="margin:-4px 0 8px">图例右侧：'
       '<b>黑字</b>＝最新一期占比；<b>红/绿小字</b>＝相对 '
       f'{hist.index[0]} 的变化（pp）。按最新占比降序。</div>')

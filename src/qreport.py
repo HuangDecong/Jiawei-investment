@@ -58,6 +58,40 @@ _HDR = {
     "Referer": "https://fundf10.eastmoney.com/",
 }
 
+# 现场抓取依赖：lxml（pd.read_html 的解析器）与 akshare（东财封装的持仓/行业接口）。
+# 2026-11-11 线上事故：requirements 只装了 pandas/plotly，没装这两个包，
+# 页面只显示 `_f10_asset(...) ImportError` / `_ak_industry(...) ModuleNotFoundError`，
+# 读者会误以为「这只基金没有数据」。这里做一次性探测，缺包直接给出可执行的结论，
+# 并且**不再逐个接口空转**（每个接口失败一次、页面每次重跑都要重来）。
+_DEP_PROBE: list[str] | None = None
+
+
+def missing_deps() -> list[str]:
+    """返回缺失的抓取依赖模块名；空列表＝齐全。结果缓存，避免每次重跑都 import。"""
+    global _DEP_PROBE
+    if _DEP_PROBE is None:
+        miss = []
+        try:
+            import lxml  # noqa: F401
+        except Exception:  # noqa: BLE001
+            miss.append("lxml")
+        try:
+            import akshare  # noqa: F401
+        except Exception:  # noqa: BLE001
+            miss.append("akshare")
+        _DEP_PROBE = miss
+    return _DEP_PROBE
+
+
+def dep_hint() -> str:
+    """缺依赖时给页面看的一句话（人话，不是异常类名）。"""
+    miss = missing_deps()
+    if not miss:
+        return ""
+    return (f"缺少依赖 {'、'.join(miss)}"
+            f"（修复：pip install -r requirements.txt 后重启服务）")
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS q_asset(
   code TEXT, period TEXT, quarter TEXT,
@@ -619,7 +653,7 @@ def fetch_fund(code: str, years: tuple[int, ...] | None = None,
             time.sleep(0.18)   # 两进程并行时的限速，压住东财 f10 的 5xx
             return fn(*a, **kw)
         except Exception as e:  # noqa: BLE001
-            errors.append(f"{getattr(fn, '__name__', fn)}({a}) {type(e).__name__}")
+            errors.append(_err_text(fn, e))
             return pd.DataFrame()
 
     if not force:
@@ -631,6 +665,15 @@ def fetch_fund(code: str, years: tuple[int, ...] | None = None,
             d["errors"] = []
             d["cached"] = True
             return d
+
+    # 依赖缺失：直接把结论摆在 errors 里，不再让 8 个接口各撞一次。
+    # 有缓存数据的仍照常返回——缺依赖不等于库里的历史数据不能用。
+    if missing_deps():
+        d = load_fund(code)
+        d["errors"] = [dep_hint()]
+        d["cached"] = True
+        d["no_deps"] = True
+        return d
 
     asset = tap(_f10_asset, code)
     shares = tap(_f10_shares, code)
@@ -693,6 +736,29 @@ def fetch_fund(code: str, years: tuple[int, ...] | None = None,
     return out
 
 
+_FN_LABEL = {"_f10_asset": "资产配置", "_f10_shares": "份额变动",
+             "_f10_fin": "主要财务指标", "_ak_industry": "行业配置",
+             "_ak_hold": "持仓明细", "_ak_change": "重大买卖",
+             "_ak_bond": "债券持仓"}
+
+
+def _err_text(fn, exc: BaseException) -> str:
+    """把「函数名 + 异常类名」翻成人话，同时保留函数名供内部判断。
+
+    页面原来直接显示 `_f10_asset(('005827',)) ImportError`，读者既看不懂
+    也不知道该做什么。格式：中文名（_fn）原因——`ensure_year` 里靠 `_fn`
+    判断「这次哪张表没抓到、要不要保留旧行」，所以函数名必须留在串里。
+    """
+    name = getattr(fn, "__name__", str(fn))
+    label = _FN_LABEL.get(name, name)
+    detail = type(exc).__name__
+    if isinstance(exc, ImportError):
+        detail = f"缺依赖 {detail}"
+    elif isinstance(exc, ModuleNotFoundError):
+        detail = f"缺依赖 {detail}"
+    return f"{label}（{name}）{detail}"
+
+
 def ensure_year(code: str, year: int, force: bool = False) -> dict:
     """按需补抓某一年的「行业 / 持仓 / 买卖 / 债券」，供页面回看早年季度时调用。
 
@@ -712,6 +778,12 @@ def ensure_year(code: str, year: int, force: bool = False) -> dict:
                             (code, int(year))).fetchone()
         if r is not None:
             return {"fetched": False, "rows": int(r[0] or 0)}
+    # 依赖探测要放在缓存之后：探测本身要 import akshare（首次约 1 秒），
+    # 已经抓过的年份不该为了「检查依赖」再付一次这个成本（审计的幂等项会失败）。
+    # 缺依赖时也不要写 q_ytry：那张表是「这年抓过了」的标记，写进去会让
+    # 修好依赖之后也永远不再重抓（线上曾因此把整段历史钉死成空）。
+    if missing_deps():
+        return {"fetched": False, "rows": 0, "error": dep_hint()}
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
     errors: list[str] = []
     got = 0
@@ -721,7 +793,7 @@ def ensure_year(code: str, year: int, force: bool = False) -> dict:
             time.sleep(0.15)
             return fn(*a)
         except Exception as e:  # noqa: BLE001
-            errors.append(f"{getattr(fn, '__name__', fn)}({a}) {type(e).__name__}")
+            errors.append(_err_text(fn, e))
             return pd.DataFrame()
 
     ind = tap(_ak_industry, code, year)

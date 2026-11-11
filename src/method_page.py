@@ -339,6 +339,7 @@ python tools/verify_hold_rows.py  # 深度校验：逐只股票对比源表（�
 python tools/verify_pdf.py        # 原文核对：下载季报 PDF，比对前十大与份额总额
 python tools/audit_glossary.py    # 指标词典：九段完整性 + 页面术语覆盖
 python tools/audit_all.py         # 全站审计：静态/口径/渲染/文本/交互/一致性
+python tools/test_deploy_paths.py # 部署路径：没有数据库 + 缺依赖时，六页是否仍然可用
 python -c "import sys; sys.path.insert(0,'src'); import selfcheck; print(selfcheck.run())"
 """, language="bash")
         h('<div class="tiny">窗口：<b>2015Q1 起</b>——东财持仓明细最早覆盖到这里。'
