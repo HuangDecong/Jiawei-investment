@@ -90,8 +90,16 @@ def remote_blob_map() -> dict[str, str] | None:
         return None
 
 
+# 生成型文件不参与比对：每跑一次审计就改时间戳，永远「不一致」。
+_GENERATED = {"output/data_validation_log.txt", "version.json"}
 def worktree_vs_remote() -> list[str] | None:
-    """逐文件比对工作区与远端；返回不一致文件（空＝一致），None＝取不到远端。"""
+    """逐文件比对工作区与远端；返回不一致文件（空＝一致），None＝取不到远端。
+
+    为什么比字节而不是比 tree sha：本机 push 被拦、只能走 Git Data API，
+    远端存的就是**上传时的原始字节**；而本地 git 入库会做 CRLF→LF 规范化，
+    tree sha 天然不同。比字节才是「线上文件 == 本地文件」的真实判断。
+    生成文件（审计日志、版本戳）不参与比对：它们每次运行都会变。
+    """
     import hashlib  # noqa: PLC0415
     rt = remote_blob_map()
     if rt is None:
@@ -99,6 +107,8 @@ def worktree_vs_remote() -> list[str] | None:
     files = [p for p in git("-c", "core.quotepath=false", "ls-files").splitlines() if p]
     bad = []
     for p in files:
+        if p in _GENERATED:
+            continue
         fp = os.path.join(ROOT, p)
         if not os.path.exists(fp):
             continue
