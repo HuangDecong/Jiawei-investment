@@ -15,6 +15,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import config as C
+import caliber as CAL
 
 
 def _vline(fig: go.Figure, x: float, xref: str = "x",
@@ -302,8 +303,65 @@ def ind_color(name: str) -> str:
 # 在不同基金/页面上不一定同色——但图例就贴在图下方逐行写着行业名与占比，
 # 「可辨」比「跨图同色」更重要。31 个行业全画（>12 段）时仍回落到 IND_COLORS：
 # 12 色循环两次反而更乱，那时按板块分色系更好读。
-_STACK12 = ["#4E79A7", "#F28E2B", "#59A14F", "#B07AA1", "#EDC948", "#76B7B2",
-            "#FF9DA7", "#9C755F", "#A0CBE8", "#8CD17D", "#D37295", "#B6992D"]
+_STACK12 = ["#2C5D96", "#F4B47B", "#2B8248", "#CC9FDB", "#A52B27", "#90D8DF",
+            "#A17D12", "#A394D1", "#962C61", "#ACD98C", "#D77342", "#3FA695"]
+# 这组颜色不是「看着好看」挑的：按堆叠顺序相邻两两校验
+#   正常视觉：色相角差 ≥40° 或 Lab 明度差 ≥18；
+#   红绿色盲（Viénot 1999 deuteranopia 模拟）：同样条件必须再满足一次。
+# 因此相邻两色要么色相差得远，要么一亮一暗——色盲读者也能分开。
+# `validate_palette()` 把这条规则固化成函数，tests/test_display_contract.py 每次跑。
+# 浅色段（如 #F4B47B/#90D8DF/#ACD98C）用深色字，`_text_on()` 自动判断。
+
+
+def _srgb_lin(c: float) -> float:
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _lin_srgb(c: float) -> float:
+    return 12.92 * c if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055
+
+
+def _hex_rgb(h: str) -> tuple[float, float, float]:
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))  # type: ignore[return-value]
+
+
+def _lab_l(rgb: tuple[float, float, float]) -> float:
+    r, g, b = (_srgb_lin(x) for x in rgb)
+    y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    return 116 * y ** (1 / 3) - 16 if y > 0.008856 else 903.3 * y
+
+
+def _hue(rgb: tuple[float, float, float]) -> float:
+    import colorsys  # noqa: PLC0415
+    return colorsys.rgb_to_hls(*rgb)[0] * 360
+
+
+def _deutan(rgb: tuple[float, float, float]) -> tuple[float, float, float]:
+    """Viénot 1999 红绿色盲模拟（线性 RGB 上的固定矩阵）。"""
+    r, g, b = (_srgb_lin(x) for x in rgb)
+    r2 = 1.05118294 * g - 0.05116099 * b
+    return tuple(min(max(_lin_srgb(x), 0.0), 1.0) for x in (r2, g, b))  # type: ignore[return-value]
+
+
+def validate_palette(colors: list[str], min_hue: float = 40.0,
+                     min_l: float = 18.0, simulate: bool = True) -> list[str]:
+    """逐对校验相邻颜色可辨性，返回不达标说明（空列表＝通过）。"""
+    bad = []
+    for a, b in zip(colors, colors[1:]):
+        ra, rb = _hex_rgb(a), _hex_rgb(b)
+        dh = min(abs(_hue(ra) - _hue(rb)), 360 - abs(_hue(ra) - _hue(rb)))
+        dl = abs(_lab_l(ra) - _lab_l(rb))
+        if not (dh >= min_hue or dl >= min_l):
+            bad.append(f"{a}→{b} 正常视觉不达标（dHue {dh:.0f}, dL {dl:.1f}）")
+            continue
+        if simulate:
+            sa, sb = _deutan(ra), _deutan(rb)
+            dh2 = min(abs(_hue(sa) - _hue(sb)), 360 - abs(_hue(sa) - _hue(sb)))
+            dl2 = abs(_lab_l(sa) - _lab_l(sb))
+            if not (dh2 >= min_hue or dl2 >= min_l):
+                bad.append(f"{a}→{b} 色盲模拟不达标（dHue {dh2:.0f}, dL {dl2:.1f}）")
+    return bad
 
 
 def stack_palette(order: list[str], merged_label: str | None = None) -> dict[str, str]:
@@ -318,81 +376,112 @@ def stack_palette(order: list[str], merged_label: str | None = None) -> dict[str
     return out
 
 
+def structure_conclusion(M: pd.DataFrame) -> str | None:
+    """单期、单行业、接近 100% 时，堆叠图没有信息量——给一句结论就够。
+
+    2026-11-12 读者截图：2025Q1 只有食品饮料 100%，图上是一根纯色柱、
+    图例十行 0.00%，读者既看不出结构也读不出变化。这种情况不该画图。
+    """
+    if M is None or M.empty or len(M.index) != 1:
+        return None
+    row = M.iloc[0].dropna()
+    act = row[row > 0]
+    if len(act) == 1 and float(act.iloc[0]) >= 99.5:
+        return (f"{M.index[0]} 仅配置 {act.index[0]} {float(act.iloc[0]):.1f}%，"
+                f"无可比结构（单行业占满，看不到行业间比例）")
+    return None
+
+
+def _text_on(hex_color: str) -> str:
+    """浅色底用深字、深色底用白字：段内数值必须可读。"""
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    return "#1F2D3D" if y > 0.55 else "#FFFFFF"
+
+
 def fig_ind_structure(M: pd.DataFrame, title: str = "",
                       residual_label: str = "其他（港股/未映射/现金）",
                       label_top: int = 4,
                       max_items: int | None = 10) -> go.Figure:
     """行业结构：**竖向**堆叠柱（x＝期，y＝占比 %，每根柱子＝一期的 100%）。
 
-    为什么从堆叠面积改成竖柱
-    ------------------------
-    面积图适合看「连续趋势」，但季度数据只有 31 个点，面积图的斜边会把
-    「一个季度的跳变」画成平滑过渡，读者会以为持仓是渐变发生的。
-    竖柱一格一期，跳变就是跳变，而且每根柱子的顶部都在 100%，
-    「谁变厚、谁变薄」在相邻两根柱子之间一眼可比。
-
-    为什么默认只画前 10 大 + 「其他 N 个」：31 个色块叠在一起时，
-    后面 20 个行业每个只有 1–3pp，颜色块细到看不清，图例也排不下。
-
-    悬停：每一段柱子都有自己的悬浮框（行业 + 期次 + 数值），
-    并把 hovermode 设为 x 合并——鼠标放在任意一根柱子上，
-    一次列出该期全部行业，不用逐段找。旧版面积图只有画布中线有反应，
-    就是因为数值全塞在一条透明轨迹上，其余区域 hoverinfo=skip。
-
-    残差带：各行业之和常常不到 100——差的部分是港股、未映射行业与现金。
-    不补这一条，柱子顶部会缺一块，看起来像渲染错误。
+    2026-11-12 的三条收紧（读者反馈「颜色相近、图例一堆 0.00%」）
+    ------------------------------------------------------------
+    1. **0 值不进图、不进悬浮**：把 0 画成 NaN，x-unified 悬浮就不会再列出
+       「XX 0.00%」——它本来就没有那一段，列出来只会淹没真正有值的行。
+    2. **图例只列当期 >0**：当期没持有的行业不再占一个色位；它们如果历史上
+       持有过，整段灰化并折叠成一行「历史曾持有（n）：A、B…」，由页面渲染。
+    3. **合并用双阈值**：当期 <1% **且** 历史峰值 <3% 才并入「其他」；
+       两者只要有一个够大就单独画（当期小但历史重仓过，是有信息量的）。
+       兜底从「取前 N 个」改为「至少留最大的那一个」——否则全部低于阈值时
+       会退化成「其他 31 个行业」，图上一条灰柱、等于没画。
     """
     if M.empty:
         return _base(go.Figure(), "数据未就绪")
     d = M.copy()
-    # 全 0 / 全空的行业直接不画：x-unified 悬浮会把每条轨迹都列一行，
-    # 一只只持有一个行业的基金因此会在悬浮里出现十行「0.00%」+ 十个相近色块，
-    # 真正有值的那一段反而被淹没（2026-11-11 读者截图）。
     d = d.loc[:, d.abs().sum(axis=0) > 0]
     if d.empty:
         return _base(go.Figure(), "数据未就绪")
-    order = d.mean().sort_values(ascending=False).index.tolist()
-    merged_label = None
-    if max_items and len(order) > max_items:
-        # 峰值不到 0.5% 的行业不单独占一段：画出来只有 1–2px 宽，
-        # 却要多一行悬浮、多一个颜色。并进「其他」，总量不变。
-        keep = [i for i in order[:max_items] if float(d[i].max()) >= 0.5]
-        if not keep:
-            keep = order[:max_items]
-        rest = [i for i in order if i not in keep]
-        merged_label = f"其他 {len(rest)} 个行业"
-        d = d[keep].copy()
-        d[merged_label] = M[rest].sum(axis=1)
-        order = keep + [merged_label]
 
-    # ≤12 段用高对比调色板（按顺序取色），更多段回落到行业分色系
-    if len(order) <= 12:
-        _cmap = stack_palette(order, merged_label)
+    cur = d.ffill().iloc[-1].fillna(0.0)      # 当期（缺失则沿用上一期，避免全空）
+    peak = d.max()
+    active = [c for c in d.columns if float(cur.get(c, 0)) > 0]
+    dormant = [c for c in d.columns if c not in active]
+
+    if max_items is None:
+        # 「全部 31 个」模式：历史出现过的都画（否则过去几期会凭空少一块）
+        order = sorted(d.columns, key=lambda c: -float(peak.get(c, 0)))
+        merged_label = None
+        draw = d[order].copy()
     else:
-        _cmap = {i: ("#C9D3DE" if i == merged_label else ind_color(i))
-                 for i in order}
+        order = sorted(active, key=lambda c: -float(peak.get(c, 0)))
+        merged_label = None
+        if len(order) > max_items:
+            keep = [c for c in order
+                    if float(cur.get(c, 0)) >= CAL.MERGE_CUR_PCT
+                    and float(peak.get(c, 0)) >= CAL.MERGE_PEAK_PCT][:max_items]
+            if not keep:                       # 全部低于阈值：留最大的一个
+                keep = [order[0]]
+            rest = [c for c in d.columns if c not in keep]
+            merged_label = f"其他 {len(rest)} 个行业"
+            order = keep + [merged_label]
+            draw = d[keep].copy()
+            draw[merged_label] = d[rest].sum(axis=1)
+        else:
+            draw = d[order].copy()
+        # 当期没持有、也没被合并的（理论上只会在 order 为空时出现）
+        dormant = [c for c in dormant if c not in order]
+
+    _cmap = (stack_palette(order, merged_label) if len(order) <= CAL.LEGEND_MAX_ITEMS
+             else {i: ("#C9D3DE" if i == merged_label else ind_color(i)) for i in order})
+    if dormant:
+        for c in dormant:
+            _cmap[c] = "#C9D3DE"               # 历史曾持有：灰
 
     fig = go.Figure()
-    _n = len(d)
-    # 行业多时（「全部 31 个」模式）用 closest：x unified 会把 32 行塞进一个
-    # 悬浮框，比屏幕还高，反而看不清。默认的「前 10 大 + 其他」用合并模式。
-    _unified = len(order) + 1 <= 12
+    _n = len(draw)
+    _unified = len(order) + 1 <= CAL.LEGEND_MAX_ITEMS
     _tpl = ("%{y:.2f}%<extra>" if _unified else "%{x}　%{y:.2f}%<extra>")
+    _last_q = draw.index[-1]
     for ind in order:
-        s_ = d[ind]
-        # 只在最后一根柱子上标数值（前几期标满会糊成一片）
-        _txt = [""] * (_n - 1) + [f"{float(s_.iloc[-1]):.0f}%"
-                                  if float(s_.iloc[-1]) >= 4 else ""]
+        s_ = draw[ind]
+        _txt = [""] * _n
+        _v = s_.iloc[-1]
+        if np.isfinite(_v) and float(_v) >= CAL.MIN_LABEL_PCT:
+            _txt[-1] = f"{float(_v):.0f}%"
         fig.add_trace(go.Bar(
-            x=list(d.index), y=s_.values, name=ind,
+            x=list(draw.index), y=s_.values, name=ind,
             marker=dict(color=_cmap[ind], line=dict(width=0)),
             text=_txt, textposition="inside", insidetextanchor="middle",
-            textfont=dict(size=10, color="#FFFFFF"),
+            textfont=dict(size=10, color=_text_on(_cmap[ind])),
             hovertemplate=_tpl + ind + "</extra>"))
-    _resid = (100 - d.sum(axis=1)).clip(lower=0)
-    if float(_resid.max()) > 0.5:
+
+    _resid = (100 - draw.sum(axis=1)).clip(lower=0)
+    if float(_resid.max()) > CAL.RESID_MIN_PCT:
+        # 残差为 0 的期次也要变 NaN：否则悬浮里会出现「其他 0.00%」这一行
         fig.add_trace(go.Bar(
-            x=list(d.index), y=_resid.values, name=residual_label,
+            x=list(draw.index), y=_resid.where(_resid > 0).values, name=residual_label,
             marker=dict(color="#E9EDF2", line=dict(width=0)),
             hovertemplate=_tpl + residual_label + "</extra>"))
 
@@ -403,18 +492,15 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
                                       namelength=-1))
     fig.update_yaxes(title_text="占前十大 %" if residual_label.startswith("其他")
                      else "占净值比 %", range=[0, 100], tickfont=dict(size=11))
-    # 每根柱子就是一个季度，标签必须一一对应（只标 Q1 会读不出「哪一根是哪季」）
-    _ticks = list(d.index)
+    _ticks = list(draw.index)
     fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
                      tickangle=-90, tickfont=dict(size=9, color="#40505F"))
     fig = _base(fig, title, 520)
     fig.update_layout(margin=dict(l=8, r=14, t=44, b=56))
-    # 把「这一版用的颜色」挂在图对象上：页面紧接着要画 HTML 图例（色块+占比），
-    # 它必须和柱子的颜色一一对上；重新按行业固定色去画就会出现
-    # 「图例是红、柱子是蓝」的错位。
-    fig.layout.meta = {"ind_colors": _cmap,
-                       "merged": merged_label or "",
-                       "order": list(order)}
+    fig.layout.meta = {"ind_colors": _cmap, "merged": merged_label or "",
+                       "order": list(order), "dormant": list(dormant),
+                       "active": [c for c in order if c != merged_label],
+                       "last_quarter": str(_last_q)}
     return fig
 
 
@@ -523,7 +609,8 @@ def csi_text(v) -> str:
     if not np.isfinite(x):
         return "—"
     def _band(v: float) -> int:
-        return 4 if v >= 80 else 3 if v >= 65 else 2 if v >= 45 \
+        return 4 if v >= CAL.THR_CROWD else 3 if v >= CAL.THR_WARM \
+        else 2 if v >= CAL.THR_NEUTRAL \
             else 1 if v >= 25 else 0
 
     r = int(round(x))
@@ -775,7 +862,7 @@ def fig_dual_percentile(comp: pd.DataFrame, cs: pd.Series) -> go.Figure:
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     fig.add_trace(go.Bar(
         y=d.index, x=d["历史分位"], orientation="h", name="自身历史分位（左轴）",
-        marker_color=[C.COLOR["up"] if v >= 80 else
+        marker_color=[C.COLOR["up"] if v >= CAL.THR_CROWD else
                       "#E8A33D" if v >= 60 else
                       "#B7C1CC" if v >= 40 else
                       "#7FA8DC" if v >= 20 else C.COLOR["down"]
@@ -863,11 +950,13 @@ def fig_crowding_map(comp: pd.DataFrame, idx: pd.DataFrame) -> go.Figure:
 # ---------------------------------------------------------------------------
 # 12. 拥挤度折线：全样本期怎么变、什么时候穿过阈值
 # ---------------------------------------------------------------------------
-CSI_BANDS = [(80, 101, "rgba(198,40,40,0.16)", "≥80 极度拥挤"),
-             (65, 80, "rgba(232,113,10,0.14)", "65–80 拥挤"),
-             (45, 65, "rgba(138,151,165,0.04)", "45–65 中性"),
-             (25, 45, "rgba(76,141,223,0.12)", "25–45 偏冷"),
-             (0, 25, "rgba(31,78,156,0.16)", "<25 冷门")]
+# 五档底色**由 caliber 的 BAND_EDGES 派生**：阈值改一处，图和文字一起变。
+_E = CAL.BAND_EDGES
+CSI_BANDS = [(_E[4], _E[5], "rgba(198,40,40,0.16)", f"≥{_E[4]} 极度拥挤"),
+             (_E[3], _E[4], "rgba(232,113,10,0.14)", f"{_E[3]}–{_E[4]} 拥挤"),
+             (_E[2], _E[3], "rgba(138,151,165,0.04)", f"{_E[2]}–{_E[3]} 中性"),
+             (_E[1], _E[2], "rgba(76,141,223,0.12)", f"{_E[1]}–{_E[2]} 偏冷"),
+             (_E[0], _E[1], "rgba(31,78,156,0.16)", f"<{_E[1]} 冷门")]
 
 # 「分位区间」统一配色：紫罗兰（全局 accent #6E4AB8 压深一档）。
 # 全站只有「分位区间」这一种元素用它，所以不会和已有的四套语义色打架：
@@ -899,7 +988,7 @@ def _expanding_pct(s: pd.Series, window: int | None = None) -> pd.Series:
         seg = arr[lo: i + 1]
         # 只有 1–3 个观测时不打分位：一个点永远是 100 分位，
         # 两个点只有 0/50/100 三档，画出来是一段假的「从 100 掉下来」。
-        pct[i] = np.nan if len(seg) < 4 else float((seg <= arr[i]).mean() * 100)
+        pct[i] = np.nan if len(seg) < CAL.MIN_N_STAT else float((seg <= arr[i]).mean() * 100)
     out.loc[v.index] = pct
     return out
 
@@ -919,7 +1008,7 @@ def pct_of(s: pd.Series, cur: float | None = None,
     # 同 self_pct：cur 与序列里的同一个数可能差 1e-14，
     # 不带容差会把「等于自己」漏掉，最高/最低值被算成第 0 名。
     k = int((v <= cur + 1e-9).sum())
-    if len(v) < 4:
+    if len(v) < CAL.MIN_N_STAT:
         return float("nan"), len(v), k
     return float(k / len(v) * 100), len(v), k
 
@@ -1224,7 +1313,7 @@ def _csi_text_color(v: float) -> str:
     """
     if not np.isfinite(v):
         return "#5A6B7D"
-    if v >= 80:          # 深红
+    if v >= CAL.THR_CROWD:          # 深红
         return "#FFFFFF"
     if v >= 65:          # 橙
         return "#3B2A12"
@@ -1362,96 +1451,133 @@ def fig_fund_crowding_rank(rk: pd.DataFrame, med: float, thr: float = 80,
 
 
 def csi_stat_table(H: pd.DataFrame, window: int | None = None,
-                   thr: float = 80, universe: list[str] | None = None,
+                   thr: float | None = None, universe: list[str] | None = None,
                    selected: str | None = None,
-                   small: list[str] | None = None) -> pd.DataFrame:
-    """31 个行业的描述统计：均值、标准差、z 值、分位数、当前分位、排名。
+                   small: "list[str] | dict[str, str] | None" = None,
+                   note: dict[str, str] | None = None) -> pd.DataFrame:
+    """行业描述统计：**两个维度的小样本分别判、合并标**。
 
-    为什么单列一张表：图上只能给「当前值 + 一条箱线」，读者想核对
-    「88 分比它自己的均值高多少」时没有落点。这张表把每个数字摊开，
-    并且**与图表共用同一套算法**（`pct_of` / 同一窗口），
-    避免出现「图上 55 分位、表里 54 分位」这种对不上的情况。
+    为什么要分两个维度（2026-11-12 读者截图）
+    -----------------------------------------
+    · 横截面小样本：全市场只有几十只基金持有、前十配置不到 0.5%（如综合）。
+      它的 CSI 是「少数基金的行为」，不能拿去和 26 个真行业排名。
+    · 时序小样本：某行业只有 2–7 期 CSI（新设行业 / 数据刚补齐）。
+      此时 z 值、P10–P90、分位都是「用 2 个数算出来的统计量」，没有意义。
+    过去两者混成一句「小样本」，于是出现「综合排第 3」与「2 期行业也给了 P90」
+    并存的情况。现在分别判定、原因写清楚（如「小样本·仅 2 期」）。
+
+    输出约定
+    --------
+    · 小样本行的 **排名 / 全行业分位** 显示 `—（不评级）`，CSV 完全一致；
+    · n<8 期：z、P10/P50/P90、当前分位、全历史触及 一律 `—`；
+    · n<4 期：只留「当前值」与「期数」，其余统计量全部 `—`；
+    · 「期数」列在 n<8 时带 `*`，页脚解释「*＝不足 8 期，不出统计量」；
+    · 排序：可评级的按当前 CSI 降序在前，小样本整段沉底。
 
     参数
     ----
-    window : 分位窗口（期数）；None＝全部历史。均值/标准差也按同一窗口算，
-             否则「全历史均值」与「近 12 期分位」混在一张表里会自相矛盾。
-    thr    : 拥挤阈值，用于「触及次数」列。
-    universe : 参与排名的行业（当期有值的全部行业）。
-    small  : 小样本行业（持有基金数 <150 或前十配置 <0.5%）。
-             它们**不参与排名与全行业分位**，并单列「评级」标出来——
-             2026-11-11 读者截图里，仅 58 只基金持有、合计 0.12% 的「综合」
-             排在银行前面第 3 名，读者以为是真拥挤。
+    thr   : 「全历史触及 ≥X」的阈值；None＝用 caliber.TOUCH_THR。
+    small : 横截面小样本名单；可以是 list，也可以是 {行业: 原因}。
+    note  : 额外原因（{行业: "持有 58 只 / 0.12%"}），用于把评级写具体。
     """
     if H.empty:
         return pd.DataFrame()
+    thr = CAL.TOUCH_THR if thr is None else float(thr)
     d = H.dropna(how="all")
     last = d.iloc[-1]
-    small_set = set(small or [])
+
+    cs_reason = ({k: str(v) for k, v in small.items()} if isinstance(small, dict)
+                 else {k: (note or {}).get(k, "横截面样本小") for k in (small or [])})
+    note = note or {}
     pool = [i for i in (universe or list(d.columns))
             if i in d.columns and np.isfinite(last.get(i, np.nan))]
-    # 排名与截面分位只在「可评级」的行业里算：把 0.12% 仓位的小样本
-    # 混进来，等于让噪音去挤占真行业的位次。
-    pool_rated = [i for i in pool if i not in small_set]
-    rk = last.reindex(pool_rated).rank(ascending=False, method="min")
-    xrank = last.reindex(pool_rated).rank(pct=True) * 100
-    rows = []
+
+    raw = []
     for ind in d.columns:
         s_all = d[ind].dropna().astype(float)
         if s_all.empty:
             continue
         v = s_all.tail(int(window)) if window else s_all
+        n = int(len(v))
         cur = float(s_all.iloc[-1])
-        pct, n_w, k_w = pct_of(s_all, cur, window)
+        is_cs, is_ts, is_tiny = ind in cs_reason, n < CAL.MIN_N_PCT, n < CAL.MIN_N_STAT
+        pct, _nw, _k = pct_of(s_all, cur, window)
         mu = float(v.mean())
-        sd = float(v.std(ddof=1)) if len(v) > 1 else float("nan")
+        sd = float(v.std(ddof=1)) if n > 1 else float("nan")
         q = {p: float(np.percentile(v, p)) for p in (10, 50, 90)}
-        _is_small = ind in small_set
-        rows.append({
+        reasons = []
+        if is_cs:
+            reasons.append(cs_reason.get(ind) or note.get(ind) or "横截面样本小")
+        if is_ts:
+            reasons.append(f"仅 {n} 期")
+        raw.append({
             "行业": ind,
-            # 「选中」放第二列：表格默认横向滚动，放最后一列会被滚出视野，
-            # 读者就找不到「我在看的那个行业是哪一行」。
             "选中": "●" if ind == selected else "",
-            "评级": "小样本·不评级" if _is_small else "",
-            "当前": round(cur, 1),
-            "历史均值": round(mu, 1),
-            "标准差": round(sd, 1),
-            "z值": round((cur - mu) / sd, 2) if np.isfinite(sd) and sd > 0 else np.nan,
-            "P10": round(q[10], 1),
-            "P50": round(q[50], 1),
-            "P90": round(q[90], 1),
-            "最小": round(float(v.min()), 1),
-            "最大": round(float(v.max()), 1),
-            "当前分位": round(pct, 1) if np.isfinite(pct) else np.nan,
-            # 小样本不给截面分位：它本来就是「没人买」的行业，
-            # 分位高低只反映样本噪音，不反映拥挤。
-            "全行业分位": (np.nan if _is_small
-                          else round(float(xrank.get(ind, np.nan)), 1)),
-            "排名": (np.nan if _is_small
-                    else (int(rk.get(ind)) if np.isfinite(rk.get(ind, np.nan))
-                          else np.nan)),
-            "近4期变化": (round(cur - float(s_all.iloc[-5]), 1)
-                          if len(s_all) >= 5 else np.nan),
-            # 用全历史计数（与 KPI「历史触及 ≥80」同口径），列名写明「全历史」，
-            # 避免与「期数」（按窗口）混在一张表里被误读成同期数。
-            f"全历史触及≥{thr:.0f}": int((s_all >= thr).sum()),
-            "期数": int(len(v)),
+            "评级": ("小样本·" + "，".join(reasons)) if reasons else "",
+            "_n": n, "_cs": is_cs, "_ts": is_ts, "_tiny": is_tiny, "_cur": cur,
+            "_mu": mu, "_sd": sd,
+            "_z": ((cur - mu) / sd) if (np.isfinite(sd) and sd > 0) else np.nan,
+            "_p10": q[10], "_p50": q[50], "_p90": q[90],
+            "_min": float(v.min()), "_max": float(v.max()),
+            "_pct": pct,
+            "_chg4": (cur - float(s_all.iloc[-5])) if n >= 5 else np.nan,
+            "_touch": int((s_all >= thr).sum()),
+        })
+    base = pd.DataFrame(raw)
+    if base.empty:
+        return base
+
+    # 排名与截面分位：只在「横截面可评级 **且** 时序≥8 期」的行业里算
+    ok_names = set(base.loc[~base["_cs"] & ~base["_ts"], "行业"])
+    pool_ok = [i for i in pool if i in ok_names]
+    rk = last.reindex(pool_ok).rank(ascending=False, method="min")
+    xr = last.reindex(pool_ok).rank(pct=True) * 100
+
+    def _f(x, nd=1, plus=False, dash="—"):
+        if x is None or not np.isfinite(float(x)):
+            return dash
+        return f"{float(x):+.{nd}f}" if plus else f"{float(x):.{nd}f}"
+
+    rows = []
+    # 用 to_dict("records") 而不是 itertuples：pandas 会把以 `_` 开头的列名
+    # 改写成 `_1/_2`，`r._cs` 直接 AttributeError（2026-11-12 踩过）。
+    for r in base.to_dict("records"):
+        hide_rank = bool(r["_cs"] or r["_ts"])    # 名次/截面分位：任一维度不满足都不给
+        hide_p = bool(r["_ts"])                   # z/P10–P90/当前分位/触及：时序不足不给
+        hide_basic = bool(r["_tiny"])             # n<4：只留当前值与期数
+        rows.append({
+            "行业": r["行业"], "选中": r["选中"], "评级": r["评级"],
+            "当前": _f(r["_cur"]),
+            "历史均值": "—" if (hide_basic or hide_p) else _f(r["_mu"]),
+            "标准差": "—" if (hide_basic or hide_p) else _f(r["_sd"]),
+            "z值": "—" if hide_p else _f(r["_z"], 2, plus=True),
+            "P10": "—" if hide_p else _f(r["_p10"]),
+            "P50": "—" if hide_p else _f(r["_p50"]),
+            "P90": "—" if hide_p else _f(r["_p90"]),
+            "最小": "—" if hide_basic else _f(r["_min"]),
+            "最大": "—" if hide_basic else _f(r["_max"]),
+            "当前分位": "—" if hide_p else _f(r["_pct"]),
+            "全行业分位": ("—（不评级）" if hide_rank
+                          else _f(xr.get(r["行业"], np.nan))),
+            "排名": ("—（不评级）" if hide_rank
+                    else (str(int(rk[r["行业"]]))
+                          if np.isfinite(rk.get(r["行业"], np.nan)) else "—")),
+            "近4期变化": _f(r["_chg4"], plus=True),
+            f"全历史触及≥{thr:.0f}": ("—" if hide_p else str(int(r["_touch"]))),
+            "期数": (f"{r['_n']}*" if r["_ts"] else str(r["_n"])),
         })
     out = pd.DataFrame(rows)
-    if out.empty:
-        return out
-    # 可评级的按当前 CSI 降序在前，小样本整段沉底：
-    # 灰色行夹在正常行业中间，读者第一眼就会问「这个为什么排第 3」。
-    out["_sm"] = out["行业"].isin(small_set).astype(int)
-    out = out.sort_values(["_sm", "当前", "行业"],
-                          ascending=[True, False, True]).drop(columns="_sm")
-    out = out.reset_index(drop=True)
-    # 排名有 NaN（小样本），默认会整列变 float，「第 3 名」显示成 3.0；
-    # 转成可空整数列，表格与 CSV 都是干净的整数。
-    out["排名"] = out["排名"].astype("Int64")
-    out.attrs["n_pool"] = len(pool_rated)
-    out.attrs["n_small"] = len([i for i in pool if i in small_set])
+    # 排序用原始数值（展示列已是字符串）：可评级在前，按当前 CSI 降序
+    base = base.set_index("行业")
+    out["_sm"] = [1 if ("小样本" in s) else 0 for s in out["评级"]]
+    out["_cur"] = [float(base.loc[i, "_cur"]) for i in out["行业"]]
+    out = (out.sort_values(["_sm", "_cur", "行业"], ascending=[True, False, True])
+              .drop(columns=["_sm", "_cur"]).reset_index(drop=True))
+    out.attrs["n_pool"] = len(pool_ok)
+    out.attrs["n_small"] = int((out["评级"] != "").sum())
+    out.attrs["n_ts"] = int((out["期数"].str.endswith("*")).sum())
     out.attrs["window"] = int(window) if window else int(len(d))
+    out.attrs["thr"] = thr
     return out
 
 

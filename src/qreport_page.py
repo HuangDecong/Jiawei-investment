@@ -43,6 +43,40 @@ def _funds() -> pd.DataFrame:
     return d.sort_values("scale_yi", ascending=False, na_position="last")
 
 
+def _no_data_note(code: str) -> str:
+    """「确实没有数据」的判据：逐条给出可核对的事实，不做「可能已清盘」的猜测。
+
+    只有同时满足三条才走到这里：① 不缺依赖；② 没有任何接口报错；
+    ③ 本地各表确实查不到该基金的任何季度。所以这里可以断言「源站没有记录」，
+    但仍要把「没收录档案 / 成立太晚 / 抓不到」三种情形分开说。
+    """
+    try:
+        prof = cn.profiles()
+    except Exception:  # noqa: BLE001
+        prof = None
+    if prof is None or prof.empty:
+        return "本库尚未收录基金档案，无法判断成立日；先补录档案再重试"
+    row = prof[prof["code"].astype(str).str.zfill(6) == code]
+    if row.empty:
+        return "本库尚未收录该基金档案（无法核对成立日），先补录档案再重试"
+    try:
+        inc = pd.to_datetime(row["inception"].iloc[0], errors="coerce")
+    except Exception:  # noqa: BLE001
+        inc = pd.NaT
+    try:
+        q = str(cn.csi_history().index[-1])
+        y, k = int(q[:4]), int(q[-1])
+        end = pd.Timestamp(year=y, month={1: 3, 2: 6, 3: 9, 4: 12}[k], day=1) \
+            + pd.offsets.MonthEnd(0)
+    except Exception:  # noqa: BLE001
+        q, end = "最新报告期", pd.NaT
+    if pd.notna(inc) and pd.notna(end) and inc > end:
+        return f"该基金成立于 {inc:%Y-%m-%d}，晚于最近报告期 {q}，尚未到首个披露期"
+    return (f"已成立（{inc:%Y-%m-%d}）但源站未返回 {q} 及之前的记录；"
+            f"可点右上「刷新」重试，本库不做推测") if pd.notna(inc) else \
+        f"源站未返回 {q} 及之前的记录；可点右上「刷新」重试"
+
+
 def _pick_quarter(d: dict) -> str:
     qs = set()
     for k in ("q_asset", "q_industry", "q_shares", "q_hold"):
@@ -118,24 +152,27 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         d = Q.fetch_fund(code)
     _errs = d.get("errors") or []
     if _errs:
-        # 缺依赖与「某个接口偶发失败」要分开说：前者读者改不了数据，
-        # 只能改部署；后者重选一次基金就可能恢复。
-        if d.get("no_deps"):
-            h(f'<div class="cg-note"><b>季报无法现场抓取</b>：{Q.dep_hint()}。'
-              f'取不到的部分显示「暂无」，不做替代口径。</div>')
-        else:
-            h(f'<div class="cg-note">部分接口未取到：{"；".join(_errs[:3])}'
-              f'（取不到的部分显示「暂无」，不做替代口径）</div>')
+        _labels = [str(e.get("label", "")) for e in _errs]
+        _kinds = {str(e.get("kind", "")) for e in _errs}
+        _head = ("季报无法现场抓取" if "missing_dep" in _kinds
+                 else "部分数据未取到")
+        _more = f"等 {len(_errs)} 项" if len(_errs) > 3 else ""
+        h(f'<div class="cg-note"><b>{_head}</b>：{"、".join(_labels[:3])}{_more}'
+          f'　<span style="color:#8A97A5">（缺的部分显示「暂无」，不做替代口径）</span></div>')
+        # 详情折叠：一行汇总在页头，具体原因与处置点开再看。
+        with st.expander(f"查看这 {len(_errs)} 项的原因与处置", expanded=False):
+            for e in _errs:
+                st.markdown(f"- **{e.get('label', '')}**：{e.get('reason', '')}"
+                            f"　→ {e.get('action', '')}")
 
     qs = Q.all_quarters(code)
     if not qs:
         if _errs:
-            # 旧文案在这里写「可能是新成立或已清盘」，把「抓取失败」说成了
-            # 「基金没有数据」——005827 这种旗舰基金因此被误判，必须分开。
+            # 「抓取失败」与「数据源确实没有」是两件事，绝不能共用一句话。
             h('<div class="cg-note">这次是<b>接口未取到</b>，不是「数据源里没有这只基金」；'
-              '按上面的提示修复后重新选择即可。已缓存的历史期次仍会正常显示。</div>')
+              '按上面的处置重试即可。已缓存的历史期次仍会正常显示。</div>')
         else:
-            h('<div class="cg-note">该基金在数据源里没有季报记录（可能是新成立或已清盘）。</div>')
+            h(f'<div class="cg-note">数据源没有该基金的季报记录：{_no_data_note(code)}</div>')
         return
 
     prof = cn.profiles()
@@ -447,7 +484,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         _gap = stock - _tot
         # 差 0.004 会格式化成「-0.00pp」，看着像错数；四舍五入到 0 就直接写 0.00。
         _gap_s = "0.00" if abs(_gap) < 0.005 else f"{_gap:+.2f}"
-        if np.isfinite(stock) and abs(_gap) < 0.5:
+        if np.isfinite(stock) and abs(_gap) < 0.5:  # caliber-ok: 0.5pp 数值核对容差
             _gap_txt = (f'行业合计 <b>{_tot:.1f}%</b>，与股票仓位 {stock:.1f}% 一致'
                         f'（差 {_gap_s}pp）——这张表覆盖了全部股票。')
         else:

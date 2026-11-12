@@ -24,6 +24,7 @@ import streamlit as st
 
 import canon as cn
 import config as C
+import caliber as CAL
 import report_charts as rc
 import ui
 
@@ -256,17 +257,27 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
                             help="31 个色块叠加时后 20 个只有 1–3pp，默认合并显示")
         _mk_last = Mkt.iloc[-1]
         _mk_chg_all = (Mkt.iloc[-1] - Mkt.iloc[0]).dropna()
-        _mk_ord = _mk_last.sort_values(ascending=False).index.tolist()
         _mk_fig = rc.fig_ind_structure(
             Mkt, f"全市场行业结构（{Mkt.index[0]}–{Mkt.index[-1]}，前十大等权平均）",
             residual_label="其他（港股/未映射）", label_top=4,
             max_items=10 if _mk_mode.startswith("前 10") else None)
         st.plotly_chart(_mk_fig, width="stretch",
                         config={"displayModeBar": False})
-        # 图例必须用「这张图实际用的颜色」：堆叠图按顺序取 12 色高对比调色板，
-        # 图例若还按行业固定色画，就会出现「柱子是蓝、图例是红」。
+        _mk_meta = _mk_fig.layout.meta or {}
+        # 图例只列「当期 >0」（配色与柱子同源）；当期已清空但历史持有的行业
+        # 折成一行灰字，不再各占一个色块——那是「十行 0.00%」的来源。
+        _mk_ord = [c for c in (_mk_meta.get("active") or []) if c in _mk_last.index]
         h(rc.ind_legend_html(_mk_ord, _mk_last, _mk_chg_all, cols=4,
-                             colors=(_mk_fig.layout.meta or {}).get("ind_colors")))
+                             colors=_mk_meta.get("ind_colors")))
+        if _mk_meta.get("dormant"):
+            h(f'<div class="tiny" style="margin:-2px 0 6px">'
+              f'历史曾持有（{len(_mk_meta["dormant"])}）：'
+              f'{"、".join(_mk_meta["dormant"])}　·　当期已清空，图上灰显</div>')
+        with st.expander("看表格：每期各行业占比", expanded=False):
+            _mt = Mkt.round(2).T
+            _mt.insert(0, "最新一期", Mkt.iloc[-1].round(2))
+            _mt.insert(1, "历史峰值", Mkt.max().round(2))
+            st.dataframe(_mt, width="stretch", height=320)
         _mk_top = _mk_last.nlargest(4)
         _mk_chg = _mk_chg_all.sort_values()
         _read(h,
@@ -358,7 +369,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
                     "最拥挤", "最冷门", "分",
                     "CSI 是水位不是水流：高水位只压缩仓位上限，不是卖出信号",
                     f'{_hi3.index[0]} 的 CSI 是 {_hi3.iloc[0]:.0f}，属于'
-                    f'{"极度拥挤" if _hi3.iloc[0] >= 80 else "拥挤" if _hi3.iloc[0] >= 65 else "中性"}：'
+                    f'{"极度拥挤" if _hi3.iloc[0] >= CAL.THR_CROWD else "拥挤" if _hi3.iloc[0] >= CAL.THR_WARM else "中性"}：'
                     f'这时买它，边际买家最少、卖出最集中，仓位要压、止损要紧，但不必清仓'
                     f'（本库因子检验显示高 CSI 不预测下跌）。{_lo3.index[0]} '
                     f'（{_lo3.iloc[0]:.0f} 分）反过来：便宜且没人挤，但要等「广度转正 + 主动净买入」'
@@ -481,23 +492,39 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         _qsel = st.selectbox("看哪一季的全部行业", list(hist.index)[::-1],
                              index=0, key="fund_q_pick")
     _mi = 10 if _maxi.startswith("前 10") else None
-    fig = rc.fig_ind_structure(
-        hist, f"{nm}　行业结构（{hist.index[0]}–{hist.index[-1]}，"
-              f"{'前十大内部占比' if basis == 'top10' else '占净值比'}）",
-        residual_label=("其他（港股/未映射）" if basis == "top10"
-                        else "现金/债券/港股及其他"),
-        label_top=4, max_items=_mi)
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-    # 图例即表格：色块 + 行业 + 最新占比 + 相对首期变化
-    _first, _last = hist.iloc[0], hist.iloc[-1]
-    _chg_all = (_last - _first).dropna()
-    _ord = _last.sort_values(ascending=False).index.tolist()
-    h(rc.ind_legend_html(_ord, _last, _chg_all, cols=4,
-                         colors=(fig.layout.meta or {}).get("ind_colors")))
-    h('<div class="tiny" style="margin:-4px 0 8px">图例右侧：'
-      '<b>黑字</b>＝最新一期占比；<b>红/绿小字</b>＝相对 '
-      f'{hist.index[0]} 的变化（pp）。按最新占比降序。</div>')
+    _deg = rc.structure_conclusion(hist)
+    if _deg:
+        # 单期单行业 100%：画出来是一根纯色柱，图例全是 0.00%，不如一句话
+        h(f'<div class="cg-note">{_deg}</div>')
+        _ord = []
+    else:
+        fig = rc.fig_ind_structure(
+            hist, f"{nm}　行业结构（{hist.index[0]}–{hist.index[-1]}，"
+                  f"{'前十大内部占比' if basis == 'top10' else '占净值比'}）",
+            residual_label=("其他（港股/未映射）" if basis == "top10"
+                            else "现金/债券/港股及其他"),
+            label_top=4, max_items=_mi)
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        _meta = fig.layout.meta or {}
+        # 图例即表格：只用「当期 >0」的行业，颜色与柱子同源
+        _last = hist.iloc[-1]
+        _first = hist.iloc[0]
+        _chg_all = (_last - _first).dropna()
+        _ord = [c for c in (_meta.get("active") or []) if c in _last.index]
+        h(rc.ind_legend_html(_ord, _last, _chg_all, cols=4,
+                             colors=_meta.get("ind_colors")))
+        if _meta.get("dormant"):
+            h(f'<div class="tiny" style="margin:-2px 0 6px">'
+              f'历史曾持有（{len(_meta["dormant"])}）：'
+              f'{"、".join(_meta["dormant"])}　·　当期已清空，图上灰显</div>')
+        h('<div class="tiny" style="margin:-4px 0 8px">图例右侧：'
+          '<b>黑字</b>＝最新一期占比；<b>红/绿小字</b>＝相对 '
+          f'{hist.index[0]} 的变化（pp）。按最新占比降序。</div>')
+        with st.expander("看表格：每期各行业占比", expanded=False):
+            _ht = hist.round(2).T
+            _ht.insert(0, "最新一期", hist.iloc[-1].round(2))
+            _ht.insert(1, "历史峰值", hist.max().round(2))
+            st.dataframe(_ht, width="stretch", height=320)
 
     # ---- 同季度横向：这一季 31 个行业各占多少，一次全看到 ----
     h('<div style="font-size:14px;font-weight:700;margin:12px 0 4px">'

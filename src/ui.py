@@ -81,6 +81,17 @@ def analysis(h, fact: str, econ: str = "", invest: str = "",
       f'overflow:hidden;margin:6px 0 18px">{body}</div>')
 
 
+def data_insufficient(n, need, why: str = "", unit: str = "期") -> str:
+    """统一的「样本不足」说明块：**全站只此一种写法**。
+
+    要求（2026-11-12）：不许给看似正常的 IC 值，也不许留白；必须写清
+    「样本 n=?、要求多少、为什么不做检验」，读者才知道这是边界、不是故障。
+    """
+    head = f"样本 n={n}，不足 {need} {unit}，不做检验"
+    return (f'<div class="cg-note">{head}'
+            + (f"：{why}" if why else "") + "</div>")
+
+
 def stat_strip(items: list[tuple[str, str, str]], accent: str | None = None) -> str:
     """一行 KPI：标题 / 数值 / 注释。数值用主色，注释灰。"""
     accent = accent or C.COLOR["text"]

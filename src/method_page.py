@@ -107,6 +107,34 @@ def render(h, B=None, IND=None) -> None:
       '披露范围就一致了——这不是跨口径拼接，而是把全持仓截到前十大。</div>')
 
     # =====================================================================
+    # 口径表（代码同源）
+    # =====================================================================
+    import caliber as CAL  # noqa: PLC0415
+    import version_info as vinfo  # noqa: PLC0415
+    h(f'<div class="sec">二·补　口径表：每一条都只有一个定义（v{CAL.CALIBER_VERSION}）</div>')
+    h('<div class="tiny">这张表由 <span class="mono">src/caliber.py</span> 直接生成，'
+      '页面上所有阈值、窗口、分母都从同一个地方取——'
+      '过去「口径」类问题被修了 17 次，就是因为同一句话在七个文件里各写一遍。'
+      '改口径只能改 caliber.py，改完 <span class="mono">tools/check_caliber.py</span> '
+      '会在核心文件里 grep 硬编码，命中即失败。</div>')
+    _cal = pd.DataFrame(CAL.table())
+    _cal = _cal[["metric_id", "name", "definition", "denominator", "min_n",
+                 "missing", "version"]]
+    _cal.columns = ["metric_id", "中文名", "口径定义", "分母", "最小样本",
+                    "缺失处理", "版本"]
+    st.dataframe(_cal, width="stretch", hide_index=True, height=330,
+                 column_config={
+                     "metric_id": st.column_config.TextColumn(width="small"),
+                     "中文名": st.column_config.TextColumn(width="small"),
+                     "口径定义": st.column_config.TextColumn(width="large"),
+                     "分母": st.column_config.TextColumn(width="medium"),
+                     "最小样本": st.column_config.TextColumn(width="medium"),
+                     "缺失处理": st.column_config.TextColumn(width="medium"),
+                     "版本": st.column_config.TextColumn(width="small")})
+    h(f'<div class="tiny">页脚版本：{vinfo.footer_text()}｜口径表版本 '
+      f'{vinfo.info().get("caliber_version") or CAL.CALIBER_VERSION}</div>')
+
+    # =====================================================================
     # 样本漏斗
     # =====================================================================
     try:

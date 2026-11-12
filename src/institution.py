@@ -33,6 +33,7 @@ from scipy import stats
 import attribution as atr
 import backtest as bt
 import config as C
+import caliber as CAL
 
 DB_PATH = os.path.join(C.DATA, "db", "institution.db")
 
@@ -260,7 +261,7 @@ def dispersion_real(q: str, q0: str, path: str | None = None,
                 b = b / cb_ * 100 if cb_ > 0 else 0.0
             # 清洗规则：该基金本期或上期在本行业配置 >80% → 行业主题基金，
             # 其变化主要反映主题基金自身申赎，计入会污染行业分歧度。
-            if max(a, b) > 80.0:
+            if max(a, b) > CAL.THEME_FUND_PCT:
                 theme_drop += 1
                 continue
             n += 1
@@ -484,7 +485,7 @@ def six_checks(b, fac: pd.DataFrame, name: str, expect_positive: bool = True,
     checks.append(dict(项="交易成本(20bp)", 通过=bool(ok6),
                        结果=f"毛年化 {pf['ann']:+.2f}%、扣费后 {net:+.2f}%（假设年换手 {turn*4*100:.0f}%）"))
     n_pass = sum(c["通过"] for c in checks)
-    status = "可用" if n_pass == 6 else ("参考" if n_pass >= 4 else "不可用")
+    status = "可用" if n_pass == 6 else ("参考" if n_pass >= 4 else "不可用")  # caliber-ok: 六项检验的通过计数，与最小样本无关
     return dict(指标=name, 通过项=int(n_pass), 总项=len(checks), 状态=status,
                 检验=pd.DataFrame(checks), n=n, ic_mean=float(ic.mean()),
                 nw_t=float(nw_t), nw_p=float(nw_p))
@@ -601,7 +602,7 @@ def decision_table(t: pd.DataFrame, active: pd.DataFrame,
         if pd.isna(pct):
             act = "标配"
             why = "超配分位缺失，不给方向"
-        elif pct >= 80 and pd.notna(a) and a > 0:
+        elif pct >= CAL.THR_CROWD and pd.notna(a) and a > 0:
             act = "超配"
             why = f"分位 {pct:.0f}%（高位）且主动加仓 {a:+.2f}pp"
         elif pct <= 20 and pd.notna(a) and a < 0:

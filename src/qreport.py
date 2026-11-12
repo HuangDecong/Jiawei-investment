@@ -83,15 +83,6 @@ def missing_deps() -> list[str]:
     return _DEP_PROBE
 
 
-def dep_hint() -> str:
-    """缺依赖时给页面看的一句话（人话，不是异常类名）。"""
-    miss = missing_deps()
-    if not miss:
-        return ""
-    return (f"缺少依赖 {'、'.join(miss)}"
-            f"（修复：pip install -r requirements.txt 后重启服务）")
-
-
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS q_asset(
   code TEXT, period TEXT, quarter TEXT,
@@ -644,7 +635,7 @@ def fetch_fund(code: str, years: tuple[int, ...] | None = None,
     now = datetime.now()
     years = years or (now.year - 1, now.year)
     ts = now.strftime("%Y-%m-%d %H:%M")
-    errors: list[str] = []
+    errors: list[dict] = []
     got: dict[str, int] = {}
 
     def tap(fn, *a, **kw):
@@ -653,7 +644,7 @@ def fetch_fund(code: str, years: tuple[int, ...] | None = None,
             time.sleep(0.18)   # 两进程并行时的限速，压住东财 f10 的 5xx
             return fn(*a, **kw)
         except Exception as e:  # noqa: BLE001
-            errors.append(_err_text(fn, e))
+            errors.append(_err_of(fn, e, code))
             return pd.DataFrame()
 
     if not force:
@@ -670,7 +661,7 @@ def fetch_fund(code: str, years: tuple[int, ...] | None = None,
     # 有缓存数据的仍照常返回——缺依赖不等于库里的历史数据不能用。
     if missing_deps():
         d = load_fund(code)
-        d["errors"] = [dep_hint()]
+        d["errors"] = [make_err("missing_dep", "季报抓取依赖", "、".join(missing_deps()), "missing_dep", sev="error")]
         d["cached"] = True
         d["no_deps"] = True
         return d
@@ -727,7 +718,8 @@ def fetch_fund(code: str, years: tuple[int, ...] | None = None,
         con.execute(
             "INSERT OR REPLACE INTO q_log(code, ok, msg, n_rows, fetched_at) "
             "VALUES(?,?,?,?,?)",
-            (code, 0 if errors else 1, ";".join(errors[:4])[:300],
+            (code, 0 if errors else 1,
+             ";".join(f"{e['label']}:{e['detail']}" for e in errors[:4])[:300],
              int(sum(got.values())), ts))
 
     out = load_fund(code)
@@ -741,22 +733,69 @@ _FN_LABEL = {"_f10_asset": "资产配置", "_f10_shares": "份额变动",
              "_ak_hold": "持仓明细", "_ak_change": "重大买卖",
              "_ak_bond": "债券持仓"}
 
+# 结构化错误：**UI 只渲染 label + 人话原因 + 处置**，函数名/异常类名/参数进日志。
+# 2026-11-11 的页面直接把 `_f10_asset(('005827',)) ImportError` 摆给读者看，
+# 既看不懂、也不知道该做什么，还泄漏了内部实现。
+ERR_KINDS = ("missing_dep", "upstream_fail", "no_data", "partial")
 
-def _err_text(fn, exc: BaseException) -> str:
-    """把「函数名 + 异常类名」翻成人话，同时保留函数名供内部判断。
+_ACTION = {
+    "missing_dep": "按 requirements.txt 装好依赖后，到 Streamlit Cloud 点 "
+                   "Clear cache & reboot（只 Reboot 不会重装依赖）",
+    "upstream_fail": "可重试一次；连续失败说明上游接口变更或网络受限，"
+                     "本页不会用推算值替代",
+    "no_data": "该基金确实没有可展示的季报数据",
+    "partial": "缺的那几张表显示「暂无」，其余照常展示",
+}
 
-    页面原来直接显示 `_f10_asset(('005827',)) ImportError`，读者既看不懂
-    也不知道该做什么。格式：中文名（_fn）原因——`ensure_year` 里靠 `_fn`
-    判断「这次哪张表没抓到、要不要保留旧行」，所以函数名必须留在串里。
+
+_REASON = {
+    "missing_dep": "运行环境缺少必要组件（{detail}），读不到季报原文",
+    "upstream_fail": "上游接口本次没有返回（是取数失败，不是「这只基金没有数据」）",
+    "partial": "该部分本期未披露",
+    "no_data": "源站没有该基金的季报记录",
+}
+
+
+def make_err(key: str, label: str, detail: str, kind: str,
+             action: str | None = None, sev: str = "warn") -> dict:
+    """构造一条结构化错误。kind 只能取 ERR_KINDS 里的值。
+
+    返回四个给 UI 的字段（label / reason / action / sev）与两个给日志的字段
+    （key / detail）。UI 不渲染 key 与 detail——那里有函数名和异常类名。
     """
+    if kind not in ERR_KINDS:
+        raise ValueError(f"未知错误类型 {kind}")
+    reason = _REASON[kind].format(detail=detail) if "{detail}" in _REASON[kind] \
+        else _REASON[kind]
+    return {"key": key, "label": label, "detail": str(detail)[:400],
+            "reason": reason, "kind": kind,
+            "action": action or _ACTION[kind], "sev": sev}
+
+
+def log_err(code: str, item: dict) -> None:
+    """把内部细节写日志（函数名/异常/参数都在 detail 里），不写页面。"""
+    try:
+        p = os.path.join(os.path.dirname(DB_PATH), "qreport_errors.log")
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}\t{code}\t"
+                    f"{item.get('key')}\t{item.get('kind')}\t"
+                    f"{item.get('detail')}\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _err_of(fn, exc: BaseException, code: str = "") -> dict:
+    """把一次抓取失败转成结构化错误：label 给人看，detail 进日志。"""
     name = getattr(fn, "__name__", str(fn))
-    label = _FN_LABEL.get(name, name)
-    detail = type(exc).__name__
-    if isinstance(exc, ImportError):
-        detail = f"缺依赖 {detail}"
-    elif isinstance(exc, ModuleNotFoundError):
-        detail = f"缺依赖 {detail}"
-    return f"{label}（{name}）{detail}"
+    # 未知函数一律显示「季报接口」：函数名只进 detail（日志），
+    # 免得以后新增一个 _ak_xxx 就把下划线名字漏到页面上。
+    label = _FN_LABEL.get(name, "季报接口")
+    kind = "missing_dep" if isinstance(exc, (ImportError, ModuleNotFoundError)) \
+        else "upstream_fail"
+    item = make_err(key=name, label=label,
+                    detail=f"{type(exc).__name__}: {exc}", kind=kind)
+    log_err(code, item)
+    return item
 
 
 def ensure_year(code: str, year: int, force: bool = False) -> dict:
@@ -783,9 +822,9 @@ def ensure_year(code: str, year: int, force: bool = False) -> dict:
     # 缺依赖时也不要写 q_ytry：那张表是「这年抓过了」的标记，写进去会让
     # 修好依赖之后也永远不再重抓（线上曾因此把整段历史钉死成空）。
     if missing_deps():
-        return {"fetched": False, "rows": 0, "error": dep_hint()}
+        return {"fetched": False, "rows": 0, "error": make_err("missing_dep", "季报抓取依赖", "、".join(missing_deps()), "missing_dep", sev="error")}
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-    errors: list[str] = []
+    errors: list[dict] = []
     got = 0
 
     def tap(fn, *a):
@@ -793,7 +832,7 @@ def ensure_year(code: str, year: int, force: bool = False) -> dict:
             time.sleep(0.15)
             return fn(*a)
         except Exception as e:  # noqa: BLE001
-            errors.append(_err_text(fn, e))
+            errors.append(_err_of(fn, e, code))
             return pd.DataFrame()
 
     ind = tap(_ak_industry, code, year)
@@ -808,7 +847,7 @@ def ensure_year(code: str, year: int, force: bool = False) -> dict:
     with _con() as con:
         for _t, _fn in (("q_industry", "_ak_industry"), ("q_hold", "_ak_hold"),
                         ("q_change", "_ak_change"), ("q_bond", "_ak_bond")):
-            if not any(_fn in e for e in errors):
+            if not any(e.get("key") == _fn for e in errors):
                 con.execute(f"DELETE FROM {_t} WHERE code=? AND substr(period,1,4)=?",
                             (code, str(int(year))))
         got += _write(con, "q_industry", code, ind,

@@ -28,6 +28,7 @@ import canon as cn
 import config as C
 import report_charts as rc
 import ui
+import caliber as CAL
 from factor_doc import DOC
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -304,7 +305,11 @@ def render(h, B=None, IND=None) -> None:
                   + (f' 分层从 Q1 {f["layers"]["0"]:+.2f}% 到 Q5 {f["layers"]["4"]:+.2f}%，'
                      f'单调性 {f["mono"]:+.2f}。' if f.get("layers") else '') + '</div>')
             else:
-                h('<div class="tiny">该因子样本不足，未生成 IC 序列与分层图。</div>')
+                _nn = int(f.get("n") or 0)
+                h(ui.data_insufficient(
+                    _nn, CAL.MIN_IC_N,
+                    "该因子只有最近几期有值（历史口径断层），"
+                    "IC 与分层回测没有统计意义；保留原始数值供核对"))
 
     # =====================================================================
     # 为什么不用旧因子

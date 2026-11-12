@@ -30,13 +30,14 @@ import streamlit as st
 
 import canon as cn
 import config as C
+import caliber as CAL
 import report_charts as rc
 import ui
 
 
 def _tone(p: float) -> tuple[str, str]:
     """配置分位 → (颜色, 等级名)。"""
-    if p >= 80:
+    if p >= CAL.THR_CROWD:
         return C.COLOR["level_极度拥挤"], "历史高位"
     if p >= 60:
         return C.COLOR["level_拥挤"], "偏高"
@@ -51,11 +52,11 @@ def _verdict(r) -> str:
     """按「分位 + 环比 + 同比 + 资金」给一句可执行判断（规则事前固定）。"""
     p, d1, d2 = r["历史分位"], r["Δ上季pp"], r["Δ上年pp"]
     a, br = r.get("平均主动pp", np.nan), r.get("加仓占比", np.nan)
-    if p >= 80 and np.isfinite(a) and a < 0:
+    if p >= CAL.THR_CROWD and np.isfinite(a) and a < 0:
         return ("分位在历史高位，但本期资金在撤（价格中性后净额为负）——"
                 "这是「拥挤度见顶」的形态：仓位还没降下来，人已经开始走。"
                 "持有的减半，不新建仓。")
-    if p >= 80 and d1 > 0 and d2 > 0:
+    if p >= CAL.THR_CROWD and d1 > 0 and d2 > 0:
         return ("分位已到历史高位，且环比、同比同向上行——拥挤度还在累积。"
                 "这时买入等于在别人的浮盈上加仓，仓位要更轻、止损要更紧。")
     if p <= 20 and d1 < 0 and d2 < 0:
@@ -173,7 +174,7 @@ def render(h) -> None:
     _top = _ok.nlargest(3, "CSI") if "CSI" in _ok else pd.DataFrame()
     _bot = _ok.nsmallest(3, "CSI") if "CSI" in _ok else pd.DataFrame()
     _small = comp[comp["可靠"] == "小样本"] if "可靠" in comp else pd.DataFrame()
-    _hi_chg = comp[(comp["历史分位"] >= 80) & (comp["平均主动pp"] < 0)] if "平均主动pp" in comp else pd.DataFrame()
+    _hi_chg = comp[(comp["历史分位"] >= CAL.THR_CROWD) & (comp["平均主动pp"] < 0)] if "平均主动pp" in comp else pd.DataFrame()
     _lo_chg = comp[(comp["历史分位"] <= 30) & (comp["平均主动pp"] > 0.2) &
                    (comp["加仓占比"] >= 60)] if "平均主动pp" in comp else pd.DataFrame()
     _n_ext = int((comp["等级"] == "极度拥挤").sum()) if "等级" in comp else 0
@@ -546,9 +547,16 @@ def render(h) -> None:
       f'「全行业分位」＝当期在可评级行业里的排名——'
       f'两个都不是「配置分位」（那是 CSI 的输入之一）。'
       f'点表头可排序；表格下方按钮可下载 CSV。</div>')
+    # 横截面小样本的具体原因：把「持有 58 只 / 0.12%」写进评级列，
+    # 读者不用回上一节找「它为什么不评级」。
+    _cs_note: dict[str, str] = {}
+    if not csi.empty and "持有基金数" in csi.columns:
+        for _i in sorted(_small_set):
+            if _i in csi.index:
+                _cs_note[_i] = (f"持有 {int(csi.loc[_i, '持有基金数'])} 只 /"
+                                f" 前十合计 {float(csi.loc[_i, '配置']):.2f}%")
     _tbl = rc.csi_stat_table(H, window=_window, thr=float(_thr),
-                             universe=_ok, selected=_sel_t,
-                             small=sorted(_small_set))
+                             universe=_ok, selected=_sel_t, small=_cs_note)
     # 屏幕表头叫「CSI 分位」，下载的 CSV 也必须是同一个名字，
     # 否则导出的表头还写着「当前分位」，又要解释一遍它是什么。
     if not _tbl.empty:
@@ -556,40 +564,63 @@ def render(h) -> None:
     if _tbl.empty:
         h('<div class="cg-note">本期数据不足，无法生成对照表。</div>')
     else:
-        st.dataframe(
-            _tbl, hide_index=True, width="stretch", height=430,
-            column_config={
-                "行业": st.column_config.TextColumn("行业", width="small"),
-                "选中": st.column_config.TextColumn("本次", width="small",
-                                                   help="● 为当前选中的行业"),
-                "评级": st.column_config.TextColumn(
-                    "评级", width="small",
-                    help="小样本＝持有 <150 只基金或前十配置 <0.5%："
-                         "不参与排名与全行业分位，只看数值，不下结论"),
-                "当前": st.column_config.NumberColumn("当前 CSI", format="%.1f"),
-                "历史均值": st.column_config.NumberColumn("历史均值", format="%.1f"),
-                "标准差": st.column_config.NumberColumn("标准差 σ", format="%.1f"),
-                "z值": st.column_config.NumberColumn("z 值", format="%+.2f",
-                                                     help="(当前−均值)/σ"),
-                "P10": st.column_config.NumberColumn("P10", format="%.1f"),
-                "P50": st.column_config.NumberColumn("P50", format="%.1f"),
-                "P90": st.column_config.NumberColumn("P90", format="%.1f"),
-                "最小": st.column_config.NumberColumn("最小", format="%.1f"),
-                "最大": st.column_config.NumberColumn("最大", format="%.1f"),
-                # 用数字而不是进度条：列宽只有 ~90px 时进度条会把数值挤掉，
-                # 而这张表的用途就是「核对数字」，看不到数字等于没做。
-                "CSI 分位": st.column_config.NumberColumn(
-                    "CSI 分位", format="%.0f",
-                    help="当前 CSI 在「这个窗口」里由低到高排第几（0–100）——"
-                         "注意它不是「配置分位」，两者不是一回事"),
-                "全行业分位": st.column_config.NumberColumn(
-                    "全行业分位", format="%.0f",
-                    help="当期在 31 个行业里的百分位（截面）"),
-                "排名": st.column_config.NumberColumn("排名", format="%d"),
-                "近4期变化": st.column_config.NumberColumn("近 4 期 Δ", format="%+.1f"),
-            })
+        _n_all = len(_tbl)
+        _n_ok = int((_tbl["评级"] == "").sum())
+        _c1, _c2 = st.columns([0.36, 0.64])
+        with _c1:
+            _only = st.checkbox(f"仅显示可评级行业（{_n_ok}/{_n_all}）",
+                                value=True, key="csi_tbl_only_rated",
+                                help="默认只看能下结论的行业；关掉后列出全部，"
+                                     "小样本行灰底并写明原因")
+        with _c2:
+            st.caption("期数带 * ＝不足 8 期，不出统计量；"
+                       "「—（不评级）」＝不参与排名与全行业分位。"
+                       "表格里的值与下载的 CSV 完全一致。")
+        _show = _tbl[_tbl["评级"] == ""] if _only else _tbl
+        # 展示列已经是字符串（含「—」），所以统一用 TextColumn；
+        # 用 NumberColumn 会把「—」当数字解析失败。
+        _cfg = {
+            "行业": st.column_config.TextColumn("行业", width="small"),
+            "选中": st.column_config.TextColumn("本次", width="small",
+                                                help="● 为当前选中的行业"),
+            "评级": st.column_config.TextColumn(
+                "评级", width="medium",
+                help=f"小样本有两个维度：横截面（持有 <{CAL.SMALL_HOLD_N} 只"
+                     f"或前十配置 <{CAL.SMALL_SHARE_PCT}%）与时序"
+                     f"（不足 {CAL.MIN_N_PCT} 期）。两者都不参与排名"),
+            "当前": st.column_config.TextColumn("当前 CSI", width="small"),
+            "历史均值": st.column_config.TextColumn("历史均值", width="small"),
+            "标准差": st.column_config.TextColumn("标准差 σ", width="small"),
+            "z值": st.column_config.TextColumn("z 值", width="small",
+                                               help=f"(当前−均值)/σ；期数<{CAL.MIN_N_PCT} 时为「—」"),
+            "P10": st.column_config.TextColumn("P10", width="small"),
+            "P50": st.column_config.TextColumn("P50", width="small"),
+            "P90": st.column_config.TextColumn("P90", width="small"),
+            "最小": st.column_config.TextColumn("最小", width="small"),
+            "最大": st.column_config.TextColumn("最大", width="small"),
+            "CSI 分位": st.column_config.TextColumn(
+                "CSI 分位", width="small",
+                help="当前 CSI 在该窗口内由低到高的百分位；不是「配置分位」"),
+            "全行业分位": st.column_config.TextColumn(
+                "全行业分位", width="small",
+                help="当期在可评级行业中的百分位；小样本为「—（不评级）」"),
+            "排名": st.column_config.TextColumn("排名", width="small",
+                                                help="1＝最挤；并列取最小名次"),
+            "近4期变化": st.column_config.TextColumn("近 4 期 Δ", width="small"),
+        }
+        if _only:
+            st.dataframe(_show, hide_index=True, width="stretch", height=430,
+                         column_config=_cfg)
+        else:
+            # 全量模式：小样本整行灰底（Styler 与 column_config 不能同时用，
+            # 这里优先「看得出哪几行不评级」）
+            def _grey(row):
+                return ["background-color:#F1F3F6" if row.get("评级") else ""
+                        for _ in row]
+            st.dataframe(_show.style.apply(_grey, axis=1), hide_index=True,
+                         width="stretch", height=460)
         st.download_button(
-            f"下载对照表（{len(_tbl)} 行 × {len(_tbl.columns)} 列，CSV）",
+            f"下载对照表（全部 {_n_all} 行 × {len(_tbl.columns)} 列，CSV）",
             _tbl.to_csv(index=False).encode("utf-8-sig"),
             file_name=f"行业分位对照表_{H.index[-1]}.csv", mime="text/csv",
             key="dl_csi_tbl")
@@ -640,8 +671,8 @@ def render(h) -> None:
         _d4 = (H.iloc[-1] - H.iloc[-5]).dropna() if len(H) >= 5 else pd.Series(dtype=float)
         _up4 = _d4.nlargest(3)
         _dn4 = _d4.nsmallest(3)
-        _red = H.iloc[-1][H.iloc[-1] >= 80].sort_values(ascending=False)
-        _long = ((H >= 80).sum()).nlargest(3)
+        _red = H.iloc[-1][H.iloc[-1] >= CAL.THR_CROWD].sort_values(ascending=False)
+        _long = ((H >= CAL.THR_CROWD).sum()).nlargest(3)
         _read(h,
               f'最新一期（{H.index[-1]}）31 个行业里只有 <b>{len(_red)} 个</b> 的 CSI ≥80'
               f'（{"、".join(f"{i} {v:.0f}" for i, v in _red.items()) or "无"}），'
@@ -802,7 +833,7 @@ def render(h) -> None:
                     width="stretch", config={"displayModeBar": False})
     _c = _bar.dropna(subset=["CSI"])
     _c_ok = _c[_c["等级"].astype(str) != "小样本"] if "等级" in _c else _c
-    _hi = _c_ok[_c_ok["CSI"] >= 80]
+    _hi = _c_ok[_c_ok["CSI"] >= CAL.THR_CROWD]
     _lo = _c_ok[_c_ok["CSI"] < 25]
     _sm_n = len(_c) - len(_c_ok)
     _is_latest = (_qbar is None) or (_qbar == (H.index[-1] if not H.empty else ""))
@@ -847,7 +878,7 @@ def render(h) -> None:
         _cco = cc[cc["等级"] != "小样本"] if "等级" in cc else cc
         _up = _cco.nlargest(3, "ΔCSI")
         _dn = _cco.nsmallest(3, "ΔCSI")
-        _hi_up = _cco[(_cco["CSI"] >= 80) & (_cco["ΔCSI"] > 0)]
+        _hi_up = _cco[(_cco["CSI"] >= CAL.THR_CROWD) & (_cco["ΔCSI"] > 0)]
         _n_sm = len(cc) - len(_cco)
         _read(h,
               f'变挤最多（{cc.attrs.get("q_prev", "")}→{cc.attrs.get("q", "")}）：'
@@ -923,8 +954,8 @@ def render(h) -> None:
                 if "等级" in comp.columns else comp)
     st.plotly_chart(rc.fig_dual_percentile(_comp_ok, _comp_ok["横截面分位"]),
                     width="stretch", config={"displayModeBar": False})
-    _both_high = _comp_ok[(_comp_ok["历史分位"] >= 80) & (_comp_ok["横截面分位"] >= 80)]
-    _self_only = _comp_ok[(_comp_ok["历史分位"] >= 80) & (_comp_ok["横截面分位"] < 50)]
+    _both_high = _comp_ok[(_comp_ok["历史分位"] >= CAL.THR_CROWD) & (_comp_ok["横截面分位"] >= CAL.THR_CROWD)]
+    _self_only = _comp_ok[(_comp_ok["历史分位"] >= CAL.THR_CROWD) & (_comp_ok["横截面分位"] < 50)]
     _mt_high = _comp_ok[(_comp_ok["历史分位"] < 50) & (_comp_ok["横截面分位"] >= 70)]
     _read(h,
           f'两边都 ≥80（自身历史高位 + 当期绝对重仓）的有 <b>{len(_both_high)} 个</b>：'
@@ -957,7 +988,7 @@ def render(h) -> None:
         _miss = _d[(_d["历史分位"] < 50) & (_d["指数分位"] >= 50)]
         _cold = _d[(_d["历史分位"] < 50) & (_d["指数分位"] < 50)]
         # 四象限用中位数切分，只说明「相对位置」；真正到极值要另看 80/90 线。
-        _ext = _crowd[(_crowd["历史分位"] >= 80) | (_crowd["指数分位"] >= 90)]
+        _ext = _crowd[(_crowd["历史分位"] >= CAL.THR_CROWD) | (_crowd["指数分位"] >= CAL.THR_EXTREME_PCT)]
         _read(h,
               f'右上·双高（配置与价格都高于中位）<b>{len(_crowd)} 个</b>：'
               + ("、".join(f"{i}（配置 {r['历史分位']:.0f} / 指数 {r['指数分位']:.0f}）"

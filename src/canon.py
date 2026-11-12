@@ -43,6 +43,7 @@ import numpy as np
 import pandas as pd
 
 import config as C
+import caliber as CAL
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB = os.path.join(ROOT, "data", "db", "fund_ak.db")
@@ -754,7 +755,7 @@ def config_pct_expanding(q: str) -> pd.Series:
     if M.empty or q not in M.index:
         return pd.Series(dtype=float)
     sub = M.loc[:q]
-    if len(sub) < 8:
+    if len(sub) < CAL.MIN_N_PCT:
         return pd.Series(np.nan, index=list(C.INDUSTRIES))
     return (sub.rank(pct=True).iloc[-1] * 100).reindex(list(C.INDUSTRIES))
 
@@ -805,7 +806,7 @@ def _crowding_score_impl(q: str | None = None) -> pd.DataFrame:
         if "持有基金数" in comp.columns else np.nan
     out["配置"] = comp["配置_前十"].reindex(out.index)
     out["可靠"] = np.where(
-        (out["持有基金数"].fillna(0) < 150) | (out["配置"].fillna(0) < 0.5),
+        (out["持有基金数"].fillna(0) < CAL.SMALL_HOLD_N) | (out["配置"].fillna(0) < CAL.SMALL_SHARE_PCT),
         "小样本", "正常")
     # 「原等级」= 只看 CSI 数值得到的三分位档位，仅用于向读者解释
     # 「这个数字本来会被判成什么」；「等级」才是全站展示与统计用的那一列。
@@ -871,13 +872,13 @@ def _csi_change_impl(q: str | None = None) -> pd.DataFrame:
 def _csi_level(v: float) -> str:
     if not np.isfinite(v):
         return "数据不足"
-    if v >= 80:
+    if v >= CAL.THR_CROWD:
         return "极度拥挤"
-    if v >= 65:
+    if v >= CAL.THR_WARM:
         return "拥挤"
-    if v >= 45:
+    if v >= CAL.THR_NEUTRAL:
         return "中性"
-    if v >= 25:
+    if v >= CAL.THR_COLD:
         return "偏冷"
     return "冷门"
 
@@ -1195,7 +1196,7 @@ def position_change(q: str | None = None) -> dict:
                 仓位0=float(c0.loc[idx].median()),
                 仓位1=float(c1.loc[idx].median()),
                 中位变化pp=float(d.median()),
-                加仓基金占比=float((d > 0.5).mean() * 100))
+                加仓基金占比=float((d > 0.5).mean() * 100))  # caliber-ok: 0.5pp 加仓阈值，非小样本口径
 
 
 CSI_CSV = os.path.join(DERIVED, "canon_csi_history.csv.gz")
@@ -1365,9 +1366,9 @@ def csi_threshold() -> dict:
             row = det[(det["q"] == q1) & (det["行业"] == ind)]
             if row.empty:
                 continue
-            if a < 80 <= b:
+            if a < CAL.THR_CROWD <= b:
                 ev.append(dict(类型="上穿 80（刚变极度拥挤）", **row.iloc[0].to_dict()))
-            elif a >= 80 > b:
+            elif a >= CAL.THR_CROWD > b:
                 ev.append(dict(类型="下穿 80（拥挤解除）", **row.iloc[0].to_dict()))
     evd = pd.DataFrame(ev)
     events = (evd.groupby("类型").apply(lambda x: pd.Series(_agg(x)), include_groups=False)
@@ -1380,9 +1381,9 @@ def csi_threshold() -> dict:
         "ΔCSI": H.loc[last] - H.loc[prev],
     })
     cur["状态"] = np.select(
-        [(cur["上期CSI"] < 80) & (cur["CSI"] >= 80),
-         (cur["上期CSI"] >= 80) & (cur["CSI"] < 80),
-         (cur["CSI"] >= 80), (cur["CSI"] < 25)],
+        [(cur["上期CSI"] < CAL.THR_CROWD) & (cur["CSI"] >= CAL.THR_CROWD),
+         (cur["上期CSI"] >= CAL.THR_CROWD) & (cur["CSI"] < CAL.THR_CROWD),
+         (cur["CSI"] >= CAL.THR_CROWD), (cur["CSI"] < CAL.THR_COLD)],
         ["刚上穿 80", "刚跌破 80", "持续 ≥80", "冷门 <25"], default="区间内")
     # 带上等级：小样本行业（综合等）的穿越没有意义，展示时要过滤掉
     _lv = crowding_score(last)

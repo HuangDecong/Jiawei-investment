@@ -13,6 +13,7 @@ import streamlit as st
 
 import config as C
 import glossary as g
+import version_info as vinfo
 
 
 def _body(page: str = "") -> None:
@@ -99,4 +100,16 @@ def render(page: str = "") -> None:
             f'当前页：<b>{page or "—"}</b><br>'
             f'侧边栏可以点左上角的「«」收起；收起后用顶栏的'
             f'<b>「📖 指标速查」</b>随时弹出同一份词典。</div>',
+            unsafe_allow_html=True)
+        # 版本行固定在侧栏最底部：**判断线上跑的是哪一版，只看这一行**。
+        # 内容来自 version.json（构建时写入），运行时不调 git。
+        _vi = vinfo.info()
+        st.markdown(
+            f'<div style="font-size:10px;line-height:1.6;color:#8A97A5;'
+            f'border-top:1px dashed {C.COLOR["grid"]};padding-top:6px;margin-top:8px">'
+            f'<b style="color:#5A6B7D">版本 {vinfo.sha7()}</b>'
+            f'　·　{str(_vi.get("app_version", ""))}'
+            f'<br>{str(_vi.get("build_time", ""))[:16]}'
+            f'<br>{vinfo.deps_text()}'
+            f'<br>口径表 {_vi.get("caliber_version") or "—"}</div>',
             unsafe_allow_html=True)

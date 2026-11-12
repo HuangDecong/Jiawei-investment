@@ -36,6 +36,7 @@ import pandas as pd
 from scipy import stats
 
 import config as C
+import caliber as CAL
 
 INDUSTRIES = C.INDUSTRIES
 NI = C.NI
@@ -113,7 +114,7 @@ def safe_spearman(x, y) -> float:
     xa = np.asarray(pd.Series(x).dropna(), dtype=float)
     ya = np.asarray(pd.Series(y).reindex(pd.Series(x).dropna().index).dropna(),
                     dtype=float)
-    if len(xa) < 8 or len(ya) < 8:
+    if len(xa) < CAL.MIN_OBS_XSEC or len(ya) < CAL.MIN_OBS_XSEC:
         return np.nan
     if np.nanstd(xa) == 0 or np.nanstd(ya) == 0:
         return np.nan
@@ -533,7 +534,7 @@ def build_all(b) -> dict:
             a2 = base.dropna()
             b2 = ind[o].loc[q].reindex(a2.index).dropna()
             a2 = a2.reindex(b2.index)
-            if len(b2) >= 8:
+            if len(b2) >= CAL.MIN_OBS_XSEC:
                 _c = safe_spearman(a2, b2)
                 if _c == _c:
                     cs.append(abs(_c))

@@ -3374,3 +3374,91 @@ python tools/test_deploy_paths.py --with-deps # 无库 + 依赖齐全：④ 页�
 | 005827 实机 | 10 图 3 表、无「未取到」提示 |
 
 口径未变：所有数字仍是季报原文披露值，不新增任何推算或代理口径。
+
+## R49 版本可见 · 口径收敛 · 修复沉淀为断言（2026-11-12）
+
+### 先回答一个问题：线上跑的是哪一版？
+
+在此之前**没有任何地方能回答**。侧栏只有数据指纹，`APP_VERSION` 打在顶栏角落，
+而线上是私有应用（未登录重定向 `/-/login`），外部无法读取页面内容。
+
+现在的约定：
+
+| 位置 | 内容 | 来源 |
+|---|---|---|
+| 侧栏最底部（固定） | `版本 8339a83` · `2026.11.12-r49.0` · 构建时间 · akshare/lxml/plotly/pandas/streamlit 版本 · 口径表版本 | `version.json` |
+| `version.json` | app_version / source_sha / branch / build_time / requirements_sha8 / caliber_version / packages | `tools/make_version.py` 发布时写入 |
+| `tools/deploy_check.py` | 本地 HEAD ↔ version.json ↔ 远端 main ↔ 线上页脚，四级比对 | 退出码 0/1/2 |
+
+运行时不调用 git（线上容器没有 `.git`）。约定：生成版本戳后单独提交一次 stamp，
+所以干净树上恒有 `source_sha == HEAD^`，`deploy_check` 按 `{HEAD, HEAD^}` 比对。
+线上是私有应用，脚本读不到页脚时**如实返回 2（无法核验）**，不会假装通过。
+
+### 发布清单（写进流程，不靠记忆）
+
+1. `python tools/make_version.py` → `git commit -m "chore: 版本戳"`；
+2. 推送后到 Streamlit Cloud 点 **Reboot**（不是 Rerun）；
+3. **`requirements.txt` 有任何改动：必须 Clear cache & reboot**——
+   只 Reboot 不会重装依赖，`ModuleNotFoundError` 会一直在（005827 的报错就是这么来的）；
+4. 确认 main file path = `app.py`、branch = `main`；
+5. 登录后看侧栏底部：`版本 <sha>` 必须等于 `git rev-parse --short HEAD`。
+
+### 口径收敛：`src/caliber.py` 是唯一出处
+
+同一句话（「80 分算拥挤」「小样本 <150 只」「期数 <8 不出分位」）过去在
+map_page / canon / report_charts / glossary 各写一遍，改一处、其余六处还是旧值——
+这就是「口径」类问题被修 17 次的机制。
+
+现在：阈值与最小样本只在 `caliber.py` 定义；`canon`、`report_charts`、`map_page`、
+`factor_engine`、`institution`、`fund_page` 六个核心文件改为引用常量（**37 处**），
+`tools/check_caliber.py` 对核心文件做硬编码检查，命中即失败（当前 0 处）。
+首批 7 条指标口径（CSI 分位 / 全行业分位 / 排名 / z 值 / 全历史触及 /
+持仓占比 / 份额）带「定义 · 分母 · 最小样本 · 缺失处理 · 版本」，方法页直接渲染这张表。
+
+非核心文件（研究脚本、旧 Wind 口径页）仍有约 40 处，登记为待办，`--all` 可列出。
+
+### 三个问题的判据都改了，不只是文案
+
+1. **内部异常不再上页面**：错误改成结构化 `{key,label,reason,action,kind,sev}`，
+   kind 只有 `missing_dep / upstream_fail / no_data / partial`；
+   页面只渲染 label + 人话原因 + 处置，函数名与异常类名进
+   `data/db/qreport_errors.log`；「可能已清盘」的推测句删除——
+   判「无数据」现在要求：不缺依赖、无接口报错、档案存在、成立日早于报告期。
+2. **行业结构图**：0 值画成 NaN（悬浮不再出现 0.00%）、图例只列当期 >0、
+   当期清空但历史持有的折叠成「历史曾持有（n）」灰字；
+   合并改为双阈值（当期 <1% **且** 峰值 <3%），兜底改为「至少留最大一个」；
+   单期单行业 ≥99.5% 直接给结论句，不画图；图下加「看表格」视图。
+3. **小样本分两个维度**：横截面（持有 <150 只或 <0.5%）与时序（<8 期）分别判定、
+   合并标注（如「小样本·仅 2 期」「小样本·持有 58 只 /0.12%」）；
+   n<8 时 z/P10–P90/分位/触及 全为「—」，n<4 只留当前值与期数；
+   排名显示「—（不评级）」且 CSV 完全一致；期数带 `*`；
+   新增开关「仅显示可评级行业（26/31）」，关闭后小样本灰底。
+
+### 配色可辨性写成函数
+
+`_STACK12` 不再是「看着顺眼」的一组颜色：`validate_palette()` 逐对校验
+**相邻色相角差 ≥40° 或 Lab 明度差 ≥18**，并在 **Viénot 1999 红绿色盲模拟**下
+再校验一次。当前 12 色全部通过（正常视觉与模拟均通过），
+浅色段自动改用深色字（`_text_on`）。
+
+### 回归闸门
+
+`tests/test_display_contract.py` 10 条（A01–A10），全部从**渲染结果**取样：
+
+| 编号 | 断言 |
+|---|---|
+| A01 | 页面文案不含 `_f10`/`_ak_`/ImportError/元组参数 |
+| A02 | 图例 ≤12 项、无 0 值段、调色板逐对可辨（含色盲模拟）|
+| A03 | n<8 的 z/P10–P90/排名 为「—」，期数带 `*` |
+| A04 | 排名最大值 == 可评级行业数，不越界 |
+| A05 | 全行业分位分母 == 可评级行业数（26，不是 31）|
+| A06 | 表 / CSV / 图标题 三处排名一致 |
+| A07 | 阈值只在 caliber.py（调用 check_caliber）|
+| A08 | CSV 带小样本标注与「—（不评级）」|
+| A09 | 「全历史触及」≠ 总期数（防取错列）|
+| A10 | 侧栏版本行存在且 sha 为 7 位 |
+
+`make gate` = `pytest` + `check_caliber` + `deploy_check`，任一失败阻断发布。
+
+**反向验证**（deliverable）：把 `MIN_N_PCT` 改回 0、把排名分母改回全行业后重跑，
+A03/A05/A06/A07 等 5 条变红；恢复后 10/10 通过。
