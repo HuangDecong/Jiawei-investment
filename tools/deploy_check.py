@@ -72,6 +72,44 @@ def remote_tree_sha() -> str:
         return ""
 
 
+def remote_blob_map() -> dict[str, str] | None:
+    """远端 main 的 {路径: blob sha}；取不到返回 None。"""
+    try:
+        ref = urllib.request.Request(
+            f"https://api.github.com/repos/{OWNER}/{REPO}/git/ref/heads/main",
+            headers={"Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(ref, timeout=20) as r:
+            sha = json.loads(r.read().decode())["object"]["sha"]
+        t = urllib.request.Request(
+            f"https://api.github.com/repos/{OWNER}/{REPO}/git/trees/{sha}?recursive=1",
+            headers={"Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(t, timeout=30) as r:
+            d = json.loads(r.read().decode())
+        return {i["path"]: i["sha"] for i in d.get("tree", []) if i.get("type") == "blob"}
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def worktree_vs_remote() -> list[str] | None:
+    """逐文件比对工作区与远端；返回不一致文件（空＝一致），None＝取不到远端。"""
+    import hashlib  # noqa: PLC0415
+    rt = remote_blob_map()
+    if rt is None:
+        return None
+    files = [p for p in git("-c", "core.quotepath=false", "ls-files").splitlines() if p]
+    bad = []
+    for p in files:
+        fp = os.path.join(ROOT, p)
+        if not os.path.exists(fp):
+            continue
+        with open(fp, "rb") as f:
+            c = f.read()
+        local = hashlib.sha1(b"blob %d\x00" % len(c) + c).hexdigest()
+        if rt.get(p) != local:
+            bad.append(p)
+    return bad
+
+
 def live_footer(url: str) -> tuple[str, str]:
     """返回 (状态, 文本)。状态：ok / login / error。"""
     try:
@@ -157,15 +195,18 @@ def main() -> int:
             else:
                 # 两套历史不互认（本机 push 被拦，只能走 Git Data API）：
                 # 提交号必然不同，改用 tree sha 比内容——内容一致就算一致。
-                _rtree = remote_tree_sha()
-                _ltree = git("rev-parse", "HEAD^{tree}")
-                if _rtree and _rtree == _ltree:
+                # 两套历史不互认时不能用 commit/tree sha 比较：本地按 CRLF→LF
+                # 规范化后入库，远端存的是工作区原始字节（Git Data API 上传），
+                # 同一份文件在两边的 blob sha 天然不同。改为逐文件比对**工作区字节**。
+                _bad = worktree_vs_remote()
+                if _bad is None:
+                    notes.append("读不到远端文件清单，跳过内容比对")
+                elif not _bad:
                     notes.append(f"远端提交号 {rsha[:7]} 与本地 {head7} 不同"
-                                 "（API 推送会重建提交），tree 完全一致")
+                                 "（API 推送会重建提交），413 个文件内容逐一对齐")
                 else:
-                    problems.append(f"远端 main {rsha[:7]} 的内容与本地不一致"
-                                    f"（tree {(_rtree or '?')[:7]} ≠ {_ltree[:7]}）"
-                                    " —— 先推送再 Reboot")
+                    problems.append(f"远端有 {len(_bad)} 个文件与本地工作区不一致"
+                                    f"（如 {_bad[0]}）—— 先推送再 Reboot")
     else:
         notes.append("读不到远端 main（网络或权限），跳过第 3 级")
 
