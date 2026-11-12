@@ -146,6 +146,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="https://jiawei-investment.streamlit.app")
     ap.add_argument("--no-live", action="store_true", help="跳过线上核验")
+    ap.add_argument("--allow-unverified", action="store_true",
+                    help="线上被登录挡住时按「通过（未核验）」处理，供本地 make gate 使用")
     args = ap.parse_args()
 
     problems: list[str] = []
@@ -245,7 +247,7 @@ def main() -> int:
         return 1
     if live_state != "ok":
         print("\n⚠️ 本地/远端一致，但线上页脚未核验 —— 登录后看一眼侧栏底部那行版本。")
-        return 2
+        return 0 if args.allow_unverified else 2
     print("\n✅ 本地 / 版本戳 / 远端 / 线上 四处一致")
     return 0
 
