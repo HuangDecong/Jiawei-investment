@@ -86,7 +86,10 @@ def build() -> dict:
     return {
         "app_version": _app_version(),
         "source_sha": _git("rev-parse", "--short=7", "HEAD") or "unknown",
-        "branch": _git("rev-parse", "--abbrev-ref", "HEAD") or "unknown",
+        # 本机分支叫 master，但远端发布分支是 main（API 推送）。
+        # 版本戳要写「线上跑的分支」，所以允许用 FCD_BRANCH 覆盖。
+        "branch": (os.environ.get("FCD_BRANCH")
+                   or _git("rev-parse", "--abbrev-ref", "HEAD") or "unknown"),
         "build_time": dt.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
         "requirements_sha8": _req_sha8(),
         "caliber_version": _caliber_version(),
