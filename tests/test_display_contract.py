@@ -212,3 +212,44 @@ def test_A12_source_dates_are_iso_or_empty():
 
     for d in (sources.fund_fetch_date(), sources.snapshot_date(), sources.index_date()):
         assert d == "" or re.fullmatch(r"\d{4}-\d{2}-\d{2}", d), f"日期格式不对：{d}"
+
+
+# ---------------------------------------------------------------------------
+# A13 份额表同一季有多条披露日时，必须取季末日（2026-11-13 真实 bug）
+# ---------------------------------------------------------------------------
+def test_A13_share_row_picks_quarter_end():
+    import qreport_page as QP  # noqa: PLC0415
+
+    df = pd.DataFrame({
+        "quarter": ["2017Q1", "2017Q1", "2017Q1"],
+        "period": ["2017-01-25", "2017-02-24", "2017-03-31"],
+        "purchase_yi": [None, None, 0.03],
+        "redeem_yi": [None, None, 0.15],
+        "end_share_yi": [2.54, None, 2.42],
+    })
+    row = QP._pick_row(df, "2017Q1")
+    assert row is not None
+    assert row["period"] == "2017-03-31", f"取到了周度行：{row['period']}"
+    assert float(row["purchase_yi"]) == 0.03
+
+
+# ---------------------------------------------------------------------------
+# A14 季报速览：净资产环比与单位净值涨跌必须是两列，不能混成一个「净值涨跌」
+# ---------------------------------------------------------------------------
+def test_A14_nav_vs_unit_nav_are_separate_columns():
+    src = open(os.path.join(ROOT, "src", "qreport_page.py"), encoding="utf-8").read()
+    assert "净资产环比%" in src
+    assert "单位净值涨跌%" in src
+    assert '"净值涨跌%"' not in src, "旧的「净值涨跌%」标签又回来了（源站列名是净资产变动率）"
+
+
+# ---------------------------------------------------------------------------
+# A15 因子页必须解释「无效」是什么意思，且热力图必须常驻
+# ---------------------------------------------------------------------------
+def test_A15_verdict_legend_and_heatmap_visible():
+    fs = open(os.path.join(ROOT, "src", "factor_page.py"), encoding="utf-8").read()
+    for lab in ("与 0 无法区分", "不是「算错」", "样本不足"):
+        assert lab in fs, f"因子页缺少结论解释：{lab}"
+    ms = open(os.path.join(ROOT, "src", "map_page.py"), encoding="utf-8").read()
+    assert "31 个行业全景" in ms
+    assert "看历史全景：" not in ms, "热力图又被折叠了"

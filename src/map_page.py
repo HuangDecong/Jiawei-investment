@@ -553,58 +553,56 @@ def render(h) -> None:
             file_name=f"行业分位对照表_{H.index[-1]}.csv", mime="text/csv",
             key="dl_csi_tbl")
 
-    with st.expander("看历史全景：31 个行业 × 40 期热力图（谁在什么时候变红）",
-                     expanded=False):
-        # ---- 全景热力图：替代「31 条线叠加」 ----
-        _small = ([i for i in csi.index if csi.loc[i, "等级"] == "小样本"]
-                  if not csi.empty and "等级" in csi.columns else [])
-        _h1, _h2 = st.columns([0.7, 0.3])
-        with _h1:
-            h('<div style="font-size:14px;font-weight:700;margin:14px 0 4px">'
-              '31 个行业全景：颜色＝档位、格内＝CSI 数值，一屏看出「谁、什么时候」变红</div>')
-        with _h2:
-            _show_val = st.checkbox("格内标数值（关掉更清爽）", value=True,
-                                    key="csi_heat_text",
-                                    help="颜色只分五档，66 与 79 同色；数值看具体位置。"
-                                         "39 期时每格约 26px，用整数；鼠标悬停给到 0.1")
-        st.plotly_chart(rc.fig_csi_heatmap(H, _small, bad=cn.csi_invalid(),
-                                           show_text=_show_val),
-                        width="stretch",
-                        config={"displayModeBar": False})
-        h('<div class="tiny" style="margin:-4px 0 6px">'
-          '<b>空白格＝数据不足，不评级</b>：① 序列最前 7 期历史不足 8 个观测；'
-          '② 美容护理 / 石油石化 / 环保是 2021 年新设的一级行业，指数 2022 年才有，'
-          '之前只有「配置 + 资金」两项，凑不出可比的三项平均。'
-          '灰色 † 是小样本（持有 &lt;150 只基金或配置 &lt;0.5%）。'
-          '格内为 CSI 整数；落在档位边界（25/45/65/80）附近的值保留一位小数，否则「44.9 显示成 45 偏冷」会与阈值表（45–65 中性）矛盾；悬停可看原始精度。</div>')
+    # ---- 全景热力图：替代「31 条线叠加」 ----
+    _small = ([i for i in csi.index if csi.loc[i, "等级"] == "小样本"]
+              if not csi.empty and "等级" in csi.columns else [])
+    _h1, _h2 = st.columns([0.7, 0.3])
+    with _h1:
+        h('<div style="font-size:14px;font-weight:700;margin:14px 0 4px">'
+          '31 个行业全景：颜色＝档位、格内＝CSI 数值，一屏看出「谁、什么时候」变红</div>')
+    with _h2:
+        _show_val = st.checkbox("格内标数值（关掉更清爽）", value=True,
+                                key="csi_heat_text",
+                                help="颜色只分五档，66 与 79 同色；数值看具体位置。"
+                                     "39 期时每格约 26px，用整数；鼠标悬停给到 0.1")
+    st.plotly_chart(rc.fig_csi_heatmap(H, _small, bad=cn.csi_invalid(),
+                                       show_text=_show_val),
+                    width="stretch",
+                    config={"displayModeBar": False})
+    h('<div class="tiny" style="margin:-4px 0 6px">'
+      '<b>空白格＝数据不足，不评级</b>：① 序列最前 7 期历史不足 8 个观测；'
+      '② 美容护理 / 石油石化 / 环保是 2021 年新设的一级行业，指数 2022 年才有，'
+      '之前只有「配置 + 资金」两项，凑不出可比的三项平均。'
+      '灰色 † 是小样本（持有 &lt;150 只基金或配置 &lt;0.5%）。'
+      '格内为 CSI 整数；落在档位边界（25/45/65/80）附近的值保留一位小数，否则「44.9 显示成 45 偏冷」会与阈值表（45–65 中性）矛盾；悬停可看原始精度。</div>')
 
-        # ---- 最新一期读数：只用文字，不重复画图 ----
-        # 原来这里还有一张「同期横向对比」条形图，与已删除的「31 行业排名图」
-        # 是同一份数据画两遍；现在只有表格 + 折叠的历史景观。
-        _sq = H.loc[H.index[-1]].dropna().sort_values(ascending=False)
-        _sq_ok = _sq[[i for i in _sq.index if i not in _small]]
-        _chg = H.iloc[-1] - H.iloc[-2] if len(H) > 1 else pd.Series(dtype=float)
-        _upq = _chg.dropna().nlargest(2)
-        _dnq = _chg.dropna().nsmallest(2)
-        # 最近 4 期里变化最大的几行
-        _d4 = (H.iloc[-1] - H.iloc[-5]).dropna() if len(H) >= 5 else pd.Series(dtype=float)
-        _up4 = _d4.nlargest(3)
-        _dn4 = _d4.nsmallest(3)
-        _red = H.iloc[-1][H.iloc[-1] >= CAL.THR_CROWD].sort_values(ascending=False)
-        _long = ((H >= CAL.THR_CROWD).sum()).nlargest(3)
-        _read(h, "",
-              f'拥挤从来不是均匀发生的。行业景气的传导有先后：上游先涨（价格信号最快），'
-              f'中游跟上（订单兑现），下游最后（需求确认）。反映到持仓上，就是'
-              f'<b>红色区域沿产业链依次亮起</b>——所以看热力图要看「红色的移动方向」，'
-              f'而不是「现在哪里红」。红色停留在同一行越久，说明这个行业的共识越牢固，'
-              f'也越接近「所有人都已上车」的状态；反过来，一行从红退回橙、再退回白，'
-              f'通常是景气见顶后资金在分批撤。',
-              f'本期只有 {len(_red)} 个行业 ≥80，说明这是<b>结构性拥挤、不是系统性风险</b>：'
-              f'市场没有出现「全行业抱团」，因此不需要整体降仓，只需要在这几个行业上'
-              f'压缩仓位上限。如果某期出现 15 个以上同时红，那才是「全市场都在抱团」的顶部特征，'
-              f'届时应把权益仓位整体下调。'
-              f'红色在移动时，正确的动作是<b>跟着移动方向找下一个还没变红的环节</b>，'
-              f'而不是追已经红透的那个。')
+    # ---- 最新一期读数：只用文字，不重复画图 ----
+    # 原来这里还有一张「同期横向对比」条形图，与已删除的「31 行业排名图」
+    # 是同一份数据画两遍；现在只有表格 + 折叠的历史景观。
+    _sq = H.loc[H.index[-1]].dropna().sort_values(ascending=False)
+    _sq_ok = _sq[[i for i in _sq.index if i not in _small]]
+    _chg = H.iloc[-1] - H.iloc[-2] if len(H) > 1 else pd.Series(dtype=float)
+    _upq = _chg.dropna().nlargest(2)
+    _dnq = _chg.dropna().nsmallest(2)
+    # 最近 4 期里变化最大的几行
+    _d4 = (H.iloc[-1] - H.iloc[-5]).dropna() if len(H) >= 5 else pd.Series(dtype=float)
+    _up4 = _d4.nlargest(3)
+    _dn4 = _d4.nsmallest(3)
+    _red = H.iloc[-1][H.iloc[-1] >= CAL.THR_CROWD].sort_values(ascending=False)
+    _long = ((H >= CAL.THR_CROWD).sum()).nlargest(3)
+    _read(h, "",
+          f'拥挤从来不是均匀发生的。行业景气的传导有先后：上游先涨（价格信号最快），'
+          f'中游跟上（订单兑现），下游最后（需求确认）。反映到持仓上，就是'
+          f'<b>红色区域沿产业链依次亮起</b>——所以看热力图要看「红色的移动方向」，'
+          f'而不是「现在哪里红」。红色停留在同一行越久，说明这个行业的共识越牢固，'
+          f'也越接近「所有人都已上车」的状态；反过来，一行从红退回橙、再退回白，'
+          f'通常是景气见顶后资金在分批撤。',
+          f'本期只有 {len(_red)} 个行业 ≥80，说明这是<b>结构性拥挤、不是系统性风险</b>：'
+          f'市场没有出现「全行业抱团」，因此不需要整体降仓，只需要在这几个行业上'
+          f'压缩仓位上限。如果某期出现 15 个以上同时红，那才是「全市场都在抱团」的顶部特征，'
+          f'届时应把权益仓位整体下调。'
+          f'红色在移动时，正确的动作是<b>跟着移动方向找下一个还没变红的环节</b>，'
+          f'而不是追已经红透的那个。')
 
     # =====================================================================
     # ② 搜索 + 总览

@@ -849,26 +849,100 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         h(f'<div class="tiny" style="margin:-4px 0 12px">{_txt}</div>')
 
     # ---------------- ⑦ 全历史速览 ----------------
+    # 这一段回答两个问题：① 这只基金历史上是什么样；② 每个数字从哪来、为什么有的格子是空的。
+    # 2026-11-13 读者反馈「数据不全」：复查发现三处不是数据缺，是取数/标签的问题——
+    #   a) 份额表同一季度可能有多条披露日（2017Q1 有 8 行，含周度净值），原来取 iloc[0]
+    #      会拿到 1 月的空行，净申购显示「—」；改为用 _pick_row 取季末日。
+    #   b) 行业 HHI 是「证监会门类」口径（制造业/金融业…），不是 31 个申万行业，表头必须写明。
+    #   c) 持仓/行业抓取失败时整列空白却没有任何提示，读者以为是基金没披露。
     _sec(f"全历史速览：{len(qs)} 期全部列出（一行一季）",
          "每一格都是当期披露值；「本期利润」法定只在半年报/年报披露，季报期写「未披露」而不是留空")
+
+    def _qtrs(tbl) -> int:
+        return 0 if tbl is None or tbl.empty else int(tbl["quarter"].nunique())
+
+    _avail = [("资产配置", _qtrs(d.get("q_asset")), len(qs)),
+              ("持仓明细", _qtrs(d.get("q_hold")), len(qs)),
+              ("行业配置", _qtrs(d.get("q_industry")), len(qs)),
+              ("份额变动", _qtrs(d.get("q_shares")), len(qs)),
+              ("债券持仓", _qtrs(d.get("q_bond")), len(qs)),
+              ("财务指标", _qtrs(d.get("q_fin")),
+               max(_qtrs(d.get("q_fin")), 4))]
+    h('<div style="margin:0 0 6px">' + "".join(
+        f'<span style="display:inline-block;background:'
+        f'{"#E8F5EC" if n == t else "#FFF4E5"};color:'
+        f'{"#1A7F37" if n == t else "#B25E00"};font-size:11.5px;font-weight:600;'
+        f'border-radius:10px;padding:2px 9px;margin:0 6px 4px 0">'
+        f'{lab} {n}/{t} 期</span>' for lab, n, t in _avail) + '</div>')
+
+    _missing = [lab for lab, k in (("持仓明细", "q_hold"), ("行业配置", "q_industry"))
+                if _qtrs(d.get(k)) == 0]
+    if _missing:
+        h(f'<div class="cg-note"><b>本次没有取到{"、".join(_missing)}</b>：'
+          f'这是抓取失败（常见于东财限速），不是基金未披露——同一期资产配置是有的。'
+          f'点下面的按钮重抓这一只，或换个时段再看。</div>')
+        if st.button(f"重新抓取 {code}（补齐{'、'.join(_missing)}）", key="qr_refetch"):
+            with st.spinner("正在重抓季报…"):
+                Q.fetch_fund(code, force=True)
+            st.rerun()
+
+    # 份额表多行时按季末日取：与资产表同一套规则（_pick_row），避免拿到周度行
     _rows = []
-    for _qq in qs:
-        _ra = a[a["quarter"] == _qq]
-        _rs = d["q_shares"][d["q_shares"]["quarter"] == _qq] \
-            if not d["q_shares"].empty else pd.DataFrame()
-        _rh = d["q_hold"][d["q_hold"]["quarter"] == _qq] \
-            if not d["q_hold"].empty else pd.DataFrame()
-        _ri = d["q_industry"][d["q_industry"]["quarter"] == _qq] \
-            if not d["q_industry"].empty else pd.DataFrame()
-        _rf = (d["q_fin"][d["q_fin"]["quarter"] == _qq]
-               if d.get("q_fin") is not None and not d["q_fin"].empty
-               else pd.DataFrame())
+    _prev_top: set | None = None
+    _prev_share: float | None = None
+    _prev_unit: float | None = None
+    for _qq in sorted(qs):
         _ra = _pick_row(a, _qq)
-        _hhi = Q.industry_hhi(_ri) if len(_ri) else np.nan
+        _rs = _pick_row(d["q_shares"], _qq) if _qtrs(d.get("q_shares")) else None
+        _rh = (d["q_hold"][d["q_hold"]["quarter"] == _qq]
+               if _qtrs(d.get("q_hold")) else pd.DataFrame())
+        _ri = (d["q_industry"][d["q_industry"]["quarter"] == _qq]
+               if _qtrs(d.get("q_industry")) else pd.DataFrame())
+        _rf = (d["q_fin"][d["q_fin"]["quarter"] == _qq]
+               if _qtrs(d.get("q_fin")) else pd.DataFrame())
+
+        # 前十大：只取披露的前十名（rnk<=10），合计占净值比
+        _t10 = _rh[_rh["rnk"] <= 10] if len(_rh) else _rh
+        _top = float(pd.to_numeric(_t10["ratio_pct"], errors="coerce").sum()) if len(_t10) else np.nan
+        _codes = set(_t10.loc[pd.to_numeric(_t10["ratio_pct"], errors="coerce") > 0,
+                              "stock_code"].astype(str)) if len(_t10) else set()
+        _new = (len(_codes - _prev_top) if (_prev_top is not None and len(_codes)) else np.nan)
+
+        # 行业：A股按证监会门类，港股通单列一组（与 HHI 同口径）
+        _first = np.nan
+        _hhi = np.nan
+        if len(_ri):
+            _tag = Q.tag_industry(_ri)
+            _tag["ratio_pct"] = pd.to_numeric(_tag["ratio_pct"], errors="coerce")
+            _grp = _tag.groupby("sec_name")["ratio_pct"].sum()
+            _hk = float(_tag.loc[_tag["market"] == "港股通", "ratio_pct"].sum())
+            if _hk > 0.005:
+                _grp = pd.concat([_grp, pd.Series({"港股通": _hk})])
+            _hhi = Q.industry_hhi(_ri)
+            if len(_grp.dropna()):
+                # idxmax() 给的是行业名，不是数值——直接拼成「制造业 55%」
+                _first = f"{_grp.idxmax()} {float(_grp.max()):.0f}%"
+
+        _sh_end = (float(_rs["end_share_yi"])
+                   if _rs is not None and np.isfinite(_rs["end_share_yi"]) else np.nan)
+        _net = (float(_rs["purchase_yi"]) - float(_rs["redeem_yi"])
+                if _rs is not None and np.isfinite(_rs["purchase_yi"])
+                and np.isfinite(_rs["redeem_yi"]) else np.nan)
+        _net_pct = (_net / _prev_share * 100
+                    if np.isfinite(_net) and _prev_share and _prev_share > 0 else np.nan)
+        # 源站该列叫「净资产变动率」（已核对：163.02% 与净资产 53.52→140.76 完全吻合），
+        # 原来显示成「净值涨跌%」是错的——单位净值涨幅要把份额变化除掉。
+        _navc = (float(_rs["nav_chg_pct"])
+                 if _rs is not None and np.isfinite(_rs["nav_chg_pct"]) else np.nan)
+        _unit = (float(_rs["end_nav_yi"]) / float(_rs["end_share_yi"])
+                 if _rs is not None and np.isfinite(_rs["end_nav_yi"])
+                 and np.isfinite(_rs["end_share_yi"]) and float(_rs["end_share_yi"]) > 0
+                 else np.nan)
+        _unit_chg = ((_unit / _prev_unit - 1) * 100
+                     if np.isfinite(_unit) and _prev_unit and _prev_unit > 0 else np.nan)
         _pf = (float(_rf[_rf["item"] == "本期利润"]["value"].iloc[0]) / 1e8
                if len(_rf) and (_rf["item"] == "本期利润").any() else np.nan)
-        _top = (float(_rh.nsmallest(10, "rnk")["ratio_pct"].sum())
-                if len(_rh) else np.nan)
+
         _rows.append({
             "季度": _qq,
             "净资产(亿)": round(float(_ra["nav_yi"]), 2) if _ra is not None else np.nan,
@@ -876,49 +950,107 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
             "债券%": (round(float(_ra["bond_pct"]), 2)
                       if _ra is not None and np.isfinite(_ra["bond_pct"]) else np.nan),
             "现金%": round(float(_ra["cash_pct"]), 2) if _ra is not None else np.nan,
-            "净申购(亿份)": (round(float(_rs["purchase_yi"].iloc[0])
-                                  - float(_rs["redeem_yi"].iloc[0]), 2)
-                             if len(_rs) else np.nan),
+            "净申购(亿份)": round(_net, 2) if np.isfinite(_net) else np.nan,
+            "净申购/期初%": round(_net_pct, 1) if np.isfinite(_net_pct) else np.nan,
+            "净资产环比%": round(_navc, 2) if np.isfinite(_navc) else np.nan,
+            "单位净值涨跌%": round(_unit_chg, 2) if np.isfinite(_unit_chg) else np.nan,
             "前十大%": round(_top, 2) if np.isfinite(_top) else np.nan,
+            "前十新进": int(_new) if np.isfinite(_new) else np.nan,
             "行业HHI": round(_hhi, 4) if np.isfinite(_hhi) else np.nan,
+            "第一大行业": _first if isinstance(_first, str) else np.nan,
             "本期利润(亿，累计)": round(_pf, 2) if np.isfinite(_pf) else np.nan,
         })
-    _tf = pd.DataFrame(_rows).sort_values("季度", ascending=False)
+        if len(_codes):
+            _prev_top = _codes
+        if np.isfinite(_sh_end):
+            _prev_share = _sh_end
+        if np.isfinite(_unit):
+            _prev_unit = _unit
+
+    _tf = pd.DataFrame(_rows).sort_values("季度", ascending=False).reset_index(drop=True)
     for _c in _tf.columns[1:]:
-        _tf[_c] = pd.to_numeric(_tf[_c], errors="coerce")
+        if _c != "第一大行业":
+            _tf[_c] = pd.to_numeric(_tf[_c], errors="coerce")
+
+    # 仓位环比：在同一张表里算，保证「2026Q3 减 2026Q2」用的是相邻季
+    _tf["仓位环比pp"] = _tf["股票仓位%"].diff(-1).round(2)
+    _tf = _tf[["季度", "净资产(亿)", "股票仓位%", "仓位环比pp", "债券%", "现金%",
+               "净申购(亿份)", "净申购/期初%", "净资产环比%", "单位净值涨跌%",
+               "前十大%", "前十新进",
+               "行业HHI", "第一大行业", "本期利润(亿，累计)"]]
+
     # 预格式化字符串：NumberColumn 遇到缺失值会把 None 原样打印成 "None"
     _show = _tf.copy()
     for _c in _show.columns[1:]:
         if _c == "净申购(亿份)":
             _show[_c] = _tf[_c].map(lambda v: "—" if not np.isfinite(v) else f"{v:+.2f}")
+        elif _c in ("净申购/期初%", "仓位环比pp"):
+            _show[_c] = _tf[_c].map(lambda v: "—" if not np.isfinite(v) else f"{v:+.1f}")
         elif _c == "行业HHI":
             _show[_c] = _tf[_c].map(lambda v: "—" if not np.isfinite(v) else f"{v:.4f}")
+        elif _c == "前十新进":
+            _show[_c] = _tf[_c].map(lambda v: "—" if not np.isfinite(v) else f"{int(v)} 只")
         elif _c.startswith("本期利润"):
             _show[_c] = _tf[_c].map(lambda v: "未披露" if not np.isfinite(v) else f"{v:.2f}")
+        elif _c == "第一大行业":
+            _show[_c] = _tf[_c].fillna("—")
         else:
             _show[_c] = _tf[_c].map(lambda v: "—" if not np.isfinite(v) else f"{v:.2f}")
+
     h('<div class="tiny" style="margin:2px 0 4px">'
-      f'下表已列出全部 <b>{len(_show)}</b> 期（{qs[0]}–{qs[-1]}），表格内可滚动；'
-      '净资产、仓位、债券、现金、份额、前十、行业集中度全部为披露值，'
-      '缺失处只有两种：「未披露」（法规不要求）或「—」（该期确实没有这张表）。</div>')
+      f'下表列出全部 <b>{len(_show)}</b> 期（{qs[0]}–{qs[-1]}），表格内可滚动、可排序。'
+      '<b>HHI 是「证监会门类」口径</b>（制造业/金融业/信息传输…共 6–8 类，港股通单列一组），'
+      '不是 31 个申万行业，所以它衡量的是「大类集中」，与 ③ 页的行业拥挤度不是同一件事。'
+      '「前十新进」＝本期前十大里新出现的股票只数。</div>')
     st.dataframe(_show, hide_index=True, width="stretch",
                  height=min(560, 34 * len(_show) + 40))
 
+    # 每列从哪来、空了说明什么——读者不必再去猜
+    with st.expander("每一列从哪来、为什么有的格子是空的", expanded=False):
+        _prov = pd.DataFrame([
+            ["净资产 / 股票仓位 / 债券 / 现金",
+             "东财基金档案·资产配置（季报 §5 资产组合）",
+             "债券为「—」：该期季报未列示债券投资（多为无债券持仓），不是抓取失败"],
+            ["净申购 / 净申购占期初 / 净资产环比 / 单位净值涨跌",
+             "东财·份额变动（季报 §6；源列名「净资产变动率」）",
+             "净资产环比＝源站披露值；单位净值涨跌＝期末净资产÷期末份额与上期比。"
+             "同一季有多条披露日时只取季末日"],
+            ["前十大% / 前十新进",
+             "东财·持仓明细（季报 §5.3 前十名股票）",
+             "「—」：该期未抓到持仓明细（会在上方提示并可一键补抓）"],
+            ["行业HHI / 第一大行业",
+             "东财·行业配置（季报 §5.2 按行业分类，证监会门类）",
+             "「—」：该期未抓到行业表；HHI 用 Σ(占比/100)²，港股通合并为一组"],
+            ["本期利润",
+             "东财·主要财务指标（半年报 §3 / 年报）",
+             "「未披露」：法规只要求半年报、年报披露本期利润，一三季报没有这项"],
+        ], columns=["列", "来源（接口 / 原始披露位置）", "空值含义"])
+        st.dataframe(_prov, hide_index=True, width="stretch",
+                     column_config={
+                         "列": st.column_config.TextColumn(width="medium"),
+                         "来源（接口 / 原始披露位置）": st.column_config.TextColumn(width="large"),
+                         "空值含义": st.column_config.TextColumn(width="large")})
+
+    # 单只基金的原始披露入口：每个数字都能点回源站核对
+    _links = [("资产配置", f"https://fundf10.eastmoney.com/zcpz_{code}.html"),
+              ("持仓明细", f"https://fundf10.eastmoney.com/ccmx_{code}.html"),
+              ("行业配置", f"https://fundf10.eastmoney.com/hytz_{code}.html"),
+              ("规模/份额", f"https://fundf10.eastmoney.com/gmbd_{code}.html"),
+              ("财务指标", f"https://fundf10.eastmoney.com/cwzb_{code}.html")]
+    h('<div class="tiny" style="margin:4px 0 6px">'
+      '<b>核对入口</b>（东方财富基金档案，原始数据来自基金定期报告）：'
+      + "　".join(f'<a href="{u}" target="_blank" rel="noopener">{t}</a>'
+                  for t, u in _links)
+      + '　·　原始披露：<a href="http://eid.csrc.gov.cn/fund" target="_blank" '
+        'rel="noopener">证监会基金电子披露网站</a>（按代码检索本基金季报 PDF）</div>')
+
     st.download_button(
-        f"下载本基金季报速览（{len(_tf)} 季，CSV）",
+        f"下载本基金季报速览（{len(_tf)} 季 × {len(_tf.columns)} 列，CSV）",
         _tf.to_csv(index=False).encode("utf-8-sig"),
         file_name=f"季报速览_{code}.csv", mime="text/csv", key="dl_qr")
 
     # ---------------- 边界 ----------------
-    _cov_txt = "｜".join(
-        f"{_lab} {d[_k]['quarter'].nunique()} 期"
-        for _lab, _k in (("资产配置", "q_asset"), ("行业配置", "q_industry"),
-                         ("份额", "q_shares"), ("持仓", "q_hold"),
-                         ("买卖", "q_change"), ("债券", "q_bond"),
-                         ("财务", "q_fin"))
-        if d.get(_k) is not None and not d[_k].empty)
-    h(f'<div class="tiny" style="margin-top:12px">本基金已取到：{_cov_txt}'
-      f'｜可读季度 {len(qs)} 期（{qs[0]}–{qs[-1]}）</div>')
+    # 各表期数已经在上面的徽标里逐个列过（可点、带颜色），这里不再重复一遍
     h('<div class="cg-note" style="margin-top:6px">'
       '<b>本页覆盖</b>：资产配置（股/债/现金/净资产）、按行业分类的全部股票持仓、'
       '份额变动、前十名股票、累计买卖前 20 名、债券明细、半年报财务指标——全部为季报披露值。'

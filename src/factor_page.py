@@ -180,7 +180,11 @@ def render(h, B=None, IND=None) -> None:
 
     _ok = [f for f in F if f["verdict"] in ("强", "可用")]
     _rev = [f for f in F if f["verdict"] == "反向"]
-    _no = [f for f in F if f["verdict"] in ("无效", "样本不足")]
+    # 「无效」与「样本不足」是两个不同结论（后者是证据不够），不能合并计数：
+    # 页面 KPI 写「|t|<1.64」时，把样本不足也算进去会自相矛盾。
+    _invalid = [f for f in F if f["verdict"] == "无效"]
+    _short = [f for f in F if f["verdict"] == "样本不足"]
+    _no = _invalid + _short
     _aux = [f for f in F if f["verdict"] == "仅辅助"]
     _best = max(F, key=lambda x: abs(x.get("ic_mean") or 0))
 
@@ -193,7 +197,7 @@ def render(h, B=None, IND=None) -> None:
         f'按标准流程（扩张窗口分位、Spearman IC、Newey-West t、五分层）在 '
         f'{d["sample"]["q0"]}–{d["sample"]["q1"]} 上检验：'
         f'{len(_ok)} 个可用、{len(_aux)} 个仅辅助、{len(_rev)} 个反向显著、'
-        f'{len(_no)} 个无效。',
+        f'{len(_invalid)} 个无效' + (f'、{len(_short)} 个样本不足' if _short else '') + '。',
         # 方向必须跟着数据走：偶尔一次重算会把 IC 由负转正，
         # 写死「方向是负的」就会与同一页的卡片、分层收益自相矛盾。
         (f'<b>唯一接近显著的是「{_best["name"]}」，方向为'
@@ -212,15 +216,58 @@ def render(h, B=None, IND=None) -> None:
         ("检验因子", f"{len(F)} 个", "覆盖季报可算的全部指标"),
         ("正向可用", f"{len(_ok)} 个", "IC≥0.05 且 t≥1.96"),
         ("反向显著", f"{len(_rev)} 个", "方向与定义相反"),
-        ("无效", f"{len(_no)} 个", "|t|<1.64"),
+        ("无效", f"{len(_invalid)} 个", "|t|<1.64 或 |IC|<0.03"),
+        ("样本不足", f"{len(_short)} 个", "有效 IC 期数<5"),
         ("样本", f'{d["sample"]["quarters"]} 期', f'{d["sample"]["industries"]} 行业 × '
                                                 f'{d["sample"].get("n_funds", "—")} 只基金'),
     ]))
 
     # =====================================================================
+    # 判定口径：先把「强 / 可用 / 仅辅助 / 反向 / 无效 / 样本不足」说清楚
+    # 读者看到一排「无效」会以为「算错了」，实际是「统计上跟下一步没关系」
+    # =====================================================================
+    h('<div class="sec">二、结论怎么读：六个标签分别是什么意思</div>')
+    _LEG = [
+        ("强", "排序能力强", "|IC| ≥ 0.10 且 |t| ≥ 1.96、IC_IR ≥ 0.5",
+         "这个因子把行业按未来收益排得比较准，可作主信号。", C.COLOR["up"]),
+        ("可用", "方向稳定", "|IC| ≥ 0.05、IC_IR ≥ 0.5、|t| ≥ 1.96",
+         "能用，但只作辅助：与其它证据同向时才加仓。", C.COLOR["accent"]),
+        ("仅辅助", "过弱阈值、未到可用线", "|IC| 在 0.03–0.05 或 IC_IR &lt; 0.5",
+         "有方向但太弱，单独用会亏在交易成本上。", C.COLOR["level_偏拥挤"]),
+        ("反向", "显著但反着走", "|t| ≥ 1.64 且 IC 与定义方向相反",
+         "按定义方向用会亏；反向策略必须先做样本外验证。", C.COLOR["down"]),
+        ("无效", "统计上与 0 无法区分", "|IC| &lt; 0.03 <b>或</b> |t| &lt; 1.64",
+         "不是「算错」，也不是「数据缺」：而是<b>这一期的高/低，和下一期涨/跌没有可辨识的关系</b>。"
+         "t 不到 1.64 意味着「就算真实关系是 0，也有很大概率看到这么大的 IC」，所以不能拿它选行业。",
+         C.COLOR["text_dim"]),
+        ("样本不足", "期数不够，不下判断", "有效 IC 期数 &lt; 5",
+         "只说明证据不够，不说明因子好坏；等期数补齐再检验。", C.COLOR["text_dim"]),
+    ]
+    h('<div style="display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 10px">'
+      + "".join(
+          f'<div style="flex:1 1 31%;min-width:300px;background:#FFFFFF;'
+          f'border:1px solid {C.COLOR["line"]};border-left:4px solid {col};'
+          f'border-radius:9px;padding:9px 12px">'
+          f'<div style="font-size:13px;font-weight:700;color:#1B2A3A">{lab}'
+          f'<span style="font-weight:400;font-size:11.5px;color:{C.COLOR["text_dim"]};'
+          f'margin-left:7px">{short}</span></div>'
+          f'<div style="font-family:ui-monospace,Consolas,monospace;font-size:10.5px;'
+          f'color:{C.COLOR["text_dim"]};margin:2px 0 3px">{rule}</div>'
+          f'<div style="font-size:11.5px;line-height:1.7;color:#37485C">{mean}</div>'
+          f'</div>'
+          for lab, short, rule, mean, col in _LEG)
+      + '</div>')
+    h('<div class="tiny" style="margin:-2px 0 10px">'
+      '阈值全部事前固定（写在 <span class="mono">src/caliber.py</span> 与 '
+      '<span class="mono">factor_test.TH</span>），不是看到结果再调；'
+      'IC＝每期 31 个行业上「因子值 vs 次期收益」的 Spearman 秩相关，'
+      't 用 Newey-West（滞后 4 期）修正自相关。'
+      '「无效」是<b>结论</b>，不是故障：它在说「这个指标描述当下有用，预测下一步没用」。</div>')
+
+    # =====================================================================
     # 速查表
     # =====================================================================
-    h('<div class="sec">二、九个因子一览：各自衡量什么、结论如何</div>')
+    h('<div class="sec">三、九个因子一览：各自衡量什么、结论如何</div>')
     _rows = []
     for f in F:
         _rows.append({
@@ -248,7 +295,7 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     # 逐因子说明书
     # =====================================================================
-    h('<div class="sec">三、九个因子：逐个展开，看完整说明书</div>')
+    h('<div class="sec">四、九个因子：逐个展开，看完整说明书</div>')
     h('<div class="tiny" style="margin:-2px 0 8px">'
       '九张卡片默认折叠，标题行只留「名称 · 结论」——IC/t 在上表已列，不重复；'
       '点开任意一张，可看到经济内容、投资含义、公式、步骤、阈值、失效条件与风险。'
@@ -260,7 +307,10 @@ def render(h, B=None, IND=None) -> None:
         _c = _VERDICT_COLOR.get(f["verdict"], C.COLOR["text_dim"])
         # 标题只留「序号 · 名称 · 结论」：IC / t / p / 期数在上方速查表里已有一行，
         # 这里再抄一遍，折叠状态下看起来就是同一张表重复列了九次。
-        _lab = f'{_i}. {f["name"]}　·　{f["verdict"]}' 
+        _short = {"强": "排序能力强", "可用": "方向稳定", "仅辅助": "太弱，只作辅助",
+                  "反向": "显著但反着走", "无效": "不显著，与 0 无法区分",
+                  "样本不足": "期数不够"}.get(f["verdict"], "")
+        _lab = f'{_i}. {f["name"]}　·　{f["verdict"]}（{_short}）' 
         with st.expander(_lab, expanded=(_i == 1)):
             _steps = doc.get("steps") or []
             _steps_html = "<br>".join(f"{k}. {v}" for k, v in enumerate(_steps, 1)) or "—"
@@ -273,6 +323,7 @@ def render(h, B=None, IND=None) -> None:
               f'　·　胜率 {f["win"]:.0f}%　·　单调性 '
               f'{(f["mono"] if f.get("mono") is not None else float("nan")):+.2f}'
               f'<span style="margin-left:8px">（判据见上方速查表）</span></div>' 
+              + _field("为什么是这个结论", f.get("why", "—"), _c)
               + _field("经济内容", doc.get("econ", "—"), C.COLOR["price"])
               + _field("投资含义", doc.get("invest", "—"), C.COLOR["accent"])
               + _field("为什么这样算", doc.get("why", "—"), C.COLOR["text_dim"])

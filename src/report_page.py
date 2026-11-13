@@ -99,7 +99,72 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     _pct = float(pos_hist["中位"].rank(pct=True).iloc[-1] * 100) if not pos_hist.empty else np.nan
 
-    h(f'<div class="sec">一、本页导读 · {q}'
+    # ------------------------------------------------------------------
+    # 结论先行：读者第一屏就要知道「这一季发生了什么」
+    # 四条全部由下面的图算出，不引入任何新口径（同一批数字，只是先给判断）
+    # ------------------------------------------------------------------
+    _pos_now = float(pos.get("仓位1", np.nan)) if pos else np.nan
+    _pos_chg = float(pos.get("中位变化pp", np.nan)) if pos else np.nan
+    _buy_pct = float(pos.get("加仓基金占比", np.nan)) if pos else np.nan
+    _act = dec["主动贡献"] if not dec.empty else pd.Series(dtype=float)
+    _pas = dec["被动贡献"] if not dec.empty else pd.Series(dtype=float)
+    _chg = dec["变化"] if not dec.empty else pd.Series(dtype=float)
+    _act_buy = float(_act[_act > 0].sum()) if len(_act) else np.nan
+    _n_cons = int((_br_ok["判读"] == "共识形成").sum()) if not _br_ok.empty else 0
+    _n_out = int((_br_ok["判读"] == "系统性撤离").sum()) if not _br_ok.empty else 0
+    _top_add = (_br_ok.sort_values("平均主动pp", ascending=False).head(2)
+                if not _br_ok.empty else pd.DataFrame())
+    _pos_word = ("加了杠杆" if _pos_chg >= 0.5 else
+                 "降了仓位" if _pos_chg <= -0.5 else "基本没动")
+    _s1 = (f'总仓位 <b>{_pos_now:.1f}%</b>，环比 <b>{_pos_chg:+.1f}pp</b>'
+           f'（{_buy_pct:.0f}% 的基金在加）→ <b>{_pos_word}</b>：'
+           + ("这是增量资金入场，仓位本身就在抬升。"
+              if _pos_chg >= 0.5 else
+              "这是降仓，先看是主动减还是净值跌出来的（图 2 拆）。"
+              if _pos_chg <= -0.5 else
+              "存量换仓，不是增量入场——行业间的钱是「搬」过去的，不是「新」进来的。"))
+    # 与 ⑥ 方法页用同一个数（逐基金配对平均），否则读者会看到「93%」与「38%」两个价格占比
+    _pe: dict = {}
+    try:
+        _pe = cn.price_effect() or {}
+        _pe_txt = (f'行业层面价格漂移平均占 |原始变化| 的 <b>{_pe["share"]:.0f}%</b>'
+                   if "share" in _pe else "价格漂移对配置变化影响很大")
+    except Exception:  # noqa: BLE001
+        _pe_txt = "价格漂移对配置变化影响很大"
+    _s2 = (f'31 个行业里，主动买入合计 <b>{_act_buy:.1f}pp</b>；{_pe_txt}'
+           f'（逐基金配对，与 ⑥ 同口径）→ <b>先扣价格，再谈加减仓</b>：'
+           f'某行业占比下降，可能只是它跌了。')
+    _s3 = (f'{len(_br_ok)} 个可评级行业中，<b>{_n_cons} 个「共识形成」、'
+           f'{_n_out} 个「系统性撤离」</b>；'
+           + (f'加得最齐的是 <b>{_top_add.iloc[0]["行业"]}</b>'
+              f'（{_top_add.iloc[0]["加仓占比"]:.0f}% 在加）' if len(_top_add) else "")
+           + (f'、<b>{_top_add.iloc[1]["行业"]}</b>'
+              f'（{_top_add.iloc[1]["加仓占比"]:.0f}%）' if len(_top_add) > 1 else "")
+           + f'（图 4）；共识是<b>局部</b>的，不是全面加仓。')
+    # 「谁占主导」必须由数据决定：价格占比 38% 时说「价格比主动更大」就是错话
+    _dom = ("价格贡献比主动买卖更大" if np.isfinite(_pe.get("share", np.nan))
+            and _pe["share"] >= 50 else "主动买卖是主导，价格只是配角")
+    _s4 = (f"<b>这一季是「结构性换仓」——仓位不动、钱在行业间搬，{_dom}。</b>"
+           "所以别用「XX 行业被加仓了」当买入理由，"
+           "要看主动项（扣掉价格）和广度（多少人在加）。")
+    _items = [("①", "仓位", _s1), ("②", "主动 vs 价格", _s2),
+              ("③", "行业共识", _s3), ("④", "怎么用", _s4)]
+    h('<div style="background:#FFFFFF;border:1px solid ' + C.COLOR["line"]
+      + ';border-left:4px solid ' + C.COLOR["price"] + ';border-radius:10px;'
+      'padding:11px 15px 12px;margin:2px 0 12px">'
+      + f'<div style="font-size:13.5px;font-weight:700;color:#1B2A3A;margin-bottom:7px">'
+        f'先说结论（{q}，样本 {n_funds:,} 只）</div>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:10px 22px">'
+      + "".join(
+          f'<div style="flex:1 1 46%;min-width:340px;display:flex;gap:8px">'
+          f'<div style="flex:0 0 20px;font-size:12px;font-weight:700;color:'
+          f'{C.COLOR["price"]};padding-top:1px">{n}</div>'
+          f'<div style="font-size:12.5px;line-height:1.85;color:#26374A">'
+          f'<b>{t}：</b>{txt}</div></div>'
+          for n, t, txt in _items)
+      + '</div></div>')
+
+    h(f'<div class="sec">二、本页导读 · {q}'
       f'<span style="font-weight:400;font-size:12.5px;color:{C.COLOR["text_dim"]};'
       f'margin-left:8px">样本 {n_funds:,} 只主动权益基金</span></div>')
     # 这一页是「证据页」，不是第二个结论页：① 已经给出判断与动作，
@@ -148,7 +213,7 @@ def render(h, B=None, IND=None) -> None:
     # 图1 仓位
     # =====================================================================
     if pos:
-        h('<div class="sec">二、六张图看懂这一季</div>')
+        h('<div class="sec">三、六张图看懂这一季</div>')
         h('<div style="font-size:12px;font-weight:700;margin:2px 0 4px">'
           f'图 1　仓位：把 {_npos} 个半年报期连起来，才知道现在是高还是低</div>')
         _c = cn.coverage(pos["q"])
@@ -422,7 +487,7 @@ def render(h, B=None, IND=None) -> None:
     # C. 行业台账
     # =====================================================================
     if not comp.empty:
-        h('<div class="sec">三、行业台账：一行一个行业，水平 + 环比 + 同比 + 主动/被动</div>')
+        h('<div class="sec">四、行业台账：一行一个行业，水平 + 环比 + 同比 + 主动/被动</div>')
         t = comp.copy()
         t["读数"] = t.apply(_read_row, axis=1)
         q_, qp_, qy_ = comp.attrs["q"], comp.attrs["q_prev"], comp.attrs["q_year"]
@@ -490,7 +555,7 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     # D. 方法与免责
     # =====================================================================
-    h('<div class="sec">四、本页特有的两条边界</div>')
+    h('<div class="sec">五、本页特有的两条边界</div>')
     h('<div class="cg-note" style="line-height:1.9">'
       '· <b>主动/被动只在半年报做</b>：季报的前十大每季换人，逐季做 GK 分解噪声极大，'
       '本库不做这种「看起来更精细、实际更不可靠」的事。<br>'

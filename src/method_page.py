@@ -208,9 +208,95 @@ def render(h, B=None, IND=None) -> None:
         h(f'<div class="tiny">样本漏斗暂不可用：{type(_e).__name__}</div>')
 
     # =====================================================================
+    # 数据来源清单：字段级
+    # =====================================================================
+    h('<div class="sec">四、数据来源与字段对照：每个数字从哪个接口、哪张表来</div>')
+    # 名录条数用实时统计，不写死：数据更新后这里跟着变
+    try:
+        _mkc = cn.market_fund_counts()
+    except Exception:  # noqa: BLE001
+        _mkc = {}
+    _n_share = _mkc.get("全市场份额")
+    _n_fund = _mkc.get("全市场基金")
+    _mk_txt = (f"全市场 {_n_share:,} 条份额记录，按名称合并 A/C/后端"
+               f"（{_n_fund:,} 只基金）" if _n_share and _n_fund
+               else "全市场基金名录，按名称合并 A/C/后端")
+    _src_rows = [
+        ("基金名录 / 类型 / 成立日 / 管理人",
+         "东方财富基金列表（天天基金）",
+         "基金合同、招募说明书",
+         _mk_txt,
+         "每日", "无档案 → 不给结论"),
+        ("资产配置（股票 / 债券 / 现金 / 净资产）",
+         "东财 F10 · 资产配置",
+         "季报 §5 资产组合",
+         "4,941 只 × 39 期（2017Q1–2026Q3）",
+         "每季，披露后 15 个工作日内", "未列示写「—」，不补 0"),
+        ("前十大持仓（代码 / 名称 / 占比 / 股数）",
+         "东财 F10 · 持仓明细",
+         "季报 §5.3 前十名股票",
+         "4,937 只，合计 100 万行",
+         "每季", "该期未取到 → 提示并可补抓"),
+        ("行业配置",
+         "东财 F10 · 行业配置",
+         "季报 §5.2 按行业分类（证监会门类，港股通单列）",
+         "26.7 万行；每期 6–8 个门类",
+         "每季", "同上"),
+        ("份额变动（申购 / 赎回 / 期末份额 / 净值增长率）",
+         "东财 F10 · 规模份额",
+         "季报 §6 份额变动",
+         "含季末披露日；早期有周度披露日，取季末日",
+         "每季", "无季末行 → 「—」"),
+        ("主要财务指标（本期利润 / 已实现收益）",
+         "东财 F10 · 财务指标",
+         "半年报 §3 / 年报",
+         "17.9 万行，仅半年报与年报有",
+         "每半年", "季报期「未披露」（法规不要求）"),
+        ("行业指数日收益（申万一级）",
+         "Wind 金融终端导出",
+         "申万宏源研究 · 申万一级行业指数",
+         "31 个行业，2015-01 至 2026-10-28",
+         "手动更新（缓存文件）", "缺行业 → 该行业不评级"),
+        ("行业分类标准",
+         "申万宏源研究 · 申万一级（31 个）",
+         "《申万行业分类标准》2021 版",
+         "美容护理 / 石油石化 / 环保为 2021 新设",
+         "随指数更新", "新设行业历史不足 → 不入排名"),
+    ]
+    def _src_row(i, r):
+        # 注意：不在 f-string 的表达式里写反斜杠——那是 Python 3.12+ 才允许的语法，
+        # 云端若跑 3.11 会直接 SyntaxError。这里先算好属性串再拼。
+        _bg = ' style="background:#FAFBFC"' if i % 2 else ""
+        _cells = "".join(
+            f'<td style="padding:6px 9px;font-size:12px;vertical-align:top">{v}</td>'
+            for v in r)
+        return f"<tr{_bg}>{_cells}</tr>"
+
+    _src_html = "".join(_src_row(i, r) for i, r in enumerate(_src_rows))
+    h(f'<div style="border:1px solid {C.COLOR["line"]};border-radius:9px;overflow-x:auto">'
+      f'<table style="width:100%;border-collapse:collapse;min-width:900px">'
+      f'<tr style="background:{C.COLOR["panel"]}">'
+      + "".join(f'<th align="left" style="padding:7px 9px;font-size:12px;'
+                f'white-space:nowrap">{t}</th>'
+                for t in ("数据项", "来源接口", "原始披露位置", "覆盖范围", "更新频率", "缺失处理"))
+      + f'</tr>{_src_html}</table></div>')
+    h('<div class="tiny" style="margin:4px 0 6px">'
+      '可点核对的入口：'
+      '<a href="http://eid.csrc.gov.cn/fund" target="_blank" rel="noopener">'
+      '证监会基金电子披露网站</a>（原始季报 PDF）· '
+      '<a href="https://fundf10.eastmoney.com/" target="_blank" rel="noopener">'
+      '东方财富基金档案 F10</a>（本库转引来源）· '
+      '<a href="https://www.wind.com.cn/" target="_blank" rel="noopener">Wind 金融终端</a>'
+      '（行业指数）· '
+      '<a href="https://www.swsresearch.com/" target="_blank" rel="noopener">'
+      '申万宏源研究</a>（行业分类标准；官网偶发 502，故不在此直链具体页面）。<br>'
+      '<b>本库不使用任何代理口径</b>：不用前十大反推全持仓、不用行业指数替代个股收益、'
+      '不对缺失值做插值或补 0；每一格要么是披露值，要么是「—/未披露」。</div>')
+
+    # =====================================================================
     # 五个关键口径
     # =====================================================================
-    h('<div class="sec">四、五个关键口径：所有结论都建立在它们上面</div>')
+    h('<div class="sec">五、五个关键口径：所有结论都建立在它们上面</div>')
     c1, c2 = st.columns(2, gap="small")
     with c1:
         h(_card("价格中性 Δ（最重要）", [
@@ -261,7 +347,7 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     import glossary as g
     _ok, _all = g.coverage()
-    h(f'<div class="sec">五、指标词典：页面里出现的每个数，这里都有定义</div>')
+    h(f'<div class="sec">六、指标词典：页面里出现的每个数，这里都有定义</div>')
     h(ui.stat_strip([
         ("词典条目", f"{len(g.ITEMS)}", "按 10 类组织，每条九段"),
         ("术语覆盖", f"{_ok}/{_all}", "页面文案里出现过的指标与术语"),
@@ -291,7 +377,7 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     # 自检
     # =====================================================================
-    h('<div class="sec">六、自检：12 条口径恒等式，现场跑一遍</div>')
+    h('<div class="sec">七、自检：12 条口径恒等式，现场跑一遍</div>')
     try:
         import selfcheck as _sc
         _t = _sc.run()
@@ -340,7 +426,7 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     # 局限
     # =====================================================================
-    h('<div class="sec">七、六条硬约束（不写清楚就等于骗人）</div>')
+    h('<div class="sec">八、六条硬约束（不写清楚就等于骗人）</div>')
     # 样本数写死会在下一季变成错数；这里按当期实际 universe 现算。
     _q_now = cn.latest()
     _n_q = len(cn.universe(_q_now))

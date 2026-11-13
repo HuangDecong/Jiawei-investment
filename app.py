@@ -196,6 +196,14 @@ st.markdown(f"""
      注意：只写 height:0 是不够的——它仍会作为半透明图层压在页面最上方，
      把自绘标题遮成灰字（这就是「看不到仪表盘的头」的根因）。 */
   header[data-testid="stHeader"] {{ display: none !important; }}
+  /* 回到顶部：固定右下角，避开 Streamlit 的滚动容器 */
+  .cg-top {{ position: fixed; right: 20px; bottom: 26px; width: 42px; height: 42px;
+      border-radius: 50%; background: rgba(255,255,255,.97);
+      border: 1px solid #D6DEE8; color: #1F6FEB; font-size: 19px; line-height: 40px;
+      text-align: center; text-decoration: none; z-index: 99999;
+      box-shadow: 0 4px 14px rgba(16,24,40,.14); transition: all .15s; }}
+  .cg-top:hover {{ background: #1F6FEB; color: #fff; border-color: #1F6FEB;
+      text-decoration: none; }}
   [data-testid="stDecoration"] {{ display: none !important; }}
   [data-testid="stToolbar"] {{ display: none !important; }}
   [data-testid="stStatusWidget"] {{ display: none !important; }}
@@ -313,6 +321,9 @@ st.markdown(f"""
   [data-testid="stMetricValue"] {{ font-size:22px !important; }}
 </style>
 """, unsafe_allow_html=True)
+
+# 回到顶部的锚点：必须在正文最前面，否则只会回到内容区顶部
+_h('<div id="cg-top"></div>')
 
 
 def lvl_tag(lv: str) -> str:
@@ -448,7 +459,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.11.13-r51.0"
+APP_VERSION = "2026.11.13-r52.0"
 
 
 def _fp_short() -> str:
@@ -595,6 +606,8 @@ except Exception:
 if _qp.isdigit() and 1 <= int(_qp) <= len(PAGES):
     st.session_state.setdefault("page", PAGES[int(_qp) - 1])
 _P = st.radio("页面", PAGES, horizontal=True, label_visibility="collapsed", key="page")
+# 回到顶部：按钮固定右下角（六页共用）。锚点见上方 STYLE 之后的 #cg-top。
+_h('<a href="#cg-top" class="cg-top" title="回到顶部" aria-label="回到顶部">↑</a>')
 
 # 侧边栏指标速查：每页都有，随时可查任何一个数的定义与算法
 try:
