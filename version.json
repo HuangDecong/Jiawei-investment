@@ -1,8 +1,8 @@
 {
-  "app_version": "2026.11.13-r52.0",
-  "source_sha": "cb7087e",
+  "app_version": "2026.11.13-r52.1",
+  "source_sha": "e132039",
   "branch": "main",
-  "build_time": "2026-11-13 14:25:59+0800",
+  "build_time": "2026-11-13 14:59:05+0800",
   "requirements_sha8": "5360b56e",
   "caliber_version": "2026-11-12",
   "packages": {

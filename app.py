@@ -196,10 +196,12 @@ st.markdown(f"""
      注意：只写 height:0 是不够的——它仍会作为半透明图层压在页面最上方，
      把自绘标题遮成灰字（这就是「看不到仪表盘的头」的根因）。 */
   header[data-testid="stHeader"] {{ display: none !important; }}
-  /* 回到顶部：固定右下角，避开 Streamlit 的滚动容器 */
-  .cg-top {{ position: fixed; right: 20px; bottom: 26px; width: 42px; height: 42px;
+  /* 回到顶部：固定右侧，**必须避开 Streamlit Cloud 的右下角浮层**
+     （Manage app 按钮占 bottom 20–70px、右侧约 150px；旁边还有运行状态小图标）。
+     放在 bottom 104px，两者互不遮挡；本地开发时这个位置也只是空白。 */
+  .cg-top {{ position: fixed; right: 18px; bottom: 104px; width: 40px; height: 40px;
       border-radius: 50%; background: rgba(255,255,255,.97);
-      border: 1px solid #D6DEE8; color: #1F6FEB; font-size: 19px; line-height: 40px;
+      border: 1px solid #D6DEE8; color: #1F6FEB; font-size: 18px; line-height: 38px;
       text-align: center; text-decoration: none; z-index: 99999;
       box-shadow: 0 4px 14px rgba(16,24,40,.14); transition: all .15s; }}
   .cg-top:hover {{ background: #1F6FEB; color: #fff; border-color: #1F6FEB;
@@ -459,7 +461,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.11.13-r52.0"
+APP_VERSION = "2026.11.13-r52.1"
 
 
 def _fp_short() -> str:
