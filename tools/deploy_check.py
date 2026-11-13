@@ -198,11 +198,15 @@ def main() -> int:
     if rsha:
         print(f"远端 main      : {rsha[:7]}")
         if rsha[:7] != head7:
-            n = git("rev-list", "--count", f"{rsha}..HEAD")
-            behind_txt = git("rev-list", "--count", f"HEAD..{rsha}")
-            if n and n != "0":
+            # 远端提交可能不在本地历史里（API 推送会重建提交）。此时 rev-list
+            # 会打印 fatal: Invalid revision range —— 先探一下再决定走哪条分支。
+            _known = subprocess.run(["git", "cat-file", "-e", f"{rsha}^{{commit}}"],
+                                    cwd=ROOT, capture_output=True).returncode == 0
+            n = git("rev-list", "--count", f"{rsha}..HEAD") if _known else ""
+            behind_txt = git("rev-list", "--count", f"HEAD..{rsha}") if _known else ""
+            if _known and n and n != "0":
                 problems.append(f"远端 main 落后本地 {n} 个提交 —— 推送后再 Reboot")
-            elif behind_txt and behind_txt != "0":
+            elif _known and behind_txt and behind_txt != "0":
                 notes.append(f"远端比本地多 {behind_txt} 个提交（可能是别处推送）")
             else:
                 # 两套历史不互认（本机 push 被拦，只能走 Git Data API）：
@@ -214,8 +218,10 @@ def main() -> int:
                 if _bad is None:
                     notes.append("读不到远端文件清单，跳过内容比对")
                 elif not _bad:
+                    _nfiles = len(git("-c", "core.quotepath=false",
+                                      "ls-files").splitlines())
                     notes.append(f"远端提交号 {rsha[:7]} 与本地 {head7} 不同"
-                                 "（API 推送会重建提交），413 个文件内容逐一对齐")
+                                 f"（API 推送会重建提交），{_nfiles} 个文件内容逐一对齐")
                 else:
                     problems.append(f"远端有 {len(_bad)} 个文件与本地工作区不一致"
                                     f"（如 {_bad[0]}）—— 先推送再 Reboot")
