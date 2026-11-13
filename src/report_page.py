@@ -133,6 +133,15 @@ def render(h, B=None, IND=None) -> None:
       f'本页只给证据与推导，两页共用同一套数字。'
       f'单只基金的季报原文见「④ 单只基金」——那是<b>一只基金</b>，这里是 '
       f'{n_funds:,} 只的横截面，样本不同、不重复。</div>')
+    # 同一页四张图四个样本：不写清楚，读者会拿「3,923」去质疑「4,270」。
+    _npos_n = int(pos_hist["基金数"].iloc[-1]) if not pos_hist.empty else 0
+    _ndec_n = int(dec.attrs.get("n_funds", 0)) if not dec.empty else 0
+    _nbr_n = int(br.attrs.get("n_funds", 0)) if not br.empty else 0
+    h('<div class="tiny" style="margin:2px 0 6px">'
+      f'<b>四张图的样本不同，不能互相套用</b>：仓位 {_npos_n:,} 只（股票仓位 ≥40%）；'
+      f'半年报主动/被动 {_ndec_n:,} 只（两期都可比）；广度 {_nbr_n:,} 只（当期有实质变动）；'
+      f'个股 {n_funds:,} 只（全部主动权益）。差异来自「哪些基金在两个时点都有可比数据」，'
+      f'不是漏数。</div>')
     st.write("")
 
     # =====================================================================
@@ -160,12 +169,16 @@ def render(h, B=None, IND=None) -> None:
           f'所以仓位只能用最近的全持仓期 {pos["q"]}；后文行业与广度已更新到 {q}。</div>')
         _pmin, _pmax = float(pos_hist["中位"].min()), float(pos_hist["中位"].max())
         _pq1 = float(pos_hist["q1"].iloc[-1]); _pq3 = float(pos_hist["q3"].iloc[-1])
+        _buy = float(pos["加仓基金占比"])
+        # 41/59 不能写成「几乎各占一半」：写清楚偏哪边，读者才不会被措辞误导。
+        _bal = ("接近对半" if 45 <= _buy <= 55
+                else ("加仓略多" if _buy > 55 else "减仓略多"))
         _read(h,
               f'{_npos} 个半年报期的仓位中位在 {_pmin:.1f}%–{_pmax:.1f}% 之间，'
               f'当前 <b>{pos["仓位1"]:.1f}%</b>，处于第 <b>{_pct:.0f}</b> 分位；'
               f'本期只动了 <b>{pos["中位变化pp"]:+.2f}pp</b>，'
-              f'{pos["加仓基金占比"]:.0f}% 加仓、{100 - pos["加仓基金占比"]:.0f}% 减仓，'
-              f'两边几乎各占一半；中间 50% 的基金落在 {_pq1:.0f}%–{_pq3:.0f}% 之间。',
+              f'{_buy:.0f}% 加仓、{100 - _buy:.0f}% 减仓，{_bal}；'
+              f'中间 50% 的基金落在 {_pq1:.0f}%–{_pq3:.0f}% 之间。',
               f'股票型基金有 80% 的仓位下限，灵活配置型还要留现金应对赎回，'
               f'所以<b>仓位的可调空间本来就窄</b>——{_npos} 期里中位数的极差只有 '
               f'{_pmax - _pmin:.1f}pp。这意味着「机构看好后市」很少表现为整体加仓，'
@@ -228,7 +241,7 @@ def render(h, B=None, IND=None) -> None:
         _su = _dd[(_dd["Δ上季pp"] > 0) & (_dd["Δ上年pp"] > 0)].nlargest(3, "Δ上年pp")
         _sd = _dd[(_dd["Δ上季pp"] < 0) & (_dd["Δ上年pp"] < 0)].nsmallest(3, "Δ上年pp")
         h(f'<div class="tiny">口径：前十大归一化（{comp.attrs["q"]} 对 '
-          f'{comp.attrs["q_prev"]} 与 {comp.attrs["q_year"]}），<b>含价格漂移</b>——'
+          f'{comp.attrs["q_prev"]} 与 {comp.attrs["q_year"]}），<b>含价格漂移</b>（全样本合计，两期基金不完全相同）——'
           f'行业涨跌本身会改变占比，所以这两栏是「结果」不是「动作」。</div>')
         _read(h,
               f'方向一致的有「连续加仓」<b>{len(_su)} 个</b>（'
@@ -278,8 +291,11 @@ def render(h, B=None, IND=None) -> None:
         _rgt = _br_ok[(_br_ok["加仓占比"] >= 60) & (_br_ok["平均主动pp"] < 0)]
         _read(h,
               f'{_hi["行业"]} 的加仓占比最高（{_hi["持有基金数"]:.0f} 只持有者中 '
-              f'{_hi["加仓基金数"]:.0f} 只加、{_hi["减仓基金数"]:.0f} 只减，占 '
-              f'{_hi["加仓占比"]:.0f}%），{_lo["行业"]} 最低（{_lo["加仓占比"]:.0f}% 在加）。'
+              f'{_hi["加仓基金数"]:.0f} 只加、{_hi["减仓基金数"]:.0f} 只减'
+              + (f'、{_hi["持有基金数"] - _hi["加仓基金数"] - _hi["减仓基金数"]:.0f} 只未动'
+                 if _hi["持有基金数"] > _hi["加仓基金数"] + _hi["减仓基金数"] else "")
+              + f'，占 {_hi["加仓占比"]:.0f}%），{_lo["行业"]} 最低'
+              f'（{_lo["加仓占比"]:.0f}% 在加）。'
               + (f'「加仓基金不到一半、但净额为正」的有 <b>{len(_lft)}</b> 个（少数大基金在撑），'
                  f'「多数在加、净额却为负」的有 <b>{len(_rgt)}</b> 个（小基金接盘）。'
                  if (len(_lft) or len(_rgt)) else
@@ -482,3 +498,5 @@ def render(h, B=None, IND=None) -> None:
       '图 3 起是本季环比（前十大）；两张图的数字不能直接相减。<br>'
       '其余边界（季报只有前十大、3–4 周时滞、幸存者偏差）见「① 结论总览 · 四条硬约束」'
       '与「⑥ 方法与口径 · 三套口径」，本页不重复。</div>')
+
+    ui.source_footer(h, "report", "gk_active")

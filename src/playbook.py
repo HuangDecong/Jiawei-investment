@@ -329,7 +329,7 @@ def conclusions(q: str | None = None) -> list[dict]:
                 f"{i} {r['Δ上季pp']:+.2f}pp" for i, r in up.iterrows())
                 + "；减仓前三：" + "、".join(
                 f"{i} {r['Δ上季pp']:+.2f}pp" for i, r in dn.iterrows())
-                + f"。口径：前十大归一化，{s['q_prev']}→{s['q']}，含价格漂移；"
+                + f"。口径：前十大归一化，{s['q_prev']}→{s['q']}，含价格漂移（全样本合计，两期基金不完全相同）；"
                   f"同期行业指数涨跌见「本期解读」图。"),
             meaning=("如果减仓最多的是当期跌得最多的行业，那多半是价格跌出来的，"
                      "不是机构在卖；如果加仓最多的是当期跌的行业，那才是真承接。"

@@ -19,6 +19,13 @@ import version_info as vinfo
 def _body(page: str = "") -> None:
     """侧边栏与弹窗共用的主体：搜索 + 指标卡 + 口径速查。"""
     _ctxkey = _ctx()
+    # 页脚按钮可以指定「先看哪个指标」：在控件创建前写入状态，弹窗一开就定位。
+    _force = st.session_state.pop("_gl_force_term", None)
+    if _force:
+        st.session_state[f"gl_kw_{_ctxkey}"] = ""
+        # 同时把「上次搜索词」对齐，否则下面的 kw 变化检测会把刚设的 pick 清掉。
+        st.session_state[f"_gl_lastkw_{_ctxkey}"] = ""
+        st.session_state[f"gl_pick_{_ctxkey}"] = _force
     kw = st.text_input("搜索指标", value="", key=f"gl_kw_{_ctxkey}",
                        placeholder="如：拥挤 / 广度 / GK / 分位")
     # 搜索词一变，就把选择重置到「第一条命中」。

@@ -72,6 +72,7 @@ def main() -> int:
     tmp_db = os.path.join(ROOT, "output", "_deploy_sim_q.db")
     if os.path.exists(tmp_db):
         os.remove(tmp_db)
+    os.environ["FCD_NO_RELOAD"] = "1"          # 否则热重载会把 _DEP_PROBE 重置
     Q.DB_PATH = tmp_db                         # 空库：模拟线上没有 data/db
     Q.ensure_db()
     if not args.with_deps:

@@ -186,3 +186,29 @@ def test_A10_footer_version_line():
     vi = vinfo.info()
     assert vi["source_sha"] and len(vinfo.sha7()) == 7, "version.json 未生成"
     assert "akshare" in vinfo.deps_text()
+
+
+# ---------------------------------------------------------------------------
+# A11 每页都有来源页脚：原始披露 + 转引 + 可点链接 + 日期
+# ---------------------------------------------------------------------------
+def test_A11_source_footer_present_and_linked():
+    import sources  # noqa: PLC0415
+
+    for page in ("overview", "report", "map", "fund", "factor", "method"):
+        html = sources.source_line(page)
+        assert "来源与出处" in html, f"{page} 缺来源页脚"
+        # 原始披露（官方）与转引（东财）都必须出现，且是 <a href> 可点的
+        assert "eid.csrc.gov.cn" in html, f"{page} 缺官方原始披露链接"
+        assert "fundf10.eastmoney.com" in html, f"{page} 缺东财转引链接"
+        assert html.count("<a href=") >= 3, f"{page} 链接不足（应含官方/东财/Wind）"
+        assert 'target="_blank"' in html, f"{page} 链接不是新窗口打开"
+        # 必须有日期：抓取日或快照日，二者至少一个
+        assert ("访问" in html) or ("快照构建" in html), f"{page} 缺访问日期"
+
+
+def test_A12_source_dates_are_iso_or_empty():
+    import sources  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    for d in (sources.fund_fetch_date(), sources.snapshot_date(), sources.index_date()):
+        assert d == "" or re.fullmatch(r"\d{4}-\d{2}-\d{2}", d), f"日期格式不对：{d}"

@@ -182,7 +182,8 @@ def render(h, B=None, IND=None) -> None:
         # 后六条与 ②③⑤ 页大量重叠（个股层、行业拥挤度、方法边界）。
         # 这里只留「一句话 + 去哪看」，不再把六张长卡重贴一遍。
         _where = {"个股层": "② 本期解读", "拥挤度": "③ 行业拥挤度",
-                  "方法": "⑤ 因子检验", "换仓": "② 本期解读"}
+                  "换仓": "② 本期解读", "反面证据": "⑤ 因子检验",
+                  "方法": "⑤ 因子检验", "待确认": "③ 行业拥挤度"}
         rows = []
         for j, c in enumerate(_rest, 4):
             _w = next((v for k, v in _where.items() if k in str(c.get("tag", ""))),
@@ -363,3 +364,5 @@ def render(h, B=None, IND=None) -> None:
       '想看逐图证据：切到「② 本期解读（全市场）」；'
       '想看单个行业的历史：切到「③ 行业拥挤度」。'
       f'　版本口径：全持仓 {qf0}→{qf}、前十大 {qp}→{q}、指数 2015-01 起。</div>')
+
+    ui.source_footer(h, "overview", "csi")

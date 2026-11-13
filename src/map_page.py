@@ -264,6 +264,10 @@ def render(h) -> None:
     # =====================================================================
     H = cn.csi_history()
     _nq = len(H) if not H.empty else len(cn.quarters())
+    # 配置分位来自 compare_periods()["历史分位"]，是在**全部 47 期**上排的全样本分位；
+    # CSI 里的配置分位是扩窗（40 期，前 7 期不足 8 个观测不计）。两者在最新一期数值相同，
+    # 但期数不同，标签必须分开写，否则表头「40 期」与实际算法对不上。
+    _nq_cfg = len(cn.quarters())
     h(f'<div class="sec">① 拥挤度怎么变：{_nq} 期折线 + 两条分位（自身历史 / 全行业）</div>')
     _gap = len(cn.quarters()) - _nq if not H.empty else 0
     if _gap > 0:
@@ -822,7 +826,7 @@ def render(h) -> None:
           + ("、".join(_mt_high.index) or "无") + '）。'
           + (f'　已剔除 {len(comp) - len(_comp_ok)} 个小样本行业（不评级）。'
              if len(comp) > len(_comp_ok) else ''),
-          f'「重不重」有两个完全不同的参照系。相对自己：这个行业在它过去 {_nq} 期里算不算高位，'
+          f'「重不重」有两个完全不同的参照系。相对自己：这个行业在它过去 {_nq_cfg} 期里算不算高位，'
           f'回答「机构是不是刚开始重视它」；相对同行：它在当期 31 个行业里排第几，'
           f'回答「它是不是组合里的大块头」。小行业可以在自己历史上创纪录，'
           f'绝对配置却只有 1%，对净值几乎没有影响；大行业可以一直是第一大重仓，'
@@ -849,8 +853,11 @@ def render(h) -> None:
         _read(h,
               f'右上·双高（配置与价格都高于中位）<b>{len(_crowd)} 个</b>：'
               + ("、".join(f"{i}（配置 {r['历史分位']:.0f} / 指数 {r['指数分位']:.0f}）"
-                          for i, r in _crowd.nlargest(4, "指数分位").iterrows()) or "无")
-              + f'；右下·配置重价格不贵 {len(_hold)} 个；左上·配置轻价格贵 {len(_miss)} 个：'
+                          for i, r in _crowd.sort_values("指数分位", ascending=False).iterrows()) or "无")
+              + f'；右下·配置重价格不贵 <b>{len(_hold)} 个</b>'
+              + (("：" + "、".join(f"{i}（配置 {r['历史分位']:.0f} / 指数 {r['指数分位']:.0f}）"
+                                  for i, r in _hold.iterrows())) if len(_hold) else "")
+              + f'；左上·配置轻价格贵 {len(_miss)} 个：'
               + ("、".join(_miss.index) or "无")
               + f'；左下·双低 {len(_cold)} 个。'
               f'<br>注意：这张图用<b>中位数</b>切四象限，只表示相对位置；'
@@ -886,7 +893,7 @@ def render(h) -> None:
         "配置_前十": f"前十配置%({q})", "Δ上季pp": f"环比pp({qp}→{q})",
         "Δ上年pp": f"同比pp({qy}→{q})", "平均主动pp": f"当期主动pp({qp}→{q})",
         "加仓占比": f"加仓占比%({q})", "配置_全持仓": f"全持仓%({qf})",
-        "主动pp": f"半年主动pp({qf0}→{qf})", "历史分位": f"配置分位({_nq}期)",
+        "主动pp": f"半年主动pp({qf0}→{qf})", "历史分位": f"配置分位({_nq_cfg}期)",
         "横截面分位": "横截面分位", "指数分位": "价格分位(2015起)",
         "近3月涨幅%": "指数近3月%", "CSI": "CSI", "等级": "拥挤等级"})
     # 给「拥挤等级」与「判读」上色：一屏 31 行，纯文字很难扫出谁最挤。
@@ -932,9 +939,9 @@ def render(h) -> None:
             f"全持仓%({qf})": st.column_config.NumberColumn(format="%.2f"),
             f"半年主动pp({qf0}→{qf})": st.column_config.NumberColumn(
                 format="%+.2f", help="GK 分解后的机构主动部分（半年报口径）"),
-            f"配置分位({_nq}期)": st.column_config.ProgressColumn(
+            f"配置分位({_nq_cfg}期)": st.column_config.ProgressColumn(
                 format="%.0f", min_value=0, max_value=100,
-                help=f"该行业配置在它自己 {_nq} 期历史中的排名"),
+                help=f"该行业配置在它自己 {_nq_cfg} 期历史中的全样本排名（含前视，仅描述水位）"),
             "价格分位(2015起)": st.column_config.ProgressColumn(
                 format="%.0f", min_value=0, max_value=100,
                 help="行业指数点位在 2015 年以来每个交易日中的排名"),
@@ -951,7 +958,8 @@ def render(h) -> None:
     h(f'<div class="tiny">三组口径、三种期次，<b>不要相加</b>：'
       f'「前十配置/环比/同比/当期主动/广度」是<b>前十大（{qp}→{q}）</b>；'
       f'「全持仓/半年主动」是<b>全持仓（{qf0}→{qf}）</b>；'
-      f'「配置分位/CSI」用 {_nq} 期前十大算，「价格分位」用 2015 年以来的日频指数算。'
+      f'「配置分位」用 {_nq_cfg} 期前十大全样本排名（含前视，只描述当前水位）；'
+      f'「CSI」用 {_nq} 期扩窗口径（无前视），「价格分位」用 2015 年以来的日频指数算。'
       f'<br>样本 {len(cn.universe(q)):,} 只主动权益基金，已剔除主题基金与覆盖率异常记录。'
       f'<br><b>这条序列含价格漂移</b>：行业涨了，即使没人买，占比也会上升——'
       f'所以「分位高」只能说明<b>它在组合里很重</b>，不能直接说成「机构在买」。'
@@ -1118,3 +1126,5 @@ def render(h) -> None:
                          f'不必急着卖。</div>' if _up is not None else '</div>'))
         except Exception as _e:
             h(f'<div class="tiny">阈值检验暂不可用：{type(_e).__name__}</div>')
+
+    ui.source_footer(h, "map", "csi")

@@ -381,3 +381,5 @@ def render(h, B=None, IND=None) -> None:
         with st.spinner("正在重算…"):
             _recompute()
         st.rerun()
+
+    ui.source_footer(h, "factor", "rankic")

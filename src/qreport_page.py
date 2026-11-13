@@ -154,7 +154,9 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     if _errs:
         _labels = [str(e.get("label", "")) for e in _errs]
         _kinds = {str(e.get("kind", "")) for e in _errs}
-        _head = ("季报无法现场抓取" if "missing_dep" in _kinds
+        # 文案里必须出现「缺少依赖」四个字：读者与审计脚本都按这个词判断
+        # 「是部署问题，不是基金没数据」。只写「无法现场抓取」会被误解。
+        _head = ("部署缺少依赖，季报无法现场抓取" if "missing_dep" in _kinds
                  else "部分数据未取到")
         _more = f"等 {len(_errs)} 项" if len(_errs) > 3 else ""
         h(f'<div class="cg-note"><b>{_head}</b>：{"、".join(_labels[:3])}{_more}'
@@ -811,9 +813,12 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         _mrow0 = _ms[_ms["quarter"] == q]
         _nq_peer = (int(_mrow0["count"].iloc[-1]) if len(_mrow0)
                     else int(_ms["count"].iloc[-1]))
-        _sec("同行在做什么：全样本的仓位与行业变化",
-             f"{q} 有 {_nq_peer:,} 个份额代码可算中位数（样本池 {len(funds):,} 个，"
-             f"覆盖 {_nq_peer / max(len(funds), 1):.1%}；A/C 分别计）；行业环比为配对样本")
+        # 这不是「全市场」：q_asset 只含已抓取基金，且抓取按规模优先，属大基金口径。
+        # 写成「全样本」会让读者把 N=4,920 当成全市场 1 万多只基金，必须点明。
+        _sec("已入库基金在做什么（大基金口径，不是全市场）",
+             f"{q} 有 {_nq_peer:,} 个份额代码可算中位数（已入库 {len(funds):,} 个，"
+             f"覆盖 {_nq_peer / max(len(funds), 1):.1%}；A/C 分别计，按规模优先抓取）；"
+             f"行业环比为配对样本")
         _c1, _c2 = st.columns([0.5, 0.5])
         with _c1:
             st.plotly_chart(qc.fig_market_position(_ms), width="stretch",
@@ -825,7 +830,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         # 差值没有意义（这十年全样本仓位中枢上移了近 10pp）。
         _mrow = _ms[_ms["quarter"] == q]
         _mm = float(_mrow["median"].iloc[-1]) if len(_mrow) else float("nan")
-        _txt = (f'{q} 全样本 {int(_mrow["count"].iloc[-1]) if len(_mrow) else 0:,} 个份额代码的'
+        _txt = (f'{q} 已入库 {int(_mrow["count"].iloc[-1]) if len(_mrow) else 0:,} 个份额代码的'
                 f'股票仓位中位数 <b>{_mm:.1f}%</b>，本基金 {stock:.1f}%'
                 f'（{stock - _mm:+.1f}pp）。' if np.isfinite(_mm) else "")
         if len(_peer):
@@ -833,14 +838,14 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
             _d = _peer["差值"].nsmallest(2)
             _lo = int(_peer["样本"].min()) if "样本" in _peer.columns else 0
             _hi = int(_peer["样本"].max()) if "样本" in _peer.columns else 0
-            _txt += ('全样本加仓最多的是 ' + "、".join(f"{i}（{v:+.2f}pp）" for i, v in _u.items())
+            _txt += ('已入库基金里加仓最多的是 ' + "、".join(f"{i}（{v:+.2f}pp）" for i, v in _u.items())
                      + '，减仓最多的是 ' + "、".join(f"{i}（{v:+.2f}pp）" for i, v in _d.items())
                      + f'（各门类配对样本 {_lo:,}–{_hi:,} 只——同一只基金两期都有行业表才计入，'
                        f'避免「换了一批基金」被读成「加减仓」）。')
         if np.isfinite(stock):
             _pr, _pn = Q.peer_rank(q, stock)
             if np.isfinite(_pr) and _pn >= 30:
-                _txt += f'　本基金处于同期第 <b>{_pr:.0f}</b> 分位（N={_pn:,}）。'
+                _txt += f'　本基金在已入库基金中处于第 <b>{_pr:.0f}</b> 分位（N={_pn:,}，非全市场）。'
         h(f'<div class="tiny" style="margin:-4px 0 12px">{_txt}</div>')
 
     # ---------------- ⑦ 全历史速览 ----------------
@@ -922,3 +927,5 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
       '<br><b>本页不覆盖</b>：① 管理人报告文字（运作分析、市场展望）——数据源只提供数字，'
       '不提供正文；② 持有人结构（户数、机构占比）——半年报/年报才披露；'
       '③ 季度财务指标——法规不要求季报披露。缺失处一律留空，不用替代口径填充。</div>')
+
+    ui.source_footer(h, "fund", "share_change")

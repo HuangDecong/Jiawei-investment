@@ -48,7 +48,8 @@ _LOCAL_MODULES = ("config", "data_loader", "factor_engine", "backtest", "researc
                   "canon", "report_page", "report_charts", "insight_charts", "map_page",
                   "fund_page", "overview_page", "playbook", "glossary", "sidebar_panel",
                   "factor_page", "factor_test", "factor_doc", "method_page", "ui",
-                  "qreport", "qreport_charts", "qreport_page", "fund_hub_page")
+                  "qreport", "qreport_charts", "qreport_page", "fund_hub_page",
+                  "sources", "caliber", "version_info")
 
 
 def _reload_local_modules_if_changed() -> None:
@@ -74,7 +75,10 @@ def _reload_local_modules_if_changed() -> None:
             pass
 
 
-_reload_local_modules_if_changed()
+# 测试/部署模拟时关闭热重载：热重载会重新 import qreport，把测试注入的
+# _DEP_PROBE（模拟缺依赖）覆盖掉，导致「缺依赖」场景时好时坏。
+if os.environ.get("FCD_NO_RELOAD") != "1":
+    _reload_local_modules_if_changed()
 
 import numpy as np
 import pandas as pd
@@ -444,7 +448,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.11.13-r50.0"
+APP_VERSION = "2026.11.13-r51.0"
 
 
 def _fp_short() -> str:

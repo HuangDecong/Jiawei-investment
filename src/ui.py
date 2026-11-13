@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import streamlit as st
 
 import config as C
 
@@ -134,6 +135,29 @@ def section(title: str, sub: str = "") -> str:
     return (f'<div style="font-size:{FS_TITLE}px;font-weight:700;'
             f'color:{C.COLOR["text"]};margin:16px 0 7px;padding-left:9px;'
             f'border-left:4px solid {C.COLOR["price"]}">{title}{sub_html}</div>')
+
+
+def source_footer(h, page: str, term: str = "") -> None:
+    """页脚统一的「来源 + 公式」区。
+
+    每个页面都必须有：谁提供数据、哪一天取的、原始披露在哪（可点）、
+    用什么代码算的；再给一个按钮，直接打开该页主指标的公式与计算过程。
+    `term` 是 glossary 的键（如 csi / gk_active），打开弹窗时定位到它。
+    """
+    import glossary as g  # noqa: PLC0415
+    import sources  # noqa: PLC0415
+
+    h(sources.source_line(page))
+    # 按钮不拉满：页脚是附属信息，不该出现一个横跨半屏的按钮。
+    if st.button("📖 公式与计算过程", key=f"src_gl_{page}",
+                 help="打开该页主指标的定义、公式、计算步骤、阈值与来源"):
+        if term and term in g.ITEMS:
+            st.session_state["_gl_force_term"] = term
+        st.session_state["gl_show"] = True
+        st.session_state["_gl_page"] = st.session_state.get("page")
+        st.rerun()
+    st.caption("定义 / 公式 / 计算步骤 / 阈值 / 标准来源 / 常见误用，逐项可查；"
+               "所有词条与页面上的数字同源（src/canon.py）。")
 
 
 def safe_str(v, default: str = "—") -> str:

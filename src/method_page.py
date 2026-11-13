@@ -55,9 +55,12 @@ def render(h, B=None, IND=None) -> None:
 
     # 价格漂移贡献：现算，避免写死「ρ=0.73→0.18」这种换个样本就复现不了的数
     _pe = cn.price_effect()
-    _pe_txt = (f"最近一期 {_pe['q0']}→{_pe['q']}：行业平均 |价格漂移| 占 |原始变化| 的 "
-               f"{_pe['share']:.0f}%；{_pe['top']} {_pe['raw']:+.2f}pp 里 "
-               f"{_pe['mech']:+.2f}pp 是价格，占 {_pe['pct']:.0f}%") if _pe else ""
+    # 这里是**逐基金配对平均**（两期都可得才计入），与 ① 的「全样本合计」略有差异；
+    # 两个数都对，但口径不同，必须写清楚，否则同一只电子会出现 -4.93 与 -5.51。
+    _pe_txt = (f"最近一期 {_pe['q0']}→{_pe['q']}（逐基金配对平均）：行业平均 "
+               f"|价格漂移| 占 |原始变化| 的 {_pe['share']:.0f}%；"
+               f"{_pe['top']} {_pe['raw']:+.2f}pp 里 {_pe['mech']:+.2f}pp 是价格，"
+               f"占 {_pe['pct']:.0f}%") if _pe else ""
 
     # =====================================================================
     # 结论
@@ -71,7 +74,7 @@ def render(h, B=None, IND=None) -> None:
         + (f'（{_pe_txt}）；' if _pe_txt else '（行业涨跌会直接改写权重）；') +
         '分位改成<b>扩张窗口</b>（每期只排到当期），否则做检验时会用到未来数据。',
         '<b>它是描述工具，不是预测模型。</b>9 个季报因子在 '
-        f'{len(qs)} 期样本上没有一个是正向可用的（见「⑤ 因子检验」）。'
+        f'{len(qs)} 期可得样本上没有一个是正向可用的（各因子有效 n 见「⑤ 因子检验」）。'
         '这套系统的价值是读懂机构在做什么、避免在拥挤处接棒、避免在撤离处抄底。',
     ]))
     h(ui.stat_strip([
@@ -386,8 +389,8 @@ python -c "import sys; sys.path.insert(0,'src'); import selfcheck; print(selfche
           '2022 年前没有指数历史，这三年只按「配置 + 资金」两项展示、不评级。'
           '样本是「当前存续的主动权益基金」，已清盘基金无法取得历史，见上文局限。<br>'
           '数据文件：<span class="mono">data/db/fund_ak.db</span>'
-          '（SQLite，约 900MB，不入库）；派生快照在 '
-          '<span class="mono">data/derived/*.csv.gz</span>（约 12MB，随仓库发布）。'
+          '（SQLite，约 1.0GB，不入库）；派生快照在 '
+          '<span class="mono">data/derived/*.csv.gz</span>（约 23MB，随仓库发布）。'
           '线上环境没有数据库时自动读快照，两条路径的计算结果已逐格核对一致。<br>'
           '季报页另有 <span class="mono">data/db/fund_q.db</span>：只存季报披露值'
           '（股票/债券/现金占净比、证监会门类行业配置、份额变动、前十名股票、'
@@ -402,3 +405,5 @@ python -c "import sys; sys.path.insert(0,'src'); import selfcheck; print(selfche
       f'免得首次打开要等两分钟）、全持仓 {len(fq)} 期、'
       f'指数 2015-01 起；样本 {n_funds:,} 只主动权益基金。'
       '更细的审计留痕（数据源探查记录、逐期溯源）见仓库 tools/ 下的脚本输出。</div>')
+
+    ui.source_footer(h, "method", "csi")

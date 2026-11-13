@@ -770,3 +770,5 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     h('<div class="tiny">数据：东方财富基金定期报告（半年报全持仓、季报前十大）。'
       '本页所有对比都是「与同行平均」，不是与指数比；'
       '要看它有没有跑赢基准，需要基准指数收益，本库尚未接入。</div>')
+
+    ui.source_footer(h, "fund", "alloc_full")

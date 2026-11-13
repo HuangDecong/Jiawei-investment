@@ -1,9 +1,9 @@
 {
-  "app_version": "2026.11.13-r50.0",
-  "source_sha": "26e55f6",
+  "app_version": "2026.11.13-r51.0",
+  "source_sha": "3892fbf",
   "branch": "main",
-  "build_time": "2026-11-13 12:17:47+0800",
-  "requirements_sha8": "bc705153",
+  "build_time": "2026-11-13 13:06:05+0800",
+  "requirements_sha8": "5360b56e",
   "caliber_version": "2026-11-12",
   "packages": {
     "streamlit": "1.64.0",
