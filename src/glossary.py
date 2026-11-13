@@ -1983,8 +1983,13 @@ def label(key: str) -> str:
     return f"{v['cat']} · {v['name']}" if v else key
 
 
-def card_html(key: str, color: dict) -> str:
-    """渲染一张完整的指标说明卡（九段）。颜色取自 config.COLOR。"""
+def card_html(key: str, color: dict, compact: bool = False) -> str:
+    """渲染一张指标说明卡（九段）。
+
+    compact=True 只保留「含义 / 公式」，用于侧边栏的限高容器：
+    九段全塞进 300px 会从公式中间被切断，看起来像排版坏了。
+    完整内容在顶栏「📖 指标速查」弹窗里（同一份数据，不写两套）。
+    """
     v = ITEMS.get(key)
     if not v:
         return ""
@@ -2040,6 +2045,18 @@ border-radius:7px;padding:9px 11px;background:#FFFFFF">
     # 阈值表里有大量「<60%」「<0.5」「<20 只」：浏览器会把「<数字」当成
     # 标签开头，把这一格后面的文字连同整张卡一起吞掉（侧边栏里就出现
     # 「合计 」后面直接接下一列）。只转义不是标签的 <。
+    if compact:
+        # 只保留「含义 + 公式」：侧栏 300px 放不下九段，截在公式后最自然
+        # （读者扫一眼就知道这个数是什么、怎么算；细节去弹窗看）。
+        _head = html[:html.rfind("<div", 0, html.index("原理"))]
+        _f0 = html.rfind("<div", 0, html.index("公式"))
+        _f1 = html.rfind("<div", 0, html.index("计算过程"))
+        html = (_head + html[_f0:_f1]
+                + f'<div style="font-size:10px;line-height:1.6;'
+                  f'color:{color["text_dim"]};border-top:1px dashed {color["grid"]};'
+                  f'padding-top:5px;margin-top:6px">'
+                  f'原理、计算过程、阈值、来源、误用：点顶栏「📖 指标速查」</div>'
+                + "</div>")
     return re.sub(r"<(?![A-Za-z/!])", "&lt;", html)
 
 

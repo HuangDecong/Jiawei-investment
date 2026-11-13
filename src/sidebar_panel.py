@@ -40,9 +40,10 @@ def _body(page: str = "") -> None:
     # 词典卡平均 500–900px 高，直接铺开会把「三套口径」「版本行」顶到侧栏外面——
     # 读者以为没有版本信息。给卡片一个固定高度、内部滚动，底部信息就永远可见。
     # 侧栏窄、弹窗宽：同一个容器在弹窗里给更高，避免刚打开就要滚。
-    _h = 520 if st.session_state.get("_gl_in_dialog") else 296
+    _h = 520 if st.session_state.get("_gl_in_dialog") else 300
     with st.container(height=_h, border=True):
-        st.markdown(g.card_html(pick, C.COLOR), unsafe_allow_html=True)
+        st.markdown(g.card_html(pick, C.COLOR, compact=not st.session_state.get("_gl_in_dialog")),
+                    unsafe_allow_html=True)
 
 
     # 光靠搜索不够：读者不知道「有哪些词可以查」。
