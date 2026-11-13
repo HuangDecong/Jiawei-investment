@@ -332,15 +332,15 @@ def stage_consistency() -> None:
     c = cn.crowding_score()
     top = c[c["等级"] != "小样本"].index[0]
     v = float(c.loc[top, "CSI"])
-    rec("一致性", f"首页/拥挤度页同一只最挤行业（{top} {v:.0f}）",
-        top in txt1 and f"{v:.0f}" in txt1, "")
+    rec("一致性", f"首页/拥挤度页同一只最挤行业（{top} {v:.1f}）",
+        top in txt1 and f"{v:.1f}" in txt1, "")
 
     at.radio(key="page").set_value("③ 行业拥挤度")
     at.run()
     txt3 = "\n".join(str(getattr(x, "value", "") or getattr(x, "body", "") or "")
                      for x in list(at.markdown) + list(at.get("html")))
     rec("一致性", "拥挤度页含同一行业与其分值",
-        top in txt3 and f"{v:.0f}" in txt3, "")
+        top in txt3 and f"{v:.1f}" in txt3, "")
 
     # 期次标签一致：所有页面都用同一个最新季
     q = cn.latest()

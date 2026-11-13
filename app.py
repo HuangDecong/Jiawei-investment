@@ -196,7 +196,7 @@ st.markdown(f"""
      注意：只写 height:0 是不够的——它仍会作为半透明图层压在页面最上方，
      把自绘标题遮成灰字（这就是「看不到仪表盘的头」的根因）。 */
   header[data-testid="stHeader"] {{ display: none !important; }}
-  /* 回到顶部：固定右侧，**必须避开 Streamlit Cloud 的右下角浮层**
+  /* 回到顶部：固定右侧，必须避开 Streamlit Cloud 的右下角浮层
      （Manage app 按钮占 bottom 20–70px、右侧约 150px；旁边还有运行状态小图标）。
      放在 bottom 104px，两者互不遮挡；本地开发时这个位置也只是空白。 */
   .cg-top {{ position: fixed; right: 18px; bottom: 104px; width: 40px; height: 40px;
@@ -461,7 +461,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.11.13-r52.1"
+APP_VERSION = "2026.11.13-r52.2"
 
 
 def _fp_short() -> str:
@@ -538,7 +538,9 @@ def _hdr_tags() -> str:
 
 
 # ---------------- 顶栏 ----------------
-h1, h2, h3 = st.columns([0.50, 0.22, 0.28])
+# 顶栏三栏比例：1280 宽时 0.28 会把「指标速查/刷新」压成「指标…/…」，
+# 标题栏其实用不了 50%，把 10% 让给按钮区（0.50→0.44），实测 1280 下两个按钮都完整。
+h1, h2, h3 = st.columns([0.44, 0.16, 0.40])
 with h1:
     _h('<div class="hdr">'
                 '<span class="ttl">公募基金交易拥挤度与集中度仪表盘</span>'
@@ -547,7 +549,10 @@ with h2:
     # 这里原来是一个「扩窗 / 全样本」单选，但**没有任何页面读取它**——
     # 一个看起来能改全局口径、实际什么都不改的开关，比没有更糟。
     # 现在改成固定说明：全站分位一律扩窗（无前视），口径定义见 ⑥ / caliber.py。
-    _h('<div class="tiny" style="padding-top:8px;line-height:1.5" '
+    # 1280 宽时这一栏只有约 157px：13px 字号会把「前/视」拆到两行，
+    # 缩到 11px + nowrap 后刚好一行放得下。
+    _h('<div class="tiny" style="padding-top:9px;line-height:1.5;font-size:11px;'
+       'white-space:nowrap" '
        'title="当期分位只用当期及以前的历史，不使用未来数据；定义见 ⑥ 方法与口径">'
        '分位口径：<b>扩窗（无前视）</b></div>')
 with h3:

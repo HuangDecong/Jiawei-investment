@@ -288,8 +288,8 @@ def render(h, B=None, IND=None) -> None:
       '东方财富基金档案 F10</a>（本库转引来源）· '
       '<a href="https://www.wind.com.cn/" target="_blank" rel="noopener">Wind 金融终端</a>'
       '（行业指数）· '
-      '<a href="https://www.swsresearch.com/" target="_blank" rel="noopener">'
-      '申万宏源研究</a>（行业分类标准；官网偶发 502，故不在此直链具体页面）。<br>'
+      '申万宏源研究（行业分类标准；官网当前返回 5xx，<b>不做死链</b>，'
+      '分类口径见上表「行业分类标准」一行）。<br>'
       '<b>本库不使用任何代理口径</b>：不用前十大反推全持仓、不用行业指数替代个股收益、'
       '不对缺失值做插值或补 0；每一格要么是披露值，要么是「—/未披露」。</div>')
 

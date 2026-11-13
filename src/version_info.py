@@ -40,13 +40,28 @@ _FALLBACK = {
 }
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=8)
+def _read(mtime: float) -> dict:
+    """按文件 mtime 缓存：改了 version.json 不用重启进程也能读到新值。
+
+    2026-11-13 踩过：进程启动后重新生成版本戳，页脚仍显示旧 sha（缓存没失效），
+    与 version.json 对不上，排查时误以为写错了。
+    """
+    try:
+        with open(PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def info() -> dict:
     """读版本戳；文件缺失/损坏时返回占位值，绝不抛异常。"""
     try:
-        with open(PATH, encoding="utf-8") as f:
-            d = json.load(f)
-    except Exception:  # noqa: BLE001
+        _mt = os.path.getmtime(PATH)
+    except OSError:
+        _mt = 0.0
+    d = _read(_mt)
+    if not d:
         return dict(_FALLBACK)
     out = dict(_FALLBACK)
     out.update({k: v for k, v in d.items() if v is not None})

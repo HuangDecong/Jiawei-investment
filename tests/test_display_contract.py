@@ -253,3 +253,23 @@ def test_A15_verdict_legend_and_heatmap_visible():
     ms = open(os.path.join(ROOT, "src", "map_page.py"), encoding="utf-8").read()
     assert "31 个行业全景" in ms
     assert "看历史全景：" not in ms, "热力图又被折叠了"
+
+
+# ---------------------------------------------------------------------------
+# A16 行业页 KPI 必须真的渲染（r50 曾把 _kpis 定义留下、渲染删掉）
+# ---------------------------------------------------------------------------
+def test_A16_industry_kpi_is_rendered():
+    src = open(os.path.join(ROOT, "src", "map_page.py"), encoding="utf-8").read()
+    assert "h(ui.stat_strip(_kpis))" in src, "KPI 条又只定义不渲染了"
+    assert "_kpis.append((\"全行业分位\"" in src
+    assert "_kpis += [(\"近 4 期变化\"" in src
+
+
+# ---------------------------------------------------------------------------
+# A17 CSI 显示统一 1 位小数（结论与表格不能一个 91、一个 90.6）
+# ---------------------------------------------------------------------------
+def test_A17_csi_one_decimal_everywhere():
+    pb = open(os.path.join(ROOT, "src", "playbook.py"), encoding="utf-8").read()
+    assert '{v:.1f}" for v in hi["CSI"]' in pb, "首页结论的 CSI 又回到整数了"
+    mp = open(os.path.join(ROOT, "src", "map_page.py"), encoding="utf-8").read()
+    assert '("当前 CSI", f"{_cur:.1f}"' in mp

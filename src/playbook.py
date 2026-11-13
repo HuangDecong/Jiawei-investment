@@ -486,7 +486,7 @@ def conclusions(q: str | None = None) -> list[dict]:
         out.append(dict(
             tag="拥挤度",
             claim=(f"最拥挤的是 {'、'.join(hi.index)}（CSI "
-                   + "、".join(f"{v:.0f}" for v in hi["CSI"]) + "）；"
+                   + "、".join(f"{v:.1f}" for v in hi["CSI"]) + "）；"
                    f"最冷门的是 {'、'.join(lo.index[::-1])}。"),
             evidence=("CSI＝(配置分位＋价格分位＋资金分位)/3，等权、不拟合；"
                       "三个分位分别回答「机构押多重」「价格多贵」「钱还在不在进」。"

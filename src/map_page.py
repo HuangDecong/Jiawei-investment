@@ -183,12 +183,12 @@ def render(h) -> None:
     _bl = []
     if len(_top):
         _bl.append(f'<b>最拥挤</b>：' + "、".join(
-            f'{i}（CSI {r["CSI"]:.0f}，配置{r["历史分位"]:.0f}/价格'
+            f'{i}（CSI {r["CSI"]:.1f}，配置{r["历史分位"]:.0f}/价格'
             f'{_num(r.get("指数分位"), 0)}）' for i, r in _top.iterrows())
             + f'。31 个行业里极度拥挤 <b>{_n_ext}</b> 个、冷门 <b>{_n_cold}</b> 个。')
     if len(_bot):
         _bl.append('最冷门：' + "、".join(
-            f'{i}（CSI {r["CSI"]:.0f}，配置{r["历史分位"]:.0f}/价格'
+            f'{i}（CSI {r["CSI"]:.1f}，配置{r["历史分位"]:.0f}/价格'
             f'{_num(r.get("指数分位"), 0)}）' for i, r in _bot.iterrows())
             + '。冷门不等于机会——没有资金关注时，估值再低也可能继续低。')
     if len(_hi_chg):
@@ -415,12 +415,34 @@ def render(h) -> None:
         st.plotly_chart(rc.fig_csi_position(_series, _name, window=_window,
                                             thr=float(_thr)),
                         width="stretch", config={"displayModeBar": False})
-        _kpis = [("当前 CSI", f"{_cur:.0f}",
+        _kpis = [("当前 CSI", f"{_cur:.1f}",
                   f"{_name}" + (f"｜{_lv_now}" if _lv_now else "") + _stale_txt),
                  (_win_txt + "分位" if _window else "自身历史分位",
                   (f"{_own:.0f}" if np.isfinite(_own) else "—"),
                   (f"{_nw} 期中第 {_kth} 低" if np.isfinite(_own)
                    else f"不足 4 期（现有 {_nw} 期），不打分位"))]
+        # r50 去重时误删了这一整段：_kpis 只定义、没有渲染，页面上 6 个 KPI 全部消失。
+        # 现在补回：选中行业时给「全行业分位」，全市场视角给「广度」，再加变化与触及次数。
+        if _sel_t:
+            if _is_small_sel:
+                _kpis.append(("全行业分位", "—",
+                              f"小样本·不评级｜不参与 {_nvalid} 个行业的排名"))
+            else:
+                _cr_cur = float(_lastrow[_rated_cols].rank(pct=True)
+                                .get(_sel_t, np.nan) * 100)
+                _kpis.append(("全行业分位",
+                              (f"{_cr_cur:.0f}" if np.isfinite(_cr_cur) else "—"),
+                              f"第 {_rank}/{_nvalid}｜同一时点横截面"))
+        else:
+            _kpis.append(("≥65 分行业", _crowd_txt,
+                          f"占 {len(_crowd) / max(len(_rated), 1) * 100:.0f}%，"
+                          f"拥挤广度（仅可评级；{len(_small_set)} 个不评级）"))
+        _kpis += [("近 4 期变化", (f"{_chg4:+.0f}" if np.isfinite(_chg4) else "—"),
+                   "与前 4 个季度比"),
+                  (f"历史触及 ≥{_thr:.0f}", f"{_n80} 期",
+                   f"占 {_n80 / _ns * 100:.0f}%")]
+        h(ui.stat_strip(_kpis))
+
         if _sel_t:
             _d1 = float(_series.iloc[-1] - _series.iloc[-2]) if _ns > 1 else np.nan
             # 不再复述「最新 X 分、上期 Y 分、第 Z 分位」——KPI 条就在图下面，
@@ -618,7 +640,7 @@ def render(h) -> None:
             st.caption("没有匹配的行业，已显示全部。")
         _rank = _rank_sort(comp.loc[_cand]) if "CSI" in comp else comp.loc[_cand]
         _opts = list(_rank.index)
-        _labels = [f'{k}. {i}　CSI {comp.loc[i, "CSI"]:.0f}　{comp.loc[i, "等级"]}'
+        _labels = [f'{k}. {i}　CSI {comp.loc[i, "CSI"]:.1f}　{comp.loc[i, "等级"]}'
                    + ("　†小样本" if comp.loc[i].get("可靠") == "小样本" else "")
                    for k, i in enumerate(_opts, 1)]
         sel = st.selectbox("选择行业（可再输入搜索）", _opts,
@@ -628,7 +650,7 @@ def render(h) -> None:
         h(f'<div style="background:{_lv_c};color:#fff;border-radius:7px;'
           f'padding:8px 11px;margin-top:2px">'
           f'<div style="font-size:15px;font-weight:700">{sel}</div>'
-          f'<div style="font-size:11px;opacity:.95">CSI {comp.loc[sel, "CSI"]:.0f}　'
+          f'<div style="font-size:11px;opacity:.95">CSI {comp.loc[sel, "CSI"]:.1f}　'
           f'{comp.loc[sel, "等级"]}　配置分位 {comp.loc[sel, "历史分位"]:.0f}　'
           f'环比 {comp.loc[sel, "Δ上季pp"]:+.2f}pp</div></div>')
     with c2:
@@ -654,7 +676,7 @@ def render(h) -> None:
         _mx = float(M[sel].max()) if sel in M.columns else np.nan
         h(f'<div style="background:#FFF8E6;border:1px solid #E8C36A;border-left:4px solid #D9A21B;'
           f'border-radius:7px;padding:9px 12px;margin:2px 0 8px;font-size:11.5px;line-height:1.9">'
-          f'<b>⚠ {sel}不评级：下面这个 CSI {r["CSI"]:.0f} 不能当拥挤度用。</b><br>'
+          f'<b>⚠ {sel}不评级：下面这个 CSI {r["CSI"]:.1f} 不能当拥挤度用。</b><br>'
           f'<b>为什么</b>：全市场只有 <b>{r["持有基金数"]:.0f}</b> 只样本基金把它放进前十大，'
           f'前十配置合计 <b>{r["配置_前十"]:.2f}%</b>（{len(M)} 期区间 {_mn:.2f}%–{_mx:.2f}%）。'
           f'三个分位都是在这个极小的样本上排出来的：<br>'
