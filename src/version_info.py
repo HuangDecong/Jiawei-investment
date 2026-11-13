@@ -41,7 +41,7 @@ _FALLBACK = {
 
 
 @lru_cache(maxsize=8)
-def _read(mtime: float) -> dict:
+def _read_json(mtime: float) -> dict:
     """按文件 mtime 缓存：改了 version.json 不用重启进程也能读到新值。
 
     2026-11-13 踩过：进程启动后重新生成版本戳，页脚仍显示旧 sha（缓存没失效），
@@ -60,7 +60,7 @@ def info() -> dict:
         _mt = os.path.getmtime(PATH)
     except OSError:
         _mt = 0.0
-    d = _read(_mt)
+    d = _read_json(_mt)
     if not d:
         return dict(_FALLBACK)
     out = dict(_FALLBACK)
