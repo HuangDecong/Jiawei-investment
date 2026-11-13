@@ -337,9 +337,6 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     # ---------------- 一句话：这一季最重要的三件事 ----------------
     # 不再把 KPI 里的五个数字重念一遍（读者刚看完），只讲「变了什么、为什么变」。
     _ev = []
-    if np.isfinite(nav) and np.isfinite(nav_chg):
-        _why = ("净申购推动" if np.isfinite(net_buy) and net_buy > 0 else "赎回缩表")
-        _ev.append(f'<b>规模</b> {_yi(nav)} 亿（{nav_chg:+.0f}%），{_why}')
     # 行业切换：本期相对上一期行业表的最大加减
     _iq = sorted(d["q_industry"]["quarter"].dropna().unique()) \
         if not d["q_industry"].empty else []
@@ -370,14 +367,16 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     if not _ev:
         _ev = [f'{q} 季报数据不完整，无法给出变化摘要。']
 
-    _econ = ("先看变化、再看水平：<b>规模</b>变大要分清是新钱还是净值涨（前者要建仓、后者不用），"
-             "<b>行业</b>大幅切换说明观点变了（不是市场涨跌能解释的），"
-             "<b>前十换手</b>高说明它在主动调整，而不是被动持有。")
+    # 规模已在上一行 KPI 与下面的瀑布图里拆过（净申购 vs 净值涨跌），
+    # 这里只说「行业」与「前十」两件事，避免同一组数字写三遍。
+    _econ = ("<b>行业</b>大幅切换说明观点变了（不是市场涨跌能解释的）；"
+             "<b>前十换手</b>高说明它在主动调整，而不是被动持有。"
+             "两者同时出现，才是一次方向调整；都没动，就是「拿着」。")
     _inv = ("规模靠申购 + 行业切换 + 前十大换手同时出现，意味着这是一次<b>主动的方向调整</b>："
             "要顺着新进的行业和股票去验证逻辑，而不是看它过去三年的业绩。"
             "反过来，三项都没动，说明这一季它只是「拿着」，此时业绩好坏更多来自市场，不是它的判断。")
     ui.analysis(h, "；".join(_ev) + "。", _econ, _inv,
-                tag1="这一季", tag2="怎么读这三件事", tag3="对你的动作")
+                tag1="变了什么", tag2="怎么读", tag3="对你的动作")
 
     _CIRCLED = "①②③④⑤⑥⑦⑧⑨"
     _nsec = [0]
@@ -675,13 +674,12 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         _sec(f"这一季换了谁：{_prev_hq} → {q} 前十大进出",
              "上期若为半年报/年报（全持仓），用它做基准：区分「新进」（上期未持有）"
              "与「升入」（上期已持有、未进前十）；股数变化含送转股")
-        c1, c2 = st.columns([0.5, 0.5], gap="small")
-        with c1:
-            st.plotly_chart(qc.fig_top10_diff(_diff), width="stretch",
-                            config={"displayModeBar": False})
-        with c2:
-            # 半栏宽度放不下 9 列：只保留结论所需的 7 列，
-            # 上期/本期股数放在图的悬浮里（鼠标停在条上就能看到）。
+        # 图与表是同一批数据的两种看法：并排时图被压到半栏、表被截断，
+        # 读者两份都要看却都看不清。改为图通栏、表折叠——要核对精确数字再展开。
+        st.plotly_chart(qc.fig_top10_diff(_diff), width="stretch",
+                        config={"displayModeBar": False})
+        with st.expander(f"看精确数字：{len(_diff)} 只股票的占比与股数变化",
+                         expanded=False):
             _dt = _diff.reset_index()[["代码", "名称", "状态", "本期%",
                                        "上期%", "d_pct", "d_sh"]]
             _dt = _dt.sort_values("d_pct", ascending=False)
@@ -690,9 +688,8 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
             _dt["d_pct"] = _dt["d_pct"].map(lambda v: f"{v:+.2f}")
             for _c in ("本期%", "上期%"):
                 _dt[_c] = _dt[_c].map(lambda v: "—" if not np.isfinite(v) else f"{v:.2f}")
-            st.dataframe(_dt.rename(columns={"d_pct": "Δpp",
-                                            "d_sh": "股数变化"}),
-                         hide_index=True, height=420, width="stretch")
+            st.dataframe(_dt.rename(columns={"d_pct": "Δpp", "d_sh": "股数变化"}),
+                         hide_index=True, height=380, width="stretch")
         _new = _diff[_diff["状态"] == "新进前十"].nlargest(2, "本期%")
         _in = _diff[_diff["状态"] == "升入前十"].nlargest(2, "d_pct")
         _out = _diff[_diff["状态"].isin(["退出前十", "清仓"])].nlargest(2, "上期%")

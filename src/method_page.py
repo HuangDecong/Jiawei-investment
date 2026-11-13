@@ -111,28 +111,38 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     import caliber as CAL  # noqa: PLC0415
     import version_info as vinfo  # noqa: PLC0415
-    h(f'<div class="sec">二·补　口径表：每一条都只有一个定义（v{CAL.CALIBER_VERSION}）</div>')
+    h(f'<div class="sec">口径表：每一条都只有一个定义（v{CAL.CALIBER_VERSION}）</div>')
     h('<div class="tiny">这张表由 <span class="mono">src/caliber.py</span> 直接生成，'
       '页面上所有阈值、窗口、分母都从同一个地方取——'
       '过去「口径」类问题被修了 17 次，就是因为同一句话在七个文件里各写一遍。'
       '改口径只能改 caliber.py，改完 <span class="mono">tools/check_caliber.py</span> '
       '会在核心文件里 grep 硬编码，命中即失败。</div>')
-    _cal = pd.DataFrame(CAL.table())
-    _cal = _cal[["metric_id", "name", "definition", "denominator", "min_n",
-                 "missing", "version"]]
-    _cal.columns = ["metric_id", "中文名", "口径定义", "分母", "最小样本",
-                    "缺失处理", "版本"]
-    st.dataframe(_cal, width="stretch", hide_index=True, height=330,
-                 column_config={
-                     "metric_id": st.column_config.TextColumn(width="small"),
-                     "中文名": st.column_config.TextColumn(width="small"),
-                     "口径定义": st.column_config.TextColumn(width="large"),
-                     "分母": st.column_config.TextColumn(width="medium"),
-                     "最小样本": st.column_config.TextColumn(width="medium"),
-                     "缺失处理": st.column_config.TextColumn(width="medium"),
-                     "版本": st.column_config.TextColumn(width="small")})
-    h(f'<div class="tiny">页脚版本：{vinfo.footer_text()}｜口径表版本 '
-      f'{vinfo.info().get("caliber_version") or CAL.CALIBER_VERSION}</div>')
+    # 七条口径改成卡片，而不是一张七列的宽表：
+    # 「口径定义」一列在 1200px 里只能分到 200px，长句被压成一列竖排的字，
+    # 读者反馈「看不清」。卡片按两列排，定义占满卡片宽度，分母/最小样本/
+    # 缺失处理放同一行元信息，七条一眼能扫完。
+    _cal = CAL.table()
+    _cards = []
+    for _r in _cal:
+        _cards.append(
+            f'<div style="flex:1 1 48%;min-width:420px;background:#FFFFFF;'
+            f'border:1px solid {C.COLOR["line"]};border-radius:9px;padding:10px 13px">'
+            f'<div style="display:flex;justify-content:space-between;gap:8px;'
+            f'align-items:baseline">'
+            f'<div style="font-size:13.5px;font-weight:700;color:#1B2A3A">'
+            f'{_r["name"]}'
+            f'<span style="font-family:ui-monospace,Consolas,monospace;font-size:10.5px;'
+            f'color:{C.COLOR["text_dim"]};margin-left:6px">{_r["metric_id"]}</span></div>'
+            f'<div style="font-size:10.5px;color:{C.COLOR["text_dim"]};'
+            f'white-space:nowrap">{_r["version"]}</div></div>'
+            f'<div style="font-size:12px;line-height:1.75;color:#37485C;'
+            f'margin:4px 0 5px">{_r["definition"]}</div>'
+            f'<div style="font-size:11px;line-height:1.7;color:{C.COLOR["text_dim"]};'
+            f'border-top:1px dashed {C.COLOR["grid"]};padding-top:4px">'
+            f'分母：{_r["denominator"]}　·　最小样本：{_r["min_n"]}'
+            f'<br>缺失处理：{_r["missing"]}</div></div>')
+    h('<div style="display:flex;flex-wrap:wrap;gap:9px;margin:4px 0 8px">'
+      + "".join(_cards) + '</div>')
 
     # =====================================================================
     # 样本漏斗

@@ -126,9 +126,6 @@ def fuzz_fund(at: AppTest, fast: bool) -> None:
 
 
 def fuzz_misc(at: AppTest) -> None:
-    for pm in list([w for w in at.radio if w.key == "pct_mode"][0].options):
-        [w for w in at.radio if w.key == "pct_mode"][0].set_value(pm)
-        run(at, f"全局 分位口径={pm[:10]}")
     at.radio(key="page").set_value("② 本期解读（全市场）")
     run(at, "② 进入页面")
     for o in list([w for w in at.radio if w.key == "stock_basis"][0].options):

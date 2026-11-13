@@ -48,37 +48,55 @@ def concl_board(items: list[str], accent: str | None = None,
 
 
 def analysis(h, fact: str, econ: str = "", invest: str = "",
-             tag1: str = "事实", tag2: str = "经济含义",
-             tag3: str = "投资含义") -> None:
-    """图下方的三段式分析块。
+             tag1: str = "数据", tag2: str = "含义", tag3: str = "动作") -> None:
+    """图下方的读数卡：**左栏数据、右栏含义与动作**。
 
-    为什么不再叫「读图」
-    --------------------
-    「读图：横轴是…、纵轴是…」只教会读者看坐标轴，没有提供任何判断。
-    这里改成三段实质内容：数据本身说了什么 → 背后的经济机制 →
-    对仓位/买卖的具体含义。读者要的是后两段。
+    为什么从「竖着叠三段」改成两栏
+    ------------------------------
+    三段竖排时，每张图下面要占 300–400px；六张图就是 2000px 的纯文字，
+    读者滚到第三张就忘了第一张在说什么。改成两栏后高度由
+    max(数据, 含义+动作) 决定，实测省掉约四成纵向空间，
+    而且「看到了什么 / 所以怎么做」左右并置，比上下更容易对照。
+
+    文字本身不改：事实仍是可复算的数字，经济含义仍给机制，
+    动作仍是条件句——只是不再各占一行。
     """
-    rows = []
-    if fact:
-        rows.append((tag1, fact, C.COLOR["price"], "#FFFFFF"))
+    if not fact and not econ and not invest:
+        return
+    left = (f'<div style="flex:1 1 44%;min-width:330px;padding:11px 15px 13px;'
+            f'background:#FFFFFF">'
+            f'<div style="font-size:{FS_SMALL}px;font-weight:700;color:{C.COLOR["price"]};'
+            f'margin-bottom:3px">{tag1}</div>'
+            f'<div style="font-size:{FS_BODY}px;line-height:1.9;color:#26374A">{fact}</div>'
+            f'</div>') if fact else ""
+    # 没有「数据」栏时（例如行业页的 KPI 已经把数字说完），
+    # 含义与动作左右并排，而不是上下叠——否则整段文字会横跨 150 字宽，最难读。
+    _stack = not fact
     if econ:
-        rows.append((tag2, econ, C.COLOR["accent"], C.COLOR["panel"]))
+        right_rows = (
+            f'<div style="padding:11px 15px 10px;flex:1 1 {"48%" if _stack else "auto"}">'
+            f'<div style="font-size:{FS_SMALL}px;font-weight:700;color:{C.COLOR["accent"]};'
+            f'margin-bottom:3px">{tag2}</div>'
+            f'<div style="font-size:{FS_BODY}px;line-height:1.9;color:#26374A">{econ}</div>'
+            f'</div>')
+    else:
+        right_rows = ""
     if invest:
-        rows.append((tag3, invest, C.COLOR["threshold"], "#FFF9F9"))
-    # 标签列宽按最长标签算：固定 62px 时，「五个数字怎么连起来读」会被挤成
-    # 一个字一行的竖排，看起来像排版坏了（读者截图反馈过）。
-    _w = max([62] + [min(112, 14 * len(str(t)) + 12) for t, *_ in rows])
-    body = ""
-    for tag, txt, col, bg in rows:
-        body += (
-            f'<div style="display:flex;gap:10px;padding:9px 14px;background:{bg};'
-            f'border-top:1px solid {C.COLOR["grid"]}">'
-            f'<div style="flex:0 0 {_w}px;font-size:{FS_SMALL}px;font-weight:700;'
-            f'color:{col};line-height:1.85">{tag}</div>'
-            f'<div style="flex:1;font-size:{FS_BODY}px;line-height:1.95;'
-            f'color:#26374A">{txt}</div></div>')
-    h(f'<div style="border:1px solid {C.COLOR["line"]};border-radius:9px;'
-      f'overflow:hidden;margin:6px 0 18px">{body}</div>')
+        right_rows += (
+            f'<div style="padding:9px 15px 12px;background:#FFF9F9;'
+            f'{"border-left:1px dashed " + C.COLOR["grid"] if _stack else "border-top:1px dashed " + C.COLOR["grid"]};'
+            f'flex:1 1 {"46%" if _stack else "auto"}">'
+            f'<div style="font-size:{FS_SMALL}px;font-weight:700;'
+            f'color:{C.COLOR["threshold"]};margin-bottom:3px">{tag3}</div>'
+            f'<div style="font-size:{FS_BODY}px;line-height:1.9;color:#26374A">{invest}</div>'
+            f'</div>')
+    right = (f'<div style="flex:1 1 56%;min-width:340px;display:flex;flex-wrap:wrap;'
+             f'{"border-left:1px solid " + C.COLOR["grid"] if not _stack else ""};'
+             f'background:{C.COLOR["panel"] if not _stack else "#FFFFFF"}">'
+             f'{right_rows}</div>') if right_rows else ""
+    h(f'<div style="display:flex;flex-wrap:wrap;border:1px solid {C.COLOR["line"]};'
+      f'border-radius:10px;overflow:hidden;margin:7px 0 20px;'
+      f'box-shadow:0 1px 2px rgba(16,24,40,0.03)">{left}{right}</div>')
 
 
 def data_insufficient(n, need, why: str = "", unit: str = "期") -> str:

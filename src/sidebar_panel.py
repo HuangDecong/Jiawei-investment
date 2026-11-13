@@ -37,7 +37,13 @@ def _body(page: str = "") -> None:
         return f"{v['cat']} · {v['name']}"
 
     pick = st.selectbox("选择指标", keys, format_func=_lab, key=f"gl_pick_{_ctxkey}")
-    st.markdown(g.card_html(pick, C.COLOR), unsafe_allow_html=True)
+    # 词典卡平均 500–900px 高，直接铺开会把「三套口径」「版本行」顶到侧栏外面——
+    # 读者以为没有版本信息。给卡片一个固定高度、内部滚动，底部信息就永远可见。
+    # 侧栏窄、弹窗宽：同一个容器在弹窗里给更高，避免刚打开就要滚。
+    _h = 520 if st.session_state.get("_gl_in_dialog") else 296
+    with st.container(height=_h, border=True):
+        st.markdown(g.card_html(pick, C.COLOR), unsafe_allow_html=True)
+
 
     # 光靠搜索不够：读者不知道「有哪些词可以查」。
     # 给一份按分类排的全量清单，扫一眼就知道覆盖到哪。
@@ -47,13 +53,6 @@ def _body(page: str = "") -> None:
             st.markdown(g.compact_table(C.COLOR), unsafe_allow_html=True)
         else:
             st.markdown(g.name_list_html(C.COLOR), unsafe_allow_html=True)
-
-    st.markdown(
-        f'<div style="font-size:10.5px;line-height:1.7;color:{C.COLOR["text_dim"]};'
-        f'margin-top:6px">'
-        f'数据：东方财富基金定期报告（主口径）　行业：申万一级 31 个<br>'
-        f'数字全部由 <span style="font-family:monospace">src/canon.py</span> 统一提供。</div>',
-        unsafe_allow_html=True)
 
 
 def _ctx() -> str:
@@ -84,22 +83,19 @@ def render(page: str = "") -> None:
             unsafe_allow_html=True)
         _body(page)
         st.markdown("---")
+        # 「三套口径」的完整对照表在 ⑥ 方法页；侧栏只留一句指路，
+        # 不再把同一张表的两段说明抄一遍（那是侧栏被撑长的主因之一）。
         st.markdown(
-            f'<div style="font-size:12px;font-weight:700;margin-bottom:3px">三套口径</div>'
-            f'<div style="font-size:10.5px;line-height:1.75;color:#37485C">'
-            f'<b>A 全持仓</b>（半年报）：占净值比，可做主动/被动分解，最准但一年两次。<br>'
-            f'<b>B 前十大</b>（季报）：每只基金取前 10 只再归一化，每期都有，'
-            f'用来算广度与环比。<br>'
-            f'<b>C 个股</b>：同披露类型两期对比，看谁被建仓/移出。<br>'
-            f'<span style="color:{C.COLOR["threshold"]}">三套不能相加</span>——'
-            f'它们的分母与披露范围都不同。</div>',
+            f'<div style="font-size:10.5px;line-height:1.7;color:{C.COLOR["text_dim"]}">'
+            f'<b>三套口径不能相加</b>（全持仓 / 前十大 / 个股只数）：'
+            f'分母与披露范围不同，混算没有含义。完整对照见 '
+            f'<b>⑥ 方法与口径 · 二、三套口径</b>。</div>',
             unsafe_allow_html=True)
         st.markdown("---")
         st.markdown(
             f'<div style="font-size:10.5px;line-height:1.7;color:{C.COLOR["text_dim"]}">'
-            f'当前页：<b>{page or "—"}</b><br>'
-            f'侧边栏可以点左上角的「«」收起；收起后用顶栏的'
-            f'<b>「📖 指标速查」</b>随时弹出同一份词典。</div>',
+            f'当前页 <b>{page or "—"}</b>　·　侧栏可点「«」收起，'
+            f'收起后用顶栏「📖 指标速查」打开同一份词典。</div>',
             unsafe_allow_html=True)
         # 版本行固定在侧栏最底部：**判断线上跑的是哪一版，只看这一行**。
         # 内容来自 version.json（构建时写入），运行时不调 git。

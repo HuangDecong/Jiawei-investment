@@ -250,7 +250,7 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     h('<div class="sec">三、九个因子：逐个展开，看完整说明书</div>')
     h('<div class="tiny" style="margin:-2px 0 8px">'
-      '九张卡片默认折叠，标题行就是「名称 · 结论 · IC」，扫一眼就知道谁有用；'
+      '九张卡片默认折叠，标题行只留「名称 · 结论」——IC/t 在上表已列，不重复；'
       '点开任意一张，可看到经济内容、投资含义、公式、步骤、阈值、失效条件与风险。'
       '第一张（最显著的因子）默认展开。</div>')
     # 按 |IC| 降序：最值得看的排最前，与上方速查表顺序一致
@@ -258,8 +258,9 @@ def render(h, B=None, IND=None) -> None:
     for _i, f in enumerate(F_sorted, 1):
         doc = DOC.get(f["key"], {})
         _c = _VERDICT_COLOR.get(f["verdict"], C.COLOR["text_dim"])
-        _lab = (f'{_i}. {f["name"]}　·　{f["verdict"]}　·　'
-                f'IC {f["ic_mean"]:+.3f}　t {f["t"]:+.2f}　{f["n"]} 期')
+        # 标题只留「序号 · 名称 · 结论」：IC / t / p / 期数在上方速查表里已有一行，
+        # 这里再抄一遍，折叠状态下看起来就是同一张表重复列了九次。
+        _lab = f'{_i}. {f["name"]}　·　{f["verdict"]}' 
         with st.expander(_lab, expanded=(_i == 1)):
             _steps = doc.get("steps") or []
             _steps_html = "<br>".join(f"{k}. {v}" for k, v in enumerate(_steps, 1)) or "—"
@@ -267,12 +268,11 @@ def render(h, B=None, IND=None) -> None:
                              'font-size:12.5px">' + str(f.get("formula", "—")) + "</span>")
             h(f'<div style="border:1px solid {C.COLOR["line"]};border-left:4px solid {_c};'
               f'border-radius:9px;padding:10px 14px;background:#FFFFFF">'
-              f'<div style="font-size:15px;font-weight:700;color:#16283C">{f["name"]}'
-              f'<span style="font-size:12.5px;color:{_c};margin-left:9px">{f["verdict"]}</span>'
-              f'<span style="font-size:12px;font-weight:400;color:{C.COLOR["text_dim"]};'
-              f'margin-left:10px">胜率 {f["win"]:.0f}%　单调性 '
+              f'<div style="font-size:12px;color:{C.COLOR["text_dim"]}">'
+              f'IC {f["ic_mean"]:+.3f}（t {f["t"]:+.2f}，{f["n"]} 期）'
+              f'　·　胜率 {f["win"]:.0f}%　·　单调性 '
               f'{(f["mono"] if f.get("mono") is not None else float("nan")):+.2f}'
-              f'</span></div>'
+              f'<span style="margin-left:8px">（判据见上方速查表）</span></div>' 
               + _field("经济内容", doc.get("econ", "—"), C.COLOR["price"])
               + _field("投资含义", doc.get("invest", "—"), C.COLOR["accent"])
               + _field("为什么这样算", doc.get("why", "—"), C.COLOR["text_dim"])

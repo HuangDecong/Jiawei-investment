@@ -31,6 +31,7 @@
 「别追高」先于「要回避」：价格到极值时，即使资金还在进也不加，但也不等于看空。
 """
 from __future__ import annotations
+from functools import lru_cache
 
 import json
 import os
@@ -185,6 +186,7 @@ def sensitivity(q: str | None = None) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+@lru_cache(maxsize=4)
 def summary(q: str | None = None) -> dict:
     """把动作表汇总成页头要用的几个数，避免各页面各算一遍。"""
     t = action_table(q)
@@ -267,6 +269,7 @@ def crowding_evidence() -> str:
     return "「拥挤即风险」只有方向、没有显著性，不能当卖出信号。"
 
 
+@lru_cache(maxsize=4)
 def conclusions(q: str | None = None) -> list[dict]:
     """生成全量结论清单（供「结论总览」页渲染）。
 

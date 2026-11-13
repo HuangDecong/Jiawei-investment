@@ -1658,10 +1658,10 @@ def fig_csi_position(s: pd.Series, name: str, window: int | None = None,
     _mu = float(v.mean())
     _sd = float(v.std(ddof=1)) if len(v) > 1 else float("nan")
     _z = (cur - _mu) / _sd if np.isfinite(_sd) and _sd > 0 else float("nan")
-    fig = _base(fig, f"{name}：当前 {cur:.0f} 分，处在{_wlab}的{_ptxt}"
-                     f"（均值 {_mu:.1f}±{_sd:.1f}"
-                     + (f"｜z={_z:+.1f}" if np.isfinite(_z) else "")
-                     + f"｜箱体＝中间 50%，须＝P10–P90，范围 {vmin:.0f}–{vmax:.0f}）",
+    # 标题不再写「当前 X 分、第 Y 分位、均值±σ」——这些数字下方的 KPI 条
+    # 已经逐个列出，重复一遍会让 196px 高的图里塞两行字。
+    fig = _base(fig, f"{name}：在{_wlab}里的位置"
+                     f"（箱体＝中间 50%，须＝P10–P90）",
                 196, legend=False)
     fig.update_layout(margin=dict(l=44, r=16, t=44, b=32))
     return fig

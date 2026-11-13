@@ -444,7 +444,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.11.12-r49.0"
+APP_VERSION = "2026.11.13-r50.0"
 
 
 def _fp_short() -> str:
@@ -509,10 +509,12 @@ def _hdr_tags() -> str:
             raise RuntimeError
         n = len(qs)
         nf = len(_cn.universe(qs[-1]))
-        return ('<span class="tag" style="background:#F2F5F8;color:#6B7A8C">'
-                f'31 行业 · {n} 期 · {nf:,} 只基金 · 截至 {qs[-1]}</span>'
-                '<span class="tag" style="background:#F2F5F8;color:#6B7A8C">'
-                '全持仓（半年报）看水平 · 前十大（季报）看广度</span>')
+        # 顶栏只留「数据范围」与「来源」两枚标签。
+        # 「全持仓看水平、前十大看广度」曾在这里出现，但 ①③⑥ 页各有一遍，
+        # 顶栏再来一遍只会让标题行折成两行、把页面往下推。
+        return ('<span class="tag" style="background:#F2F5F8;color:#6B7A8C" '
+                'title="数据来源：东方财富基金定期报告（全量披露）">'
+                f'31 行业 · {n} 期 · {nf:,} 只基金 · 截至 {qs[-1]}</span>')
     except Exception:
         return ('<span class="tag" style="background:#F2F5F8;color:#6B7A8C">'
                 f'31 行业 · 样本 {len(QUARTERS)} 季 · 截至 {LATEST}</span>')
@@ -523,14 +525,14 @@ h1, h2, h3 = st.columns([0.50, 0.22, 0.28])
 with h1:
     _h('<div class="hdr">'
                 '<span class="ttl">公募基金交易拥挤度与集中度仪表盘</span>'
-                '<span class="tag" style="background:#EAF1FB;color:#1F6FEB">'
-                '持仓：东方财富全量披露</span>'
                 + _hdr_tags() + '</div>')
 with h2:
-    pct_label = st.radio("分位口径", ["扩窗（无前视）", "全样本"],
-                         index=0, horizontal=True, key="pct_mode",
-                         help="扩窗：当期分位只用当期之前的历史（无未来信息）；"
-                              "全样本：用全部可用历史（含前视，仅供对照）。")
+    # 这里原来是一个「扩窗 / 全样本」单选，但**没有任何页面读取它**——
+    # 一个看起来能改全局口径、实际什么都不改的开关，比没有更糟。
+    # 现在改成固定说明：全站分位一律扩窗（无前视），口径定义见 ⑥ / caliber.py。
+    _h('<div class="tiny" style="padding-top:8px;line-height:1.5" '
+       'title="当期分位只用当期及以前的历史，不使用未来数据；定义见 ⑥ 方法与口径">'
+       '分位口径：<b>扩窗（无前视）</b></div>')
 with h3:
     c_a, c_b, c_c = st.columns([0.42, 0.32, 0.26])
     # 指标速查弹窗：侧边栏收起后，这是随时查指标的入口
@@ -541,9 +543,9 @@ with h3:
         st.cache_data.clear()
         st.rerun()
     with c_c:
-        _h(f'<div class="tiny" style="padding-top:2px;line-height:1.45;'
-           f'white-space:nowrap">{APP_VERSION.split("-")[-1]}<br>'
-           f'{_fp_short()}</div>')
+        _h(f'<div class="tiny" style="padding-top:6px;white-space:nowrap" '
+           f'title="数据指纹 {_fp_short()}（同一批数据本地与线上一致）">'
+           f'v{APP_VERSION.split("-")[-1].lstrip("r")}</div>')
 
 # 弹窗要在页面路由之前调用：各页在渲染完会 st.stop()，放在后面就永远不执行。
 # 切换页面时必须自动关掉——否则每 rerun 一次它都会重新弹出，

@@ -98,69 +98,28 @@ def render(h, B=None, IND=None) -> None:
     # A. 本页结论
     # =====================================================================
     _pct = float(pos_hist["中位"].rank(pct=True).iloc[-1] * 100) if not pos_hist.empty else np.nan
-    _concl = []
-    if pos:
-        _concl.append(
-            f'<b>总开关没动</b>：仓位中位 {pos["仓位1"]:.1f}%（{_npos} 期第 {_pct:.0f} 分位），'
-            f'变化 {pos["中位变化pp"]:+.2f}pp，{pos["加仓基金占比"]:.0f}% 的基金加仓。'
-            f'所以下面的行业变化是<b>内部换仓</b>，不是新增资金——'
-            f'某行业配置上升可以读成「机构更看好」，不必担心是「大盘涨、水涨船高」。')
-    if not dec.empty:
-        _u, _d = dec["主动贡献"].idxmax(), dec["主动贡献"].idxmin()
-        _pas = float(dec["被动贡献"].abs().sum())
-        _act = float(dec["主动贡献"].abs().sum())
-        _concl.append(
-            f'<b>配置变化大半是价格</b>：31 个行业里，价格带来的被动变化合计 '
-            f'{_pas:.1f}pp、机构主动只占 {_act:.1f}pp，'
-            f'被动占全部变动的 {_pas / (_pas + _act) * 100:.0f}%。'
-            f'主动净买最多 <b>{_u}（{dec.loc[_u, "主动贡献"]:+.2f}pp）</b>、'
-            f'净卖最多 <b>{_d}（{dec.loc[_d, "主动贡献"]:+.2f}pp）</b>。'
-            f'<b>这两个数才是机构的态度</b>，配置比例的变化不是。')
-    if not br.empty:
-        _gu = _br_ok.loc[_br_ok["加仓占比"].idxmax()]
-        _gd = _br_ok.loc[_br_ok["加仓占比"].idxmin()]
-        _n_c = int((_br_ok["判读"] == "共识形成").sum())
-        _n_s = int((_br_ok["判读"] == "系统性撤离").sum())
-        _concl.append(
-            f'<b>共识只在少数行业</b>：{_n_c} 个「共识形成」、{_n_s} 个「系统性撤离」，'
-            f'其余 {len(_br_ok) - _n_c - _n_s} 个多空对撞'
-            f'（已剔除 {len(br) - len(_br_ok)} 个小样本行业）。'
-            f'最高 <b>{_gu["行业"]} {_gu["加仓占比"]:.0f}%</b>（{_gu["持有基金数"]:.0f} 只持有者中 '
-            f'{_gu["加仓基金数"]:.0f} 只加、{_gu["减仓基金数"]:.0f} 只减），'
-            f'最低 <b>{_gd["行业"]} {_gd["加仓占比"]:.0f}%</b>。'
-            f'<b>只有「多数在加 + 净额为正」才叫共识</b>，加仓不到一半却净额为正的，'
-            f'是少数大基金在撑，最容易反转。')
-    if pq:
-        try:
-            _sf = cn.stock_flow_top10(*pq)          # 相邻季，前十大口径
-            _sf = _sf[(_sf["n_funds"] >= 10) | (_sf["n_funds_0"] >= 10)]
-            if not _sf.empty:
-                _a3 = _sf.nlargest(3, "d_n")
-                _c3 = _sf.nsmallest(3, "d_n")
-                _ind_n = _a3["industry"].value_counts()
-                _top_ind, _top_cnt = _ind_n.index[0], int(_ind_n.iloc[0])
-                _concl.append(
-                    f'<b>个股层（{pq[0]}→{pq[1]}，环比）</b>：被最多基金加进来的是 '
-                    + "、".join(f'{r["stock_name"]}（{r["d_n"]:+.0f} 家，{r["industry"]}）'
-                               for _, r in _a3.iterrows())
-                    + '；被减最多的是 '
-                    + "、".join(f'{r["stock_name"]}（{r["d_n"]:+.0f} 家，{r["industry"]}）'
-                               for _, r in _c3.iterrows())
-                    # 只有「前三里同一个行业占 2 只及以上」才能说行业性配置。
-                    # 三只各属三个行业时说「集中在电子」，是拿排序第一的行业名硬套，
-                    # 读者一看名单就知道不对（电子、医药、有色各一只）。
-                    + (f'。<b>加仓前三里 {_top_ind} 占 {_top_cnt} 只，是行业性加仓</b>，'
-                       f'跟行业方向做即可，不必逐只研究。'
-                       if _top_cnt >= 2 else
-                       f'。<b>这三只分属 {len(_ind_n)} 个行业，不属于行业性配置，而是选股</b>，'
-                       f'必须逐只判断基本面——买行业 ETF 替代不了。'))
-        except Exception:
-            pass
 
-    h(f'<div class="sec">一、本页结论 · {q}'
+    h(f'<div class="sec">一、本页导读 · {q}'
       f'<span style="font-weight:400;font-size:12.5px;color:{C.COLOR["text_dim"]};'
       f'margin-left:8px">样本 {n_funds:,} 只主动权益基金</span></div>')
-    h(ui.concl_board(_concl))
+    # 这一页是「证据页」，不是第二个结论页：① 已经给出判断与动作，
+    # 这里只回答四个可复算的问题，避免同一句话在两页各写一遍。
+    _q4 = [("①", "总仓位动了吗", "存量换仓还是增量入场"),
+           ("②", "配置变化里多少是价格", "把被动漂移从主动买卖里剥出来"),
+           ("③", "共识落在哪些行业", "多少人加 vs 加进去多少钱"),
+           ("④", "个股层换了谁", "行业性配置还是选股")]
+    h('<div style="display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 10px">'
+      + "".join(
+          f'<div style="flex:1 1 190px;min-width:170px;background:#FFFFFF;'
+          f'border:1px solid {C.COLOR["line"]};border-radius:9px;padding:8px 11px">'
+          f'<div style="font-size:11px;color:{C.COLOR["text_dim"]};font-weight:700">'
+          f'问题 {n}</div>'
+          f'<div style="font-size:13px;font-weight:700;color:#1B2A3A;line-height:1.5;'
+          f'margin:1px 0">{t}</div>'
+          f'<div style="font-size:11px;color:{C.COLOR["text_dim"]};line-height:1.55">'
+          f'{sub}</div></div>'
+          for n, t, sub in _q4)
+      + '</div>')
     h(_kpis([
         ("最新季报", q, f"全持仓期 {pf[1] if pf else '—'}"),
         ("样本基金", f"{n_funds:,}", "主动权益，剔主题基金"),
@@ -170,10 +129,10 @@ def render(h, B=None, IND=None) -> None:
                         f"{int((_br_ok['判读'] == '系统性撤离').sum())}" if not br.empty else "—",
          "行业数，见第 4 张图"),
     ]))
-    h(f'<div class="tiny" style="margin-top:4px">本页只讲「数据说了什么」；'
-      f'「该买什么、买多少、什么时候推翻」在「① 结论总览」，两页用同一套规则，不会打架。'
-      f'　<b>本页是全市场横截面</b>（{n_funds:,} 只基金的汇总）：机构整体在加什么、撤什么；'
-      f'单只基金这一季的季报原文（资产/份额/前十/买卖）见「④ 单只基金」，两者样本不同、不重复。</div>')
+    h(f'<div class="tiny" style="margin-top:4px">判断、动作与仓位在「① 结论总览」，'
+      f'本页只给证据与推导，两页共用同一套数字。'
+      f'单只基金的季报原文见「④ 单只基金」——那是<b>一只基金</b>，这里是 '
+      f'{n_funds:,} 只的横截面，样本不同、不重复。</div>')
     st.write("")
 
     # =====================================================================
@@ -298,13 +257,12 @@ def render(h, B=None, IND=None) -> None:
     if not br.empty:
         h('<div style="font-size:12px;font-weight:700;margin:10px 0 4px">'
           f'图 4　谁在动：{pq[0]} → {pq[1]} 的前十大口径（季频、价格中性）</div>')
-        _c1, _c2 = st.columns([0.56, 0.44], gap="small")
-        with _c1:
-            st.plotly_chart(rc.fig_breadth(br, 12, _SMALL), width="stretch",
-                            config={"displayModeBar": False})
-        with _c2:
-            st.plotly_chart(rc.fig_breadth_vs_move(br, _SMALL), width="stretch",
-                            config={"displayModeBar": False})
+        # 31 个行业的标签在 600px 里必然叠字（截图反馈过）：两张图改为通栏上下排，
+        # 条形图看「谁偏离 50% 最远」，散点看「共识与力度是否同向」。
+        st.plotly_chart(rc.fig_breadth(br, 14, _SMALL), width="stretch",
+                        config={"displayModeBar": False})
+        st.plotly_chart(rc.fig_breadth_vs_move(br, _SMALL), width="stretch",
+                        config={"displayModeBar": False})
         h(f'<div class="tiny">口径：前十大归一化，逐基金算<b>价格中性</b>变化'
           f'（假设不交易时权重随行业指数漂移，实际与反事实之差才是交易）；'
           f'单只基金变化超过 ±0.1pp 才计数。'
@@ -375,18 +333,26 @@ def render(h, B=None, IND=None) -> None:
                     "同比Δ": _sf_other["d_n"].reindex(sf.index) if not _sf_other.empty else np.nan,
                     "行业": sf["industry"],
                 })
-                _show = _cmp.reindex(
-                    list(_a.index) + list(_c.index)).drop_duplicates()
-                _show = _show.rename(columns={"index": "代码"})
-                _show.index.name = "代码"
-                st.dataframe(_show.reset_index(), width="stretch", hide_index=True,
-                             height=250,
-                             column_config={
-                                 "本期基金数": st.column_config.NumberColumn(format="%.0f"),
-                                 "环比Δ": st.column_config.NumberColumn(format="%+.0f"),
-                                 "同比Δ": st.column_config.NumberColumn(
-                                     format="%+.0f", help="与上年同季比，正数＝这一年被更多基金持有"),
-                             })
+                # 图 5 已经把「加最多 / 减最多」画出来了，这里再列同一批股票
+                # 就是重复。表只留图上没有的信息：**环比与同比方向相反**的股票——
+                # 它们暴露了持仓周期的切换，也是正文里「最需要警惕」的那一类。
+                _conf = _cmp[(_cmp["环比Δ"] * _cmp["同比Δ"]) < 0].copy()
+                if len(_conf):
+                    _conf["_abs"] = _conf["同比Δ"].abs()
+                    _conf = _conf.sort_values("_abs", ascending=False).drop(columns="_abs")
+                    _conf.index.name = "代码"
+                    with st.expander(
+                            f"环比与同比打架的 {len(_conf)} 只：一个时间尺度在加、另一个在减",
+                            expanded=False):
+                        st.dataframe(_conf.reset_index(), width="stretch",
+                                     hide_index=True, height=min(320, 40 + 33 * len(_conf)),
+                                     column_config={
+                                         "本期基金数": st.column_config.NumberColumn(format="%.0f"),
+                                         "环比Δ": st.column_config.NumberColumn(format="%+.0f"),
+                                         "同比Δ": st.column_config.NumberColumn(
+                                             format="%+.0f",
+                                             help="与上年同季比，正数＝这一年被更多基金持有"),
+                                     })
                 _read(h,
                       f'被最多基金新买入：' + "、".join(
                           f'{r["stock_name"]}（{r["n_funds_0"]:.0f}→{r["n_funds"]:.0f} 家，'
@@ -467,35 +433,37 @@ def render(h, B=None, IND=None) -> None:
             return (f"background-color:{c}1F;color:{c};font-weight:600") if c else ""
 
         _styled = show.style.map(_tint, subset=["判读", "读数"])
-        st.dataframe(
-            _styled, width="stretch", hide_index=True, height=560,
-            column_config={
-                f"配置%({qf_})": st.column_config.NumberColumn(
-                    format="%.2f", help="全持仓口径，占净值比；之和＝股票仓位"),
-                f"半年主动pp({qf0_}→{qf_})": st.column_config.NumberColumn(
-                    format="%+.2f", help="GK 分解后的机构主动部分（半年报口径）"),
-                f"半年被动pp({qf0_}→{qf_})": st.column_config.NumberColumn(
-                    format="%+.2f", help="价格涨跌带来的部分（半年报口径）"),
-                f"前十配置%({q_})": st.column_config.NumberColumn(
-                    format="%.2f", help=f"前十大归一化口径，{_nq} 期都有，用于环比/同比"),
-                f"环比pp({qp_}→{q_})": st.column_config.NumberColumn(
-                    format="%+.2f", help="含价格漂移，是结果不是动作"),
-                f"同比pp({qy_}→{q_})": st.column_config.NumberColumn(format="%+.2f"),
-                f"当期主动pp({qp_}→{q_})": st.column_config.NumberColumn(
-                    format="%+.2f", help="价格中性后的净买卖"),
-                f"配置分位({_nq}期)": st.column_config.ProgressColumn(
-                    format="%.0f", min_value=0, max_value=100,
-                    help=f"该行业当前配置在自身 {_nq} 期历史中的排名"),
-                f"加仓占比%({q_})": st.column_config.NumberColumn(
-                    format="%.0f", help="分母是「加仓+减仓」的基金数，不是全部样本"),
-                "判读": st.column_config.TextColumn(width="small"),
-                "行业": st.column_config.TextColumn(width="small", pinned=True),
-                "读数": st.column_config.TextColumn(
-                    width="small",
-                    help="真加仓＝当期净额为正且多数在加；少数大基金加＝净额为正但广度不足；"
-                         "真撤退＝净额为负且多数在减；小基金接盘＝多数在加但净额为负；"
-                         "方向冲突＝介于两者之间"),
-            })
+        with st.expander("行业台账：31 行 × 12 列（可排序，写在正文会占 560px）",
+                     expanded=False):
+            st.dataframe(
+                _styled, width="stretch", hide_index=True, height=560,
+                column_config={
+                    f"配置%({qf_})": st.column_config.NumberColumn(
+                        format="%.2f", help="全持仓口径，占净值比；之和＝股票仓位"),
+                    f"半年主动pp({qf0_}→{qf_})": st.column_config.NumberColumn(
+                        format="%+.2f", help="GK 分解后的机构主动部分（半年报口径）"),
+                    f"半年被动pp({qf0_}→{qf_})": st.column_config.NumberColumn(
+                        format="%+.2f", help="价格涨跌带来的部分（半年报口径）"),
+                    f"前十配置%({q_})": st.column_config.NumberColumn(
+                        format="%.2f", help=f"前十大归一化口径，{_nq} 期都有，用于环比/同比"),
+                    f"环比pp({qp_}→{q_})": st.column_config.NumberColumn(
+                        format="%+.2f", help="含价格漂移，是结果不是动作"),
+                    f"同比pp({qy_}→{q_})": st.column_config.NumberColumn(format="%+.2f"),
+                    f"当期主动pp({qp_}→{q_})": st.column_config.NumberColumn(
+                        format="%+.2f", help="价格中性后的净买卖"),
+                    f"配置分位({_nq}期)": st.column_config.ProgressColumn(
+                        format="%.0f", min_value=0, max_value=100,
+                        help=f"该行业当前配置在自身 {_nq} 期历史中的排名"),
+                    f"加仓占比%({q_})": st.column_config.NumberColumn(
+                        format="%.0f", help="分母是「加仓+减仓」的基金数，不是全部样本"),
+                    "判读": st.column_config.TextColumn(width="small"),
+                    "行业": st.column_config.TextColumn(width="small", pinned=True),
+                    "读数": st.column_config.TextColumn(
+                        width="small",
+                        help="真加仓＝当期净额为正且多数在加；少数大基金加＝净额为正但广度不足；"
+                             "真撤退＝净额为负且多数在减；小基金接盘＝多数在加但净额为负；"
+                             "方向冲突＝介于两者之间"),
+                })
         h(f'<div class="tiny">三组列、三种期次，<b>不要相加</b>：'
           f'「配置/半年主动/半年被动」是<b>全持仓半年报</b>口径（{qf0_}→{qf_}），'
           f'最准但一年两次；「前十配置/环比/同比/当期主动/加仓占比」是'
@@ -506,18 +474,11 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     # D. 方法与免责
     # =====================================================================
-    h('<div class="sec">四、这套判断的边界（不写清楚就等于骗人）</div>')
+    h('<div class="sec">四、本页特有的两条边界</div>')
     h('<div class="cg-note" style="line-height:1.9">'
-      '· <b>它是描述，不是预测</b>：加仓广度对次季行业收益的 RankIC 长期在 0 附近、'
-      'p 值不显著（实测见「因子检验」页）；「拥挤即风险」只有方向、没有统计显著性。'
-      '它能告诉你机构在做什么，不能告诉你接下来会涨什么。<br>'
-      '· <b>季报有时滞</b>：季末到数据可得约 3–4 周（法定 15 个工作日），'
-      '本期数据抓取于季末后 28 天，你看到时下季度已过约 1/3。'
-      '所有「本期」都是「上一个已披露期」，不是「今天」。<br>'
-      '· <b>季报只有前十大</b>：Q1/Q3 每只基金只披露 10 只股票，'
-      '所以季报期的配置一律用来算广度，不用来判断绝对水平。<br>'
-      '· <b>主动/被动只在半年报做</b>：季报的前十大会换人，逐季做 GK 分解噪声极大，'
+      '· <b>主动/被动只在半年报做</b>：季报的前十大每季换人，逐季做 GK 分解噪声极大，'
       '本库不做这种「看起来更精细、实际更不可靠」的事。<br>'
-      '· <b>操作建议是规则输出，不是投资建议</b>：规则事前固定、触发条件可验证，'
-      '但你的风险预算、持有期限、税负都不在模型里。'
-      '</div>')
+      '· <b>图 2 与图 3 不是同一段时间</b>：图 2 是上一个半年（全持仓），'
+      '图 3 起是本季环比（前十大）；两张图的数字不能直接相减。<br>'
+      '其余边界（季报只有前十大、3–4 周时滞、幸存者偏差）见「① 结论总览 · 四条硬约束」'
+      '与「⑥ 方法与口径 · 三套口径」，本页不重复。</div>')

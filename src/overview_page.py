@@ -29,6 +29,7 @@ import streamlit as st
 import canon as cn
 import config as C
 import playbook as pb
+import ui
 
 FS_BODY = 13.5
 FS_SMALL = 12.5
@@ -81,40 +82,6 @@ def _concl_card(i: int, c: dict) -> str:
         f'border-radius:5px;font-size:{FS_SMALL}px;line-height:1.8;color:#7A4A00">'
         f'<b>什么时候这条不成立</b>：{c["fail"]}</div>'
         f'</div></div></div>')
-
-
-def _action_block(title: str, sub: str, df: pd.DataFrame, color: str, cols=0) -> str:
-    """一个动作卡片：标题 + 一行解释 + 每个行业一行完整理由。"""
-    if df.empty:
-        body = (f'<div style="font-size:{FS_SMALL}px;color:#6B7A8C;'
-                f'padding:6px 0">本期没有符合条件。</div>')
-    else:
-        rows = []
-        for i, r in df.iterrows():
-            _cells = "　".join(
-                f'{k} <b>{v}</b>' for k, v in [
-                    ("当期", f'{r["当期主动pp"]:+.2f}pp'),
-                    ("广度", f'{r["加仓占比"]:.0f}%'),
-                    ("配置", f'{r["历史分位"]:.0f}'),
-                    ("价格", f'{r.get("指数分位", np.nan):.0f}'
-                     if np.isfinite(r.get("指数分位", np.nan)) else "—"),
-                ])
-            rows.append(
-                f'<div style="padding:7px 0;border-top:1px dashed {C.COLOR["line"]}">'
-                f'<div style="font-size:14px;font-weight:700">{i}'
-                f'<span style="font-size:{FS_SMALL}px;color:{C.COLOR["text_dim"]};'
-                f'font-weight:400;margin-left:6px">{r["强度"]}</span></div>'
-                f'<div style="font-size:{FS_SMALL}px;color:#37485C;line-height:1.8;'
-                f'margin-top:2px">{_cells}</div>'
-                f'<div style="font-size:{FS_BODY}px;line-height:1.85;margin-top:3px;'
-                f'color:#26374A">{r["理由"]}</div>'
-                f'</div>')
-        body = "".join(rows)
-    return (f'<div style="border:1px solid {C.COLOR["line"]};border-top:4px solid {color};'
-            f'border-radius:9px;padding:10px 13px;height:100%">'
-            f'<div style="font-size:15px;font-weight:700;color:{color}">'
-            f'{title}　<span style="color:{C.COLOR["text_dim"]};font-weight:400;'
-            f'font-size:{FS_SMALL}px">{sub}</span></div>{body}</div>')
 
 
 def render(h, B=None, IND=None) -> None:
@@ -202,61 +169,105 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     # 结论清单
     # =====================================================================
-    h('<div class="sec">二、全部结论：每条都写清证据、经济含义、操作与失效条件</div>')
+    h('<div class="sec">二、本期结论：三条能落地，其余六条按需展开</div>')
     h(f'<div class="cg-note" style="font-size:12.5px">'
-      f'下面这 9 条覆盖本期季报的九个方面：总仓位 → 换仓主线 → '
-      f'可以跟/别追高/要回避 → 待确认 → 个股层 → 拥挤度 → 反面证据。'
-      f'每条都能用库里的数据复算。</div>')
+      f'每条都按「结论 → 证据 → 经济含义 → 操作 → 失效条件」写，数字都能用库里的数据复算。'
+      f'前三条直接对应下面的行业动作；后六条是结构性观察，展开或去对应页看细节——'
+      f'<b>不在这里重复一遍</b>。</div>')
     _cs_list = pb.conclusions(q)
-    for i, c in enumerate(_cs_list, 1):
+    for i, c in enumerate(_cs_list[:3], 1):
         h(_concl_card(i, c))
+    _rest = _cs_list[3:]
+    if _rest:
+        # 后六条与 ②③⑤ 页大量重叠（个股层、行业拥挤度、方法边界）。
+        # 这里只留「一句话 + 去哪看」，不再把六张长卡重贴一遍。
+        _where = {"个股层": "② 本期解读", "拥挤度": "③ 行业拥挤度",
+                  "方法": "⑤ 因子检验", "换仓": "② 本期解读"}
+        rows = []
+        for j, c in enumerate(_rest, 4):
+            _w = next((v for k, v in _where.items() if k in str(c.get("tag", ""))),
+                      "③ 行业拥挤度")
+            rows.append(
+                f'<div style="display:flex;gap:10px;align-items:baseline;'
+                f'padding:7px 0;border-top:1px dashed {C.COLOR["line"]}">'
+                f'<div style="flex:0 0 22px;font-size:12px;font-weight:700;'
+                f'color:{C.COLOR["text_dim"]}">{j}</div>'
+                f'<div style="flex:1;font-size:13px;line-height:1.75;color:#26374A">'
+                f'{c["claim"]}'
+                f'<span style="color:{C.COLOR["text_dim"]};font-size:11.5px;'
+                f'margin-left:6px">［{c["tag"]}］</span></div>'
+                f'<div style="flex:0 0 92px;text-align:right;font-size:11.5px;'
+                f'color:{C.COLOR["price"]}">详见 {_w}</div></div>')
+        with st.expander(f"其余 {len(_rest)} 条：结构性观察（个股层 / 行业拥挤 / 方法边界）",
+                         expanded=False):
+            h('<div style="margin-top:-2px">' + "".join(rows) + '</div>')
+            h(f'<div class="tiny" style="margin-top:6px">'
+              f'这六条的完整证据链在对应页：个股层见 ② 图 5–6，'
+              f'行业拥挤度见 ③ 的 31 行业地图与对照表，'
+              f'「能描述不能预测」的检验见 ⑤ 的 9 个因子与 IC 表。</div>')
 
     # =====================================================================
-    # 投资建议
-    # =====================================================================
-    h('<div class="sec">三、投资建议：四类动作，逐行业给出理由</div>')
+    h('<div class="sec">三、投资建议：四类动作，31 个行业逐个交代</div>')
     h(f'<div class="cg-note" style="font-size:12.5px">'
       f'筛选条件全部事前固定（阈值写在 <span class="mono">playbook.TH</span>）：'
       f'<b>可以跟</b>＝当期主动≥+0.3pp 且 广度≥60% 且 配置分位≤80 且 价格分位≤85；'
       f'<b>别追高</b>＝配置分位≥80 或 价格分位≥90，但资金还在进；'
       f'<b>要回避</b>＝当期主动≤−0.4pp 且 广度≤50%，或配置分位≥90 且没人接；'
       f'<b>等确认/观察</b>＝方向不干净。'
-      f'「当期主动」是价格中性后的净买入（见方法页），不是原始权重变化。'
-      f'31 个行业全部有交代：四类动作之外，其余归为「中性」。</div>')
+      f'「当期主动」是价格中性后的净买入（见方法页），不是原始权重变化。</div>')
+    _acts = [("① 可以跟", "资金在进 · 多数在加 · 价格不贵", _hi, C.COLOR["up"]),
+             ("② 别追高", "位置到极值 · 资金还在进", _hot, C.COLOR["level_拥挤"]),
+             ("③ 要回避", "资金在撤 · 没人接", _av, C.COLOR["down"]),
+             ("④ 等确认 / 观察", "方向不干净 · 只给观察仓",
+              t[t["动作"].isin(["等确认", "观察"])], C.COLOR["text_dim"])]
+    h(ui.stat_strip([(a[0], f"{len(a[2])} 个", a[1]) for a in _acts]))
+    _tab = st.tabs([f"{a[0]}" for a in _acts])  # 数量已在上方统计条
+    for _box, (title, sub, df, color) in zip(_tab, _acts):
+        with _box:
+            if df.empty:
+                h(f'<div class="tiny" style="padding:10px 0">'
+                  f'本期没有符合「{title[2:]}」条件的行业。</div>')
+                continue
+            _v = df.reset_index().rename(columns={"index": "行业"})
+            # 不再放「理由」列：那句话就是把后面四个数字串起来说一遍，
+            # 表格里既有数字又有文字，反而看不完（右侧会被截断）。
+            _cols = [c for c in ["行业", "当期主动pp", "加仓占比", "历史分位",
+                                 "指数分位", "强度"] if c in _v.columns]
+            _v = _v[_cols].rename(columns={"加仓占比": "广度%",
+                                           "历史分位": "配置分位",
+                                           "指数分位": "价格分位"})
+            st.dataframe(
+                _v, hide_index=True, width="stretch",
+                height=min(430, 40 + 31 * len(_v)),
+                column_config={
+                    "行业": st.column_config.TextColumn(width="small"),
+                    "当期主动pp": st.column_config.NumberColumn(
+                        format="%+.2f", help="价格中性后的净买入；正＝资金在进"),
+                    "广度%": st.column_config.NumberColumn(
+                        format="%.0f", help="加仓基金占「有实质变动」基金的比例"),
+                    "配置分位": st.column_config.ProgressColumn(
+                        format="%.0f", min_value=0, max_value=100),
+                    "价格分位": st.column_config.ProgressColumn(
+                        format="%.0f", min_value=0, max_value=100),
+                    "强度": st.column_config.TextColumn(width="small"),
+                })
+            h(f'<div class="tiny" style="margin-top:2px">{sub}　·　'
+              f'按「当期主动」降序；四个数字就是判定依据，口径见页底。</div>')
 
-    c1, c2 = st.columns(2, gap="small")
-    with c1:
-        h(_action_block("① 可以跟", "资金在进 · 多数在加 · 价格不贵",
-                        _hi, C.COLOR["up"]))
-    with c2:
-        h(_action_block("② 别追高", "位置到极值 · 资金还在进",
-                        _hot, C.COLOR["level_拥挤"]))
-    c3, c4 = st.columns(2, gap="small")
-    with c3:
-        h(_action_block("③ 要回避", "资金在撤 · 没人接",
-                        _av, C.COLOR["down"]))
-    with c4:
-        _wt = t[t["动作"].isin(["等确认", "观察"])]
-        h(_action_block("④ 等确认 / 观察", "方向不干净 · 只给观察仓",
-                        _wt, C.COLOR["text_dim"]))
-
-    # 31 个行业必须全部有交代：四类动作之外还有「中性」，
-    # 不写出来读者会以为「没列到的 13 个是漏了」。
+    # 31 个行业必须全部有交代：四类动作之外还有「中性」。
     _neu = t[t["动作"] == "中性"]
     if len(_neu):
         _small_n = _neu[_neu.get("可靠", pd.Series(index=_neu.index)).eq("小样本")]
-        _txt_n = (f'其余 <b>{len(_neu)}</b> 个行业未触发任何动作（动作表里统一记为「中性」）：'
-                  f'{"、".join(_neu.index)}。中性＝不满足上面四类动作的任一条件，'
+        _txt_n = (f'其余 <b>{len(_neu)}</b> 个行业未触发任何动作（记为「中性」）：'
+                  f'{"、".join(_neu.index)}。中性＝不满足四类动作的任一条件，'
                   f'维持不动、不新增也不减仓。')
         if len(_small_n):
             _txt_n += (f'其中 {len(_small_n)} 个是<b>小样本、不评级</b>'
                        f'（{"、".join(_small_n.index)}）：持有基金 &lt;150 只或'
                        f'前十配置 &lt;0.5%，分位与 CSI 噪音太大；'
                        f'它们只是被归入「不动作」，不代表真的中性。')
-        h(f'<div class="tiny" style="margin:4px 0 10px">{_txt_n}</div>')
+        h(f'<div class="tiny" style="margin:2px 0 10px">{_txt_n}</div>')
 
-    # =====================================================================
-    # 操作建议
     # =====================================================================
     h('<div class="sec">四、操作建议：仓位、节奏、什么时候推翻</div>')
     # 用「离散度」而不是「分歧度」做加仓惩罚：
