@@ -123,6 +123,11 @@ def _chips(items: list[tuple[str, str]]) -> str:
     return f'<div style="margin:0 0 6px">{"".join(out)}</div>'
 
 
+def _an(h, fact, econ="", invest="", **kw):
+    """季报页只保留「事实 + 含义」：操作建议在 ① 结论页，不在每节重复。"""
+    ui.analysis(h, fact, econ, "", **kw)
+
+
 def render(h, code: str | None = None, show_picker: bool = True) -> None:
     funds = _funds()
     if funds.empty:
@@ -377,7 +382,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     _inv = ("规模靠申购 + 行业切换 + 前十大换手同时出现，意味着这是一次<b>主动的方向调整</b>："
             "要顺着新进的行业和股票去验证逻辑，而不是看它过去三年的业绩。"
             "反过来，三项都没动，说明这一季它只是「拿着」，此时业绩好坏更多来自市场，不是它的判断。")
-    ui.analysis(h, "；".join(_ev) + "。", _econ, _inv,
+    _an(h, "；".join(_ev) + "。", _econ, _inv,
                 tag1="变了什么", tag2="怎么读", tag3="对你的动作")
 
     _CIRCLED = "①②③④⑤⑥⑦⑧⑨"
@@ -422,7 +427,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
                 '任何一次风格切换都会被放大；'
                 '低分位（≤20）＋ 现金多：有加仓空间，但也可能是被赎回逼出来的。'
                 '判断方向要看下一季它是把现金变成股票，还是继续趴着。')
-        ui.analysis(h, _fact, _econ, _inv,
+        _an(h, _fact, _econ, _inv,
                     tag1="仓位位置", tag2="说明什么", tag3="对你的动作")
     else:
         h('<div class="cg-note">本期无资产配置数据（季报未披露或数据源缺失）。</div>')
@@ -584,7 +589,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
             _fact += (f'期末份额环比 {_rate:+.1f}%；期间申购+赎回合计为期初份额的 '
                       f'{_turn_sum:.0f}%，单边换手强度 <b>{_turn:.0f}%</b>'
                       f'（（申购+赎回）÷2÷期初，见词典「份额换手强度」）。')
-        ui.analysis(h,
+        _an(h,
                     _fact,
                     '份额是<b>唯一的「用钱投票」指标</b>：净值涨跌由市场决定，'
                     '申购赎回由持有人决定。净申购持续为正，说明渠道在推、客户在追；'
@@ -649,7 +654,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         _hc = _hc[_hc["quarter"] <= q]
     if len(_hc) >= 2 and np.isfinite(conc):
         _pct_c = Q.self_pct(_hc["top10"], conc)
-        ui.analysis(
+        _an(
             h,
             f'前十大合计占净值 <b>{conc:.1f}%</b>，在已取到的 {len(_hc)} 期里排第 '
             f'<b>{_pct_c:.0f}</b> 分位'
@@ -732,7 +737,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
             _ft += (f'　注意：本期净资产 {nav_chg:+.0f}%，'
                     f'即使一股没卖，老持仓的占比也会被新钱摊薄——'
                     f'看到权重下降先看股数，股数没减就不是减持。')
-        ui.analysis(h, _ft,
+        _an(h, _ft,
                     '「新进」与「升入」是两件事：前者是这一季新建仓，后者是原有持仓被加到前十——'
                     '后者的股数变化可以逐股核对，含金量更高。'
                     '「退出前十」不等于清仓（Q1/Q3 只披露前十，可能仍持有）；'
@@ -759,7 +764,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         if len(_top_s):
             _ft += (f'　卖得最多的是 {_top_s.iloc[0]["stock_name"]}'
                     f'（{_top_s.iloc[0]["amount_wan"] / 1e4:.1f} 亿元）。')
-        ui.analysis(h, _ft,
+        _an(h, _ft,
                     '这张表只覆盖「超过披露门槛」的交易，不等于全部换手：'
                     '买入前 20 名合计通常只占净值的一小部分。它的价值在于<b>方向</b>——'
                     '同一只股票同时出现在买入和卖出榜，说明在做波段；只出现在一边，才是真的建仓/清仓。',

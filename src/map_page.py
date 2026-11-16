@@ -81,9 +81,16 @@ def _num(v, nd: int = 0, dash: str = "—") -> str:
     return f"{v:.{nd}f}" if np.isfinite(v) else dash
 
 
-def _read(h, fact: str, econ: str, invest: str = "") -> None:
-    """图下方的三段式分析：事实 → 经济含义 → 投资含义。"""
-    ui.analysis(h, fact, econ, invest)
+def _read(h, fact: str, econ: str = "", invest: str = "") -> None:
+    """图下读数：一行式（事实 → 含义 → 动作）。
+
+    2026-11-16 精简：八张图各一张三段式卡片，整页多出约 1600px 纯文字；
+    改成一行后仍保留全部数字与判断，只是不再用卡片分栏。
+    """
+    parts = [p for p in (fact, econ, invest) if p]
+    if parts:
+        h(f'<div class="tiny" style="margin:2px 0 13px;line-height:1.95">'
+          + '　'.join(parts) + '</div>')
 
 
 def _rank_sort(df: pd.DataFrame, level_col: str = "等级") -> pd.DataFrame:
@@ -204,14 +211,10 @@ def render(h) -> None:
     if len(_small):
         _s0 = _small.sort_values("CSI", ascending=False).iloc[0]
         _bl.append(
-            f'<b>有 {len(_small)} 个行业不评级</b>（'
+            f'<b>{len(_small)} 个不评级</b>（'
             + "、".join(_small.sort_values("CSI", ascending=False).index)
-            + f'）：它们的 CSI 看起来可能很高——比如 {_small.sort_values("CSI", ascending=False).index[0]} '
-              f'算出来 {_s0["CSI"]:.0f} 分，按三分位本该是「{_s0["原等级"]}」——'
-              f'但全市场只有 <b>{_s0["持有基金数"]:.0f}</b> 只基金把它放进前十大、'
-              f'前十配置仅 <b>{_s0["配置_前十"]:.2f}%</b>。'
-              f'几十只基金里少数几只调仓，就足以把三个分位同时推到高位，'
-              f'所以本页把它标成灰色「小样本」、不算进拥挤个数、也不给买卖动作。')
+            + f'）：CSI 看似很高（{_s0["CSI"]:.0f} 分），但只有 {_s0["持有基金数"]:.0f} 只基金'
+              f'持有、前十配置 {_s0["配置_前十"]:.2f}%，不参与排名与动作。')
     # 本期刚好穿过阈值的行业：**跟随 ① 的阈值滑块**。
     # 结论板在控件之上，拿不到本轮的返回值，只能读 session_state 里上一轮的值；
     # 不这样做，用户把阈值改成 70 后，结论仍会说「上穿 80」。
@@ -254,9 +257,8 @@ def render(h) -> None:
                 _bl.append('<b>本期刚好穿过阈值</b>：' + "；".join(_p0) + _tail)
     except Exception:
         pass
-    _bl.append('<b>怎么用</b>：拥挤度只决定「给多大仓位」，不决定「买不买」。'
-               '本库数据已证伪「高拥挤必然下跌」，所以看到红色不要条件反射地卖，'
-               '而是把它的仓位上限压下来；看到深蓝也不要马上买，先等资金转向。')
+    _bl.append('<b>怎么用</b>：拥挤度只定「仓位上限」，不是买卖信号——'
+               '红色压上限，深蓝等资金转向。')
     h(ui.concl_board(_bl))
 
     # =====================================================================
@@ -475,16 +477,12 @@ def render(h) -> None:
                        f't 值不显著，这条线只能约束仓位，不能当买卖信号。')
         else:
             _econ = (
-                f'<b>中位说明整体水位，广度说明是「几个行业在挤」还是「全都挤」。</b>'
-                f'中位高、广度低＝少数行业极热但没扩散；中位高、广度也高＝全面抱团，'
-                f'那才是系统性风险；中位低、广度却抬头＝资金刚开始往少数行业集中，'
-                f'是拥挤的早期信号。单看中位看不出谁在变挤——在上面选一个行业，'
-                f'或查下面的对照表。')
-            _inv3 = (f'<b>全市场视角怎么用</b>：橙线与蓝虚线同高 → 全面抱团，'
-                     f'降整体权益仓位；橙线高、蓝虚线低 → 结构性行情，只压最挤的几个；'
-                     f'橙线低、蓝虚线在抬头 → 拥挤刚开始扩散，别追刚刚变红的行业。'
-                     f'<br>提醒：{_nq} 期样本下「上穿 {_thr:.0f}」的次季胜率不到五成、'
-                     f't 值不显著，只能约束仓位，不能当买卖信号。')
+                f'<b>中位说明整体水位，广度说明「几个行业在挤」还是「全都挤」。</b>'
+                f'中位高、广度低＝少数行业极热；两者都高＝全面抱团；'
+                f'中位低、广度抬头＝拥挤刚开始扩散，是早期信号。')
+            _inv3 = (f'<b>全市场视角怎么用</b>：橙线与蓝虚线同高 → 降整体仓位；'
+                     f'橙线高、蓝虚线低 → 只压最挤的几个；'
+                     f'橙线低、蓝虚线抬头 → 别追刚刚变红的行业。')
         _read(h, "", _econ, _inv3)
 
     # ---- 分位对照表：把图上每个数字摊开，方便逐个核对 ----
@@ -787,48 +785,16 @@ def render(h) -> None:
     # =====================================================================
     # ③ 为什么用 CSI，不用 HHI
     # =====================================================================
-    h('<div class="sec">④ 为什么拥挤度用 CSI，不用 HHI？</div>')
+    # ④ 为什么用 CSI 不用 HHI：属于方法论证，详见 ⑥；本页只留当前 HHI 一个数。
     _hhi_now = float(((comp["配置_前十"] / 100) ** 2).sum())
     _hhi_M = cn.level_matrix("top10")
     _hhi_hist = ((_hhi_M / 100) ** 2).sum(axis=1)
     _hhi_pct = float((_hhi_hist <= _hhi_now).mean() * 100) if len(_hhi_hist) else np.nan
-    h('<div style="display:flex;gap:7px;flex-wrap:wrap">'
-      '<div style="flex:1 1 320px;background:#FFFFFF;border:1px solid ' + C.COLOR["line"] +
-      ';border-top:3px solid ' + C.COLOR["text_dim"] + ';border-radius:7px;padding:9px 11px">'
-      '<div style="font-size:12px;font-weight:700">HHI（赫芬达尔指数）</div>'
-      '<div style="font-size:11px;line-height:1.85;margin-top:4px">'
-      '<b>公式</b>：HHI = Σ(w<sub>k</sub>/100)²，w 是 31 个行业的配置比例<br>'
-      '<b>它是什么</b>：<b>一个组合</b>的集中度——把各行业权重平方后加总，'
-      '权重越集中，HHI 越大。<br>'
-      '<b>它回答</b>：「这个组合分散不分散？押注少数行业还是撒得很开？」<br>'
-      '<b>它不回答</b>：「<b>哪个</b>行业挤？」——HHI 是一个标量，'
-      '31 个行业最后只剩一个数，无法排序、无法定位。<br>'
-      '<b>当前值</b>：全市场前十大口径 HHI <b>' + f'{_hhi_now:.4f}' + '</b>，'
-      f'处在 {len(_hhi_hist)} 期的第 <b>' + f'{_hhi_pct:.0f}' + '</b> 分位（越高质量越集中）。'
-      '</div></div>'
-      '<div style="flex:1 1 320px;background:#FFFFFF;border:1px solid ' + C.COLOR["line"] +
-      ';border-top:3px solid ' + C.COLOR["threshold"] + ';border-radius:7px;padding:9px 11px">'
-      '<div style="font-size:12px;font-weight:700">CSI（拥挤度指数）</div>'
-      '<div style="font-size:11px;line-height:1.85;margin-top:4px">'
-      '<b>公式</b>：CSI = (配置分位 + 价格分位 + 资金分位) ÷ 3<br>'
-      '<b>它是什么</b>：<b>单个行业</b>在市场里的拥挤程度，三个维度各自换算成 '
-      '0–100 的分位后等权平均。<br>'
-      '<b>它回答</b>：「这个行业被多少人在什么价位上挤着买？现在是不是人人都上车了？」<br>'
-      '<b>它不回答</b>：「整个组合分散不分散」——那是 HHI 的事。<br>'
-      f'<b>为什么等权</b>：三维已统一为分位，量纲一致；31 个行业 × {_nq} 期不足以'
-      '稳定估计权重，任何加权都是过拟合。'
-      '</div></div></div>')
-    h('<div class="cg-note" style="margin-top:6px"><b>一句话区别</b>：'
-      'HHI 是「<b>组合</b>的体温计」，只能告诉你发不发烧；'
-      'CSI 是「<b>行业</b>的拥堵指数」，能告诉你哪条路堵、堵到什么程度。'
-      '本页要回答的是「31 个行业里谁最挤」，所以主指标必须是 CSI；'
-      'HHI 作为辅助，放在页头告诉你「整体是不是越来越集中」。'
-      '<br><b>为什么不用换手率、成交额占比这类经典拥挤度指标</b>：'
-      '① 本库的季报数据不含交易明细，成交额只能外接行情，会引入第二套口径；'
-      '② 成交额占比在 A 股受涨跌停、次新股、指数调整影响极大，'
-      '与「基金持仓拥挤」不是同一件事。本页衡量的是<b>持仓拥挤</b>，'
-      '所以三个维度全部来自同一套持仓与指数数据，保证可复算。</div>')
-
+    h('<div class="sec">④ 口径提示：CSI 与 HHI 不是一回事</div>')
+    h(f'<div class="tiny" style="margin:8px 0 12px">'
+      f'参考：HHI（组合集中度）当前 <b>{_hhi_now:.4f}</b>，{len(_hhi_hist)} 期第 '
+      f'{_hhi_pct:.0f} 分位。它只回答「组合分散不分散」，不回答「哪个行业挤」；'
+      f'CSI 与 HHI 的区别、为什么不用成交额，见 ⑥ 方法页。</div>')
 
     h('<div class="sec">⑤ 两把尺子：相对自己历史 vs 相对全市场同行</div>')
     # 小样本行业不参与：它们的自身分位由几十只基金决定，和 31 个行业的横截面

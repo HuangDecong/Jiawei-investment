@@ -49,10 +49,10 @@ def _kpis(items):
 
 
 def _concl_card(i: int, c: dict) -> str:
-    """一张结论卡：结论 / 证据 / 含义 / 动作 / 失效。
+    """一张结论卡：结论 / 证据 / 操作 / 失效。
 
-    版式：左侧序号 + 右侧四段。每段前面用一个小色块标签，
-    比「证据：」「投资解读：」这种纯文字前缀更容易扫读。
+    2026-11-16 精简：去掉「经济含义」整段——机制在 ② 的图下已经讲过，
+    本页只留能复算的数字、能执行的动作和失效条件。
     """
     def row(label, text, color, bg="#FFFFFF", weight="400"):
         return (
@@ -76,7 +76,6 @@ def _concl_card(i: int, c: dict) -> str:
         f'<span style="font-weight:400;font-size:{FS_SMALL}px;'
         f'color:{C.COLOR["text_dim"]};margin-left:7px">［{c["tag"]}］</span></div>'
         f'{row("证据", c["evidence"], C.COLOR["price"])}'
-        f'{row("经济含义", c["meaning"], C.COLOR["accent"])}'
         f'{row("操作", c["action"], C.COLOR["up"])}'
         f'<div style="margin-top:7px;padding:5px 9px;background:#FFF8EC;'
         f'border-radius:5px;font-size:{FS_SMALL}px;line-height:1.8;color:#7A4A00">'
@@ -163,51 +162,24 @@ def render(h, B=None, IND=None) -> None:
         ("极度拥挤", f"{_n_ext} 个", "CSI≥80 且样本充足"),
         ("样本基金", f"{n_funds:,}", f"截至 {q}"),
     ]))
+    _rt = t[t["可靠"] != "小样本"] if "可靠" in t.columns else t
+    _it, _iv = _rt["CSI"].idxmax(), float(_rt["CSI"].max())
+    _bt, _bv = _rt["CSI"].idxmin(), float(_rt["CSI"].min())
     h('<div class="tiny" style="margin:6px 0 2px">'
-      f'口径：仓位/主动项＝全持仓半年报（{qf0}→{qf}）；环比/广度/分位＝前十大'
-      f'（{qp}→{q}），同比＝对上年同季（{qy}）。'
-      f'两套口径回答不同问题，<b>不要相加</b>；详见「⑥ 方法与口径」。</div>')
+      f'最挤 <b>{_it} {_iv:.1f}</b>、最冷 <b>{_bt} {_bv:.1f}</b>（31 个行业逐个看见 ③）；'
+      f'口径：仓位/主动项＝全持仓半年报（{qf0}→{qf}），环比/广度/分位＝前十大'
+      f'（{qp}→{q}）；两套不可相加，详见 ⑥。</div>')
 
     # =====================================================================
     # 结论清单
     # =====================================================================
-    h('<div class="sec">二、本期结论：三条能落地，其余六条按需展开</div>')
-    h(f'<div class="cg-note" style="font-size:12.5px">'
-      f'每条都按「结论 → 证据 → 经济含义 → 操作 → 失效条件」写，数字都能用库里的数据复算。'
-      f'前三条直接对应下面的行业动作；后六条是结构性观察，展开或去对应页看细节——'
-      f'<b>不在这里重复一遍</b>。</div>')
+    h('<div class="sec">二、本期结论：三条能落地</div>')
+    h('<div class="cg-note" style="font-size:12.5px">'
+      '每条只留「结论 → 证据 → 操作 → 失效条件」，数字都能用库里的数据复算；'
+      '其余 6 条结构性观察（个股层 / 拥挤度 / 方法边界）见 ②③⑤，本页不重复。</div>')
     _cs_list = pb.conclusions(q)
     for i, c in enumerate(_cs_list[:3], 1):
         h(_concl_card(i, c))
-    _rest = _cs_list[3:]
-    if _rest:
-        # 后六条与 ②③⑤ 页大量重叠（个股层、行业拥挤度、方法边界）。
-        # 这里只留「一句话 + 去哪看」，不再把六张长卡重贴一遍。
-        _where = {"个股层": "② 本期解读", "拥挤度": "③ 行业拥挤度",
-                  "换仓": "② 本期解读", "反面证据": "⑤ 因子检验",
-                  "方法": "⑤ 因子检验", "待确认": "③ 行业拥挤度"}
-        rows = []
-        for j, c in enumerate(_rest, 4):
-            _w = next((v for k, v in _where.items() if k in str(c.get("tag", ""))),
-                      "③ 行业拥挤度")
-            rows.append(
-                f'<div style="display:flex;gap:10px;align-items:baseline;'
-                f'padding:7px 0;border-top:1px dashed {C.COLOR["line"]}">'
-                f'<div style="flex:0 0 22px;font-size:12px;font-weight:700;'
-                f'color:{C.COLOR["text_dim"]}">{j}</div>'
-                f'<div style="flex:1;font-size:13px;line-height:1.75;color:#26374A">'
-                f'{c["claim"]}'
-                f'<span style="color:{C.COLOR["text_dim"]};font-size:11.5px;'
-                f'margin-left:6px">［{c["tag"]}］</span></div>'
-                f'<div style="flex:0 0 92px;text-align:right;font-size:11.5px;'
-                f'color:{C.COLOR["price"]}">详见 {_w}</div></div>')
-        with st.expander(f"其余 {len(_rest)} 条：结构性观察（个股层 / 行业拥挤 / 方法边界）",
-                         expanded=False):
-            h('<div style="margin-top:-2px">' + "".join(rows) + '</div>')
-            h(f'<div class="tiny" style="margin-top:6px">'
-              f'这六条的完整证据链在对应页：个股层见 ② 图 5–6，'
-              f'行业拥挤度见 ③ 的 31 行业地图与对照表，'
-              f'「能描述不能预测」的检验见 ⑤ 的 9 个因子与 IC 表。</div>')
 
     # =====================================================================
     h('<div class="sec">三、投资建议：四类动作，31 个行业逐个交代</div>')
