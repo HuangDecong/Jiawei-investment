@@ -297,8 +297,9 @@ def conclusions(q: str | None = None) -> list[dict]:
             tag="总仓位",
             claim=(f"机构没有加仓，仓位停在 {pos['仓位1']:.1f}%，"
                    f"处在 {len(hist)} 个半年报期的第 {pct:.0f} 分位。"),
-            evidence=(f"{pos['q0']}→{pos['q']}：中位仓位 {pos['仓位0']:.2f}% → "
-                      f"{pos['仓位1']:.2f}%，变化 {pos['中位变化pp']:+.2f}pp；"
+            evidence=(f"{pos['q0']}→{pos['q']}：截面中位仓位 {pos['仓位0']:.2f}% → "
+                      f"{pos['仓位1']:.2f}%；同一批基金逐只配对后，中位变化 "
+                      f"{pos['中位变化pp']:+.2f}pp；"
                       f"加仓基金占 {pos['加仓基金占比']:.0f}%、减仓 "
                       f"{100 - pos['加仓基金占比']:.0f}%。"
                       f"两期都可比的同一批基金 {pos['n']:,} 只"

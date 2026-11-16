@@ -245,10 +245,15 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     # ① 全市场：公募基金整体的行业结构（先看大盘子，再看这一只）
     # =====================================================================
     _nq = len(cn.quarters())
-    h(f'<div class="sec">① 先看大盘子：公募基金整体的行业结构变化（{_nq} 期）</div>')
-    h('<div class="tiny" style="margin-bottom:3px">'
-      '口径：每期把所有样本基金的前十大归一化后等权平均，得到「一家典型的主动权益基金」'
-      '的行业结构。这是<b>全市场</b>的钱怎么分，不是单只基金。</div>')
+    _first_q = cn.quarters()[0] if _nq else ""
+    _n_late = len(cn.universe(cn.latest())) if _nq else 0
+    _n_first = len(cn.universe(_first_q)) if _nq else 0
+    h(f'<div class="sec">① 先看大盘子：主动权益样本的行业结构变化（{_nq} 期）</div>')
+    h(f'<div class="tiny" style="margin-bottom:3px">'
+      f'口径：每期用<b>当期</b>已入库的主动权益样本（{cn.latest()} {_n_late:,} 只；'
+      f'{_first_q} 仅 {_n_first:,} 只）前十大归一化后等权平均，'
+      f'得到「一家典型的主动权益基金」的行业结构。它回答「主动权益这批钱怎么分」，'
+      f'<b>不是全部公募、也不是全市场所有资金</b>；样本筛选过程见「⑥ 方法与口径」第三节。</div>')
     Mkt = cn.level_matrix("top10")
     cmp_m = cn.compare_periods()
     if not Mkt.empty:
@@ -258,7 +263,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         _mk_last = Mkt.iloc[-1]
         _mk_chg_all = (Mkt.iloc[-1] - Mkt.iloc[0]).dropna()
         _mk_fig = rc.fig_ind_structure(
-            Mkt, f"全市场行业结构（{Mkt.index[0]}–{Mkt.index[-1]}，前十大等权平均）",
+            Mkt, f"主动权益样本行业结构（{Mkt.index[0]}–{Mkt.index[-1]}，前十大等权平均）",
             residual_label="其他（港股/未映射）", label_top=4,
             max_items=10 if _mk_mode.startswith("前 10") else None)
         st.plotly_chart(_mk_fig, width="stretch",
@@ -287,14 +292,14 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         _mk_top = _mk_last.nlargest(4)
         _mk_chg = _mk_chg_all.sort_values()
         _read(h,
-              f'最新一期全市场前四大行业：'
+              f'最新一期样本前四大行业：'
               + "、".join(f"{i} {v:.1f}%" for i, v in _mk_top.items())
               + f'，合计 {_mk_top.sum():.1f}%（单只基金可能完全不同）。'
               f'从 {Mkt.index[0]} 到现在，抬升最多的是 '
               + "、".join(f"{i} {v:+.1f}pp" for i, v in _mk_chg.tail(2).iloc[::-1].items())
               + f'，让位最多的是 '
               + "、".join(f"{i} {v:+.1f}pp" for i, v in _mk_chg.head(2).items()) + '。',
-              f'全市场的行业结构，是几千只基金各自决策加总的结果，'
+              f'样本的行业结构，是几千只基金各自决策加总的结果，'
               f'所以它变化得很慢——一年下来前四大行业通常只换一到两个。'
               f'这种慢，恰恰说明它是<b>产业结构的映射</b>：A 股上市公司的行业构成、'
               f'各行业的盈利占比在变化，基金持仓只是跟着走。'

@@ -123,16 +123,20 @@ def render(h, B=None, IND=None) -> None:
               "这是降仓，先看是主动减还是净值跌出来的（图 2 拆）。"
               if _pos_chg <= -0.5 else
               "存量换仓，不是增量入场——行业间的钱是「搬」过去的，不是「新」进来的。"))
-    # 与 ⑥ 方法页用同一个数（逐基金配对平均），否则读者会看到「93%」与「38%」两个价格占比
+    # 与 ⑥ 方法页用同一个数（31 个行业先平均再取绝对值），否则读者会看到两个价格占比
     _pe: dict = {}
+    _pe_note = "与 ⑥ 同口径"
     try:
         _pe = cn.price_effect() or {}
         _pe_txt = (f'行业层面价格漂移平均占 |原始变化| 的 <b>{_pe["share"]:.0f}%</b>'
                    if "share" in _pe else "价格漂移对配置变化影响很大")
+        if "share" in _pe:
+            _pe_note = (f'单季 {_pe["q0"]}→{_pe["q"]}，31 个行业先平均再取绝对值，'
+                        f'与 ⑥ 同口径')
     except Exception:  # noqa: BLE001
         _pe_txt = "价格漂移对配置变化影响很大"
     _s2 = (f'31 个行业里，主动买入合计 <b>{_act_buy:.1f}pp</b>；{_pe_txt}'
-           f'（逐基金配对，与 ⑥ 同口径）→ <b>先扣价格，再谈加减仓</b>：'
+           f'（{_pe_note}）→ <b>先扣价格，再谈加减仓</b>：'
            f'某行业占比下降，可能只是它跌了。')
     _s3 = (f'{len(_br_ok)} 个可评级行业中，<b>{_n_cons} 个「共识形成」、'
            f'{_n_out} 个「系统性撤离」</b>；'
@@ -203,7 +207,7 @@ def render(h, B=None, IND=None) -> None:
     _ndec_n = int(dec.attrs.get("n_funds", 0)) if not dec.empty else 0
     _nbr_n = int(br.attrs.get("n_funds", 0)) if not br.empty else 0
     h('<div class="tiny" style="margin:2px 0 6px">'
-      f'<b>四张图的样本不同，不能互相套用</b>：仓位 {_npos_n:,} 只（股票仓位 ≥40%）；'
+      f'<b>四组样本不同，不能互相套用</b>：仓位 {_npos_n:,} 只（股票仓位 ≥40%）；'
       f'半年报主动/被动 {_ndec_n:,} 只（两期都可比）；广度 {_nbr_n:,} 只（当期有实质变动）；'
       f'个股 {n_funds:,} 只（全部主动权益）。差异来自「哪些基金在两个时点都有可比数据」，'
       f'不是漏数。</div>')
@@ -275,8 +279,10 @@ def render(h, B=None, IND=None) -> None:
         _a_min = dec["主动贡献"].idxmin()
         _read(h,
               f'31 个行业的配置变化里，价格带来的被动变化合计 <b>{_pas:.1f}pp</b>，'
-              f'机构主动只有 <b>{_act:.1f}pp</b>，被动占全部变动的 '
-              f'<b>{_pas / (_pas + _act) * 100:.0f}%</b>。'
+              f'机构主动只有 <b>{_act:.1f}pp</b>'
+              f'（两者都是 31 个行业 |贡献| 的合计，被动是主动的 '
+              f'<b>{_pas / max(_act, 1e-9):.1f} 倍</b>；这是半年报口径，'
+              f'不要和结论里的单季占比直接比）。'
               f'最典型的是 <b>{_topname}</b>：变化 {_t["变化"]:+.2f}pp，'
               f'其中价格 {_t["被动贡献"]:+.2f}pp、机构 {_t["主动贡献"]:+.2f}pp；'
               f'机构主动加最多的是 <b>{_a_max}（{dec.loc[_a_max, "主动贡献"]:+.2f}pp）</b>、'

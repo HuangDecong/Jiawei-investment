@@ -410,29 +410,51 @@ def _f10_shares(code: str) -> pd.DataFrame:
     return agg
 
 
-def _f10_fin(code: str) -> pd.DataFrame:
-    """半年报/年报的主要财务指标（季报没有这张表，故季度页会留空）。"""
-    r = _http_get("https://fundf10.eastmoney.com/FundArchivesDatas.aspx",
-                  params={"type": "cwzb", "code": code, "r": time.time()})
-    m = re.search(r'content:"(.*?)"\s*,\s*arryear', r.text, re.S)
-    if not m:
-        m = re.search(r'content:"(.*?)",', r.text, re.S)
-    if not m or len(m.group(1)) < 50:
-        return pd.DataFrame()
-    rows = []
-    for t in pd.read_html(io.StringIO(m.group(1))):
-        t = _clean(t)
-        if t.shape[1] < 2:
-            continue
-        t.columns = [str(c).strip() for c in t.columns]
-        key = t.columns[0]
-        for c in t.columns[1:]:
-            if not re.match(r"\d{4}-\d{2}-\d{2}", str(c)):
+def _f10_fin(code: str, years: tuple[int, ...] | None = None) -> pd.DataFrame:
+    """半年报/年报的主要财务指标（季报没有这张表，故季度页会留空）。
+
+    2026-11-16：东财 cwzb 接口**单次只返回最近 4 个半年报期**（实测
+    2024-12-31 起），早年财务指标并没有「未披露」，只是没抓到。接口支持
+    `year=YYYY` 返回该年前后 4 期，因此按年份循环可拿全 2017 年以来的
+    全部半年报/年报。传 years=None 时保持旧的「只取最近 4 期」行为。
+    """
+    def _one(year: int | None) -> pd.DataFrame:
+        params = {"type": "cwzb", "code": code, "r": time.time()}
+        if year is not None:
+            params["year"] = str(year)
+        r = _http_get("https://fundf10.eastmoney.com/FundArchivesDatas.aspx",
+                      params=params)
+        m = re.search(r'content:"(.*?)"\s*,\s*arryear', r.text, re.S)
+        if not m:
+            m = re.search(r'content:"(.*?)",', r.text, re.S)
+        if not m or len(m.group(1)) < 50:
+            return pd.DataFrame()
+        rows = []
+        for t in pd.read_html(io.StringIO(m.group(1))):
+            t = _clean(t)
+            if t.shape[1] < 2:
                 continue
-            for _, r0 in t.iterrows():
-                rows.append({"period": str(c), "item": str(r0[key]),
-                             "value": _num(r0[c])})
-    return pd.DataFrame(rows)
+            t.columns = [str(c).strip() for c in t.columns]
+            key = t.columns[0]
+            for c in t.columns[1:]:
+                if not re.match(r"\d{4}-\d{2}-\d{2}", str(c)):
+                    continue
+                for _, r0 in t.iterrows():
+                    rows.append({"period": str(c), "item": str(r0[key]),
+                                 "value": _num(r0[c])})
+        return pd.DataFrame(rows)
+
+    if not years:
+        return _one(None)
+    parts = []
+    for y in sorted(set(int(y) for y in years)):
+        parts.append(_one(y))
+        time.sleep(0.12)   # 连发 10 年会触发东财 5xx；轻微限速即可
+    parts = [p for p in parts if not p.empty]
+    if not parts:
+        return pd.DataFrame()
+    return (pd.concat(parts, ignore_index=True)
+            .drop_duplicates(subset=["period", "item"], keep="last"))
 
 
 # ---------------------------------------------------------------------------
@@ -623,6 +645,56 @@ def _write(con, table: str, code: str, d: pd.DataFrame, cols: list[str],
     return len(d)
 
 
+_FIN_TRIED: set[str] = set()
+
+
+def _fin_backfill(code: str, d: dict, ts: str) -> None:
+    """缓存命中时只补「主要财务指标」，不动其它表。
+
+    背景：cwzb 单次只返回最近 4 个半年报期，早年数据不是「未披露」，
+    只是没抓到（2026-11-16 读者看到 2017Q2 的本期利润写「未披露」）。
+    这里按缺失期次的年份逐次补抓，补过就入库；同一进程失败只试一次。
+    """
+    if code in _FIN_TRIED:
+        return
+    try:
+        a = d.get("q_asset")
+        if a is None or a.empty or "quarter" not in a.columns:
+            return
+        qs = sorted({str(x) for x in a["quarter"].dropna()})
+        f = d.get("q_fin")
+        have = (set(str(x) for x in f["quarter"].dropna())
+                if f is not None and not f.empty and "quarter" in f.columns else set())
+        need = [q for q in qs if q[-1] in "24" and q not in have]
+        if not need:
+            return
+        _FIN_TRIED.add(code)
+        years = tuple(sorted({int(q[:4]) for q in need}))
+        fin = _f10_fin(code, years)
+        if fin is None or fin.empty:
+            return
+        fin = fin.copy()
+        fin["quarter"] = fin["period"].map(q_of)
+        fin = fin[fin["quarter"].isin(set(qs))]
+        if fin.empty:
+            return
+        with _con() as con:
+            for p in sorted(set(fin["period"])):
+                con.execute("DELETE FROM q_fin WHERE code=? AND period=?", (code, p))
+            fin["code"] = code
+            fin["src"] = "东财基金档案·主要财务指标（半年报/年报）"
+            fin["fetched_at"] = ts
+            fin[["code", "period", "quarter", "item", "value", "src",
+                 "fetched_at"]].to_sql("q_fin", con, if_exists="append", index=False)
+            # 与 ensure_year 同一套：刷新时间戳 + 清 lru_cache，否则 load_fund 还是旧快照
+            con.execute("UPDATE q_log SET fetched_at=? WHERE code=?", (ts, code))
+        _load_cached.cache_clear()
+        d["q_fin"] = load_fund(code).get("q_fin", d.get("q_fin"))
+    except Exception:  # noqa: BLE001
+        # 补抓失败不影响页面：旧的 4 期仍然可用，badge 会如实显示缺口
+        return
+
+
 def fetch_fund(code: str, years: tuple[int, ...] | None = None,
                force: bool = False) -> dict:
     """抓一只基金的季报数据并落库。返回 {'tables': {...}, 'errors': [...]}。
@@ -655,6 +727,7 @@ def fetch_fund(code: str, years: tuple[int, ...] | None = None,
             d = load_fund(code)
             d["errors"] = []
             d["cached"] = True
+            _fin_backfill(code, d, ts)   # 只补早年财务指标，不触发整只重抓
             return d
 
     # 依赖缺失：直接把结论摆在 errors 里，不再让 8 个接口各撞一次。
@@ -679,7 +752,14 @@ def fetch_fund(code: str, years: tuple[int, ...] | None = None,
                     + [tap(_ak_change, code, y, "累计卖出") for y in years],
                     ignore_index=True)
     bond = pd.concat([tap(_ak_bond, code, y) for y in years], ignore_index=True)
-    fin = tap(_f10_fin, code)
+    # 财务指标按「资产配置覆盖的年份」循环抓：cwzb 单次只给最近 4 期，
+    # 不循环会把早年半年报的「本期利润」误标成「未披露」。
+    _fy: tuple[int, ...] = ()
+    if asset is not None and not asset.empty and "period" in asset.columns:
+        _p0 = pd.to_datetime(asset["period"], errors="coerce").min()
+        if pd.notna(_p0):
+            _fy = tuple(range(int(_p0.year), now.year + 1))
+    fin = tap(_f10_fin, code, _fy or None)
 
     with _con() as con:
         got["q_asset"] = _write(con, "q_asset", code, asset,

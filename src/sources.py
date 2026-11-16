@@ -84,7 +84,7 @@ def _date_txt() -> str:
     f, s = fund_fetch_date(), snapshot_date()
     bits = []
     if f:
-        bits.append(f"基金数据访问 {f}")
+        bits.append(f"基金数据最近抓取 {f}")
     if s:
         bits.append(f"快照构建 {s}")
     return "｜".join(bits)

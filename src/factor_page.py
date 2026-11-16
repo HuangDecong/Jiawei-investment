@@ -218,8 +218,10 @@ def render(h, B=None, IND=None) -> None:
         ("反向显著", f"{len(_rev)} 个", "方向与定义相反"),
         ("无效", f"{len(_invalid)} 个", "|t|<1.64 或 |IC|<0.03"),
         ("样本不足", f"{len(_short)} 个", "有效 IC 期数<5"),
-        ("样本", f'{d["sample"]["quarters"]} 期', f'{d["sample"]["industries"]} 行业 × '
-                                                f'{d["sample"].get("n_funds", "—")} 只基金'),
+        ("样本", f'{d["sample"]["quarters"]} 期',
+         f'{d["sample"]["industries"]} 个行业横截面 · 底层 '
+         + (f'{d["sample"]["n_funds"]:,}' if isinstance(d["sample"].get("n_funds"), int)
+            else f'{d["sample"].get("n_funds", "—")}') + ' 只基金'),
     ]))
 
     # =====================================================================
@@ -365,7 +367,7 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     # 为什么不用旧因子
     # =====================================================================
-    with st.expander("附：为什么换掉早期那套因子（F1 / F2 / F11）", expanded=False):
+    with st.expander("附：为什么换掉早期那套因子（F1 / F2 / F3 / F11 / F15）", expanded=False):
         # 期数不能写死：每过一个季度就会变，写死会在下一季变成错数。
         _n_csi = len(cn.csi_history())
         h('<div class="cg-note" style="font-size:12.5px">'

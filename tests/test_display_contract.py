@@ -317,3 +317,36 @@ def test_A19_dormant_history_is_drawn_not_residual():
     assert "银行" in [t.name for t in fig2.data]
     bank = [t for t in fig2.data if t.name == "银行"][0]
     assert bank.marker.color != "#C9D3DE", "全部模式里历史行业又被灰掉了"
+
+
+# ---------------------------------------------------------------------------
+# A20 季报页「财务指标」徽标：分母必须是半年报期数，不能用 max(n,4) 冒充全覆盖
+# 2026-11-16：002910 只有 4 期财务数据，徽标却写「4/4」（绿），而 2017Q2 的
+# 本期利润明明披露过、只是没抓到——读者看到的是「未披露」，属于事实错误。
+# ---------------------------------------------------------------------------
+def test_A20_fin_badge_denominator():
+    src = open(os.path.join(ROOT, "src", "qreport_page.py"), encoding="utf-8").read()
+    assert 'max(_qtrs(d.get("q_fin")), 4)' not in src, \
+        "财务指标徽标又用 max(n,4) 把缺口藏起来了"
+    assert 'str(x)[-1] in "24"' in src, "分母应为半年报/年报期数（Q2/Q4）"
+    qr = open(os.path.join(ROOT, "src", "qreport.py"), encoding="utf-8").read()
+    assert "def _fin_backfill" in qr and "def _f10_fin(code: str, years" in qr, \
+        "财务指标必须按年份回补（cwzb 单次只给最近 4 期）"
+
+
+# ---------------------------------------------------------------------------
+# A21 首页 KPI 名单截断必须带「等」：6 个只列 3 个会被读成「只有这 3 个」
+# ---------------------------------------------------------------------------
+def test_A21_kpi_names_truncated_with_deng():
+    src = open(os.path.join(ROOT, "src", "overview_page.py"), encoding="utf-8").read()
+    assert '(" 等" if len(_av) > 3 else "")' in src, \
+        "「要回避」只列前 3 个却没写「等」，会被当成完整名单"
+
+
+# ---------------------------------------------------------------------------
+# A22 资产合计/规模拆解：展示的加总必须自洽（两位小数，不能 84.1+18.8=102.8）
+# ---------------------------------------------------------------------------
+def test_A22_asset_identity_uses_two_decimals():
+    src = open(os.path.join(ROOT, "src", "qreport_page.py"), encoding="utf-8").read()
+    assert "股票 {stock:.2f}% ＋ 现金 {cash:.2f}%" in src, \
+        "资产合计用一位小数会出现 84.1+18.8=102.9≠102.8"

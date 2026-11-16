@@ -394,10 +394,11 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
                     config={"displayModeBar": False, "scrollZoom": False})
     if a_q is not None:
         _sum3 = stock + cash + (bond if np.isfinite(bond) else 0)
+        # 两位小数：84.10 + 18.75 = 102.85；用一位小数会出现 84.1+18.8=102.9≠102.8
         h(f'<div class="tiny" style="margin:-4px 0 6px">'
-          f'本期：股票 {stock:.1f}% ＋ 现金 {cash:.1f}%'
-          + (f" ＋ 债券 {bond:.1f}%" if np.isfinite(bond) else "")
-          + f' ＝ {_sum3:.1f}%'
+          f'本期：股票 {stock:.2f}% ＋ 现金 {cash:.2f}%'
+          + (f" ＋ 债券 {bond:.2f}%" if np.isfinite(bond) else "")
+          + f' ＝ {_sum3:.2f}%'
           + ('，超过 100% 的部分来自应付/回购等负债项，季报原样披露，不做归一。'
              if _sum3 > 101 else '。')
           + '　分组柱不堆叠：三者之和本来就不等于 100%，堆叠会让人误以为刚好分完。'
@@ -452,6 +453,8 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
                 h(f'<div class="tiny" style="margin:-6px 0 10px">'
                   f'<b>规模变化拆解</b>（恒等式，不是估算）：净资产 {nav - _nav0:+.1f} 亿 ＝ '
                   f'净申购 {_eff_s:+.1f} ＋ 净值上涨 {_eff_n:+.1f} ＋ 交叉 {_cross:+.1f}。'
+                  f'<span style="color:#8A97A5">（图上标签四舍五入到 0.1 亿，首尾相加可能有 '
+                  f'±0.1 尾差）</span>'
                   f'这一拆的意义：<b>规模涨不等于业绩好</b>——靠申购堆出来的规模要建仓，'
                   f'会摊薄原有持仓；靠净值涨出来的规模只是账面浮盈，不产生买入压力。</div>')
 
@@ -815,9 +818,9 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
                     else int(_ms["count"].iloc[-1]))
         # 这不是「全市场」：q_asset 只含已抓取基金，且抓取按规模优先，属大基金口径。
         # 写成「全样本」会让读者把 N=4,920 当成全市场 1 万多只基金，必须点明。
-        _sec("已入库基金在做什么（大基金口径，不是全市场）",
-             f"{q} 有 {_nq_peer:,} 个份额代码可算中位数（已入库 {len(funds):,} 个，"
-             f"覆盖 {_nq_peer / max(len(funds), 1):.1%}；A/C 分别计，按规模优先抓取）；"
+        _sec("已入库基金在做什么（已入库口径，不是全市场）",
+             f"{q} 有 {_nq_peer:,} 个份额代码可算中位数（占已入库 {len(funds):,} 个的 "
+             f"{_nq_peer / max(len(funds), 1):.1%}；A/C 分别计，按规模优先抓取）；"
              f"行业环比为配对样本")
         _c1, _c2 = st.columns([0.5, 0.5])
         with _c1:
@@ -832,7 +835,9 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         _mm = float(_mrow["median"].iloc[-1]) if len(_mrow) else float("nan")
         _txt = (f'{q} 已入库 {int(_mrow["count"].iloc[-1]) if len(_mrow) else 0:,} 个份额代码的'
                 f'股票仓位中位数 <b>{_mm:.1f}%</b>，本基金 {stock:.1f}%'
-                f'（{stock - _mm:+.1f}pp）。' if np.isfinite(_mm) else "")
+                f'（{stock - _mm:+.1f}pp；本组含股票仓位 <40% 的灵活配置，'
+                f'故中位略低于 ① 页「≥40%」那一组，两组样本不同）。'
+                if np.isfinite(_mm) else "")
         if len(_peer):
             _u = _peer["差值"].nlargest(2)
             _d = _peer["差值"].nsmallest(2)
@@ -861,19 +866,25 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     def _qtrs(tbl) -> int:
         return 0 if tbl is None or tbl.empty else int(tbl["quarter"].nunique())
 
+    _nfin = _qtrs(d.get("q_fin"))
+    _tfin = len([x for x in qs if str(x)[-1] in "24"]) or 4
     _avail = [("资产配置", _qtrs(d.get("q_asset")), len(qs)),
               ("持仓明细", _qtrs(d.get("q_hold")), len(qs)),
               ("行业配置", _qtrs(d.get("q_industry")), len(qs)),
               ("份额变动", _qtrs(d.get("q_shares")), len(qs)),
               ("债券持仓", _qtrs(d.get("q_bond")), len(qs)),
-              ("财务指标", _qtrs(d.get("q_fin")),
-               max(_qtrs(d.get("q_fin")), 4))]
+              ("财务指标", _nfin, _tfin)]
     h('<div style="margin:0 0 6px">' + "".join(
         f'<span style="display:inline-block;background:'
         f'{"#E8F5EC" if n == t else "#FFF4E5"};color:'
         f'{"#1A7F37" if n == t else "#B25E00"};font-size:11.5px;font-weight:600;'
         f'border-radius:10px;padding:2px 9px;margin:0 6px 4px 0">'
         f'{lab} {n}/{t} 期</span>' for lab, n, t in _avail) + '</div>')
+    if _nfin < _tfin:
+        h(f'<div class="tiny" style="margin:-2px 0 8px">'
+          f'财务指标只覆盖 {_nfin}/{_tfin} 个半年报期：东财 cwzb 单次只返回最近 4 期，'
+          f'缺的年份会按年自动回补；仍缺说明源站没有该期，需查原始半年报 PDF——'
+          f'不是本基金没披露。</div>')
 
     _missing = [lab for lab, k in (("持仓明细", "q_hold"), ("行业配置", "q_industry"))
                 if _qtrs(d.get(k)) == 0]
