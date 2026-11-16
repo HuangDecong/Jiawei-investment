@@ -86,7 +86,13 @@ def main() -> None:
     # 不传参数时推「最近 3 个提交」的并集：
     # 只推 HEAD 会漏掉前一次提交——r32.0 就是这样只推了 shot6.py，
     # 线上 canon.py 还是旧的，整页报 AttributeError。
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 1 and ".." in sys.argv[1]:
+        # 显式范围：python tools/push_via_api.py a771c95..HEAD
+        # 解决「默认只推最近 3 个提交」的漏推——本轮源码在 HEAD~3 之外，
+        # 只推了版本戳/README/一张图，线上 app.py 还是旧版。
+        sha = "HEAD"
+        files = _files_of(sys.argv[1])
+    elif len(sys.argv) > 1:
         sha = sys.argv[1]
         files = _files_of(f"{sha}~1..{sha}")
     else:
