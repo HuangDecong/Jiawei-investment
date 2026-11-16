@@ -124,8 +124,15 @@ def _chips(items: list[tuple[str, str]]) -> str:
 
 
 def _an(h, fact, econ="", invest="", **kw):
-    """季报页只保留「事实 + 含义」：操作建议在 ① 结论页，不在每节重复。"""
-    ui.analysis(h, fact, econ, "", **kw)
+    """季报页的解读卡：读数 → 为什么 → 怎么做（全站同一套标签）。
+
+    2026-11-16 第二轮：上一版把 invest 直接丢掉，传了「对你的动作」也不显示；
+    现在原样透传，并把标签统一成「读数 / 为什么 / 怎么做」。
+    """
+    kw.setdefault("tag1", "读数")
+    kw.setdefault("tag2", "为什么")
+    kw.setdefault("tag3", "怎么做")
+    ui.analysis(h, fact, econ, invest, **kw)
 
 
 def render(h, code: str | None = None, show_picker: bool = True) -> None:
@@ -382,8 +389,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     _inv = ("规模靠申购 + 行业切换 + 前十大换手同时出现，意味着这是一次<b>主动的方向调整</b>："
             "要顺着新进的行业和股票去验证逻辑，而不是看它过去三年的业绩。"
             "反过来，三项都没动，说明这一季它只是「拿着」，此时业绩好坏更多来自市场，不是它的判断。")
-    _an(h, "；".join(_ev) + "。", _econ, _inv,
-                tag1="变了什么", tag2="怎么读", tag3="对你的动作")
+    _an(h, "；".join(_ev) + "。", _econ, _inv)
 
     _CIRCLED = "①②③④⑤⑥⑦⑧⑨"
     _nsec = [0]
@@ -478,17 +484,11 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
            if len(_tag) else 0.0)
     if len(_iv):
         _it = Q.industry_trend(d, 6)
-        _c1, _c2 = st.columns([0.5, 0.5], gap="small")
-        with _c1:
-            st.plotly_chart(qc.fig_industry(_iv), width="stretch",
-                            config={"displayModeBar": False})
-        with _c2:
-            if len(_it) > 1:
-                st.plotly_chart(qc.fig_industry_area(_it), width="stretch",
-                                config={"displayModeBar": False})
-            else:
-                h('<div class="cg-note" style="margin-top:40px">只有一期行业表，'
-                  '看不出行业押注的挪动。翻到更早的季度会自动补抓。</div>')
+        # 只留一张行业图：原来的「本期 vs 上期」条形图和右侧「近 6 期折线」
+        # 是同一张行业表的两种画法，并排放等于把同一组数字读两遍。
+        # 现在单栏通栏条形图（深色本期、浅色上期），趋势用下面一句话给。
+        st.plotly_chart(qc.fig_industry(_iv), width="stretch",
+                        config={"displayModeBar": False})
         _tot = float(ind_q["ratio_pct"].sum())
         _gap = stock - _tot
         # 差 0.004 会格式化成「-0.00pp」，看着像错数；四舍五入到 0 就直接写 0.00。
@@ -515,7 +515,35 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
                 _gap_txt += (f'　环比（{_prev_q}→{q}）：加仓最多 <b>{_up["sec_name"]}</b>'
                              f' {_up["Δ"]:+.2f}pp，减仓最多 <b>{_dn["sec_name"]}</b>'
                              f' {_dn["Δ"]:+.2f}pp；只比两期都有数据的门类。')
+        # 近 6 期趋势：原来用一张折线图给，和左边的条形图是同一张行业表，
+        # 现在改成一句话——趋势要的是「哪两类换了位置」，不需要再画一遍。
+        _itn = _it.dropna(how="all") if len(_it) else _it
+        if len(_itn) > 1:
+            _a0, _a1 = _itn.iloc[0], _itn.iloc[-1]
+            _d6 = (_a1 - _a0).dropna().sort_values()
+            _gap_txt += (f'　近 {len(_itn)} 个有数据的季度（{_itn.index[0]}→{_itn.index[-1]}）：'
+                         + "、".join(f'{i} {v:+.1f}pp' for i, v in _d6.tail(2).iloc[::-1].items())
+                         + ' 抬升最多，'
+                         + "、".join(f'{i} {v:+.1f}pp' for i, v in _d6.head(2).items())
+                         + ' 下降最多。')
         h(f'<div class="tiny" style="margin:-4px 0 10px">{_gap_txt}</div>')
+        _t3 = _iv.nlargest(3, "ratio_pct")
+        _an(h,
+            f'最大门类 <b>{_t3.iloc[0]["sec_name"]} {_t3.iloc[0]["ratio_pct"]:.1f}%</b>'
+            + (f'、{_t3.iloc[1]["sec_name"]} {_t3.iloc[1]["ratio_pct"]:.1f}%' if len(_t3) > 1 else '')
+            + f'；前三大合计 <b>{_t3["ratio_pct"].sum():.1f}%</b>，'
+            f'覆盖全部股票仓位（不是前十大）。',
+            f'这张表用<b>证监会门类</b>（约 19 类）给全部股票分类，比申万 31 个行业粗，'
+            f'好处是<b>覆盖 100% 的股票仓位</b>——前十大只让你看到最重的那 10 只，'
+            f'这里能看到整只基金押在哪些赛道。合计应与股票仓位基本相等；'
+            f'若差 1pp 以上，差额来自门类未覆盖的北交所、港股通单列与季报四舍五入。',
+            f'前三大合计 {_t3["ratio_pct"].sum():.0f}%：'
+            + ("超过一半，它的净值基本由这三个门类决定，买它等于同时押这三个方向，"
+               "不要再叠加同方向的行业基金。" if _t3["ratio_pct"].sum() > 50 else
+               "不到一半，行业上有分散，单一门类回调对净值的冲击相对小。")
+            + (f' 最大门类 {_t3.iloc[0]["ratio_pct"]:.0f}%'
+               + ("已超过 40%，它实际上是一只「行业基金」，要用行业逻辑而不是全市场逻辑来用它。"
+                  if _t3.iloc[0]["ratio_pct"] > 40 else "，还不算行业基金，仍是全市场选股。")))
     else:
         h('<div class="cg-note">该期无行业配置数据（季报未披露或数据源缺失）。</div>')
 
@@ -856,7 +884,14 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
             _pr, _pn = Q.peer_rank(q, stock)
             if np.isfinite(_pr) and _pn >= 30:
                 _txt += f'　本基金在已入库基金中处于第 <b>{_pr:.0f}</b> 分位（N={_pn:,}，非全市场）。'
-        h(f'<div class="tiny" style="margin:-4px 0 12px">{_txt}</div>')
+        _an(h, _txt,
+            '左图是<b>仓位水平</b>（含股票仓位 &lt;40% 的灵活配置，故中位低于 ① 页「≥40%」那一组）；'
+            '右图是<b>行业环比</b>（只比两期都有行业表的同一批基金，避免「换了一批基金」被读成加减仓）。'
+            '和同行比，回答的是「它有没有跟大队」，不是「它做得好不好」。',
+            '仓位比中位高 10pp 以上＝它在加杠杆式押注，涨的时候更猛、回撤也更大；'
+            '低 10pp 以上＝在防守，牛市会落后但抗跌。'
+            '行业环比与同行同向，说明它只是随大流；<b>逆着同行动</b>才是它自己的判断，'
+            '这种偏离才是你付管理费买的东西。')
 
     # ---------------- ⑦ 全历史速览 ----------------
     # 这一段回答两个问题：① 这只基金历史上是什么样；② 每个数字从哪来、为什么有的格子是空的。

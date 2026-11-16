@@ -40,18 +40,14 @@ def _kpis(items: list[tuple[str, str, str]]) -> str:
     return f'<div class="kpis">{cells}</div>'
 
 
-def _read(h, fact: str, econ: str, invest: str = "") -> None:
-    """图下方的一行式读数：事实 → 结论。
+def _read(h, fact: str, econ: str = "", invest: str = "") -> None:
+    """图下方的解读卡：左栏「读数」= 可复算的数字，右栏「为什么 + 怎么做」。
 
-    2026-11-16 精简：六张图各配一张三段式卡片，整页多出约 1500px 纯文字，
-    读者滚到第三张就忘了第一张。改成一行后，判断留给上方的四条结论，
-    这里只回答「这张图看到了什么」。
+    2026-11-16 第二轮：先被压成一行小字（「简洁」过头），读者反馈「看不懂图」——
+    数字、编码说明与机制挤在同一段 11px 灰字里，没有层次，也不知道该看哪里。
+    这里恢复两栏卡片：13.5px、左数字右机制，高度仍比原来的三段竖排省四成。
     """
-    parts = [p for p in (fact, econ, invest) if p]
-    if not parts:
-        return
-    h(f'<div class="tiny" style="margin:2px 0 13px;line-height:1.95">'
-      + '　'.join(parts) + '</div>')
+    ui.analysis(h, fact, econ, invest, tag1="读数", tag2="为什么", tag3="怎么做")
 
 
 def _read_row(r) -> str:
@@ -308,14 +304,15 @@ def render(h, B=None, IND=None) -> None:
           f'{comp.attrs["q_prev"]} 与 {comp.attrs["q_year"]}），<b>含价格漂移</b>（全样本合计，两期基金不完全相同）——'
           f'行业涨跌本身会改变占比，所以这两栏是「结果」不是「动作」。</div>')
         _read(h,
-              f'方向一致的有「连续加仓」<b>{len(_su)} 个</b>（'
-              + ("、".join(f'{i}（环比 {r["Δ上季pp"]:+.2f}、同比 {r["Δ上年pp"]:+.2f}）'
+              f'括号内为「环比 / 同比」，单位 pp。方向一致：'
+              f'「连续加仓」<b>{len(_su)} 个</b>（'
+              + ("、".join(f'{i} {r["Δ上季pp"]:+.2f} / {r["Δ上年pp"]:+.2f}'
                           for i, r in _su.iterrows()) or "无")
-              + f'）与「连续减仓」<b>{len(_sd)} 个</b>（'
-              + ("、".join(f'{i}（环比 {r["Δ上季pp"]:+.2f}、同比 {r["Δ上年pp"]:+.2f}）'
+              + f'）；「连续减仓」<b>{len(_sd)} 个</b>（'
+              + ("、".join(f'{i} {r["Δ上季pp"]:+.2f} / {r["Δ上年pp"]:+.2f}'
                           for i, r in _sd.iterrows()) or "无")
               + f'）；方向相反的 <b>{len(_opp)} 个</b>，例如 '
-              + ("、".join(f'{i}（环比 {r["Δ上季pp"]:+.2f}、同比 {r["Δ上年pp"]:+.2f}）'
+              + ("、".join(f'{i} {r["Δ上季pp"]:+.2f} / {r["Δ上年pp"]:+.2f}'
                           for i, r in _opp.head(3).iterrows()) or "无") + '。',
               f'环比混着季度再平衡与申赎、噪音大；同比抹掉季节性，更接近'
               f'「这一年机构信了什么」。两者同向＝持续行为，一正一负＝季度摆动。',
@@ -327,17 +324,18 @@ def render(h, B=None, IND=None) -> None:
     # =====================================================================
     if not br.empty:
         h('<div style="font-size:12px;font-weight:700;margin:10px 0 4px">'
-          f'图 4　谁在动：{pq[0]} → {pq[1]} 的前十大口径（季频、价格中性）</div>')
-        # 31 个行业的标签在 600px 里必然叠字（截图反馈过）：两张图改为通栏上下排，
-        # 条形图看「谁偏离 50% 最远」，散点看「共识与力度是否同向」。
-        st.plotly_chart(rc.fig_breadth(br, 14, _SMALL), width="stretch",
-                        config={"displayModeBar": False})
+          f'图 4　谁在动：{pq[0]} → {pq[1]}，横轴＝多少基金在加，纵轴＝净买了多少'
+          f'（季频、价格中性）</div>')
+        # 只画散点，不再另画一张「加仓占比条形图」：两张图的横轴是同一个
+        # 「加仓占比」，条形图的信息是散点横坐标的子集，31 个行业读两遍反而更乱。
         st.plotly_chart(rc.fig_breadth_vs_move(br, _SMALL), width="stretch",
                         config={"displayModeBar": False})
         h(f'<div class="tiny">口径：前十大归一化，逐基金算<b>价格中性</b>变化'
           f'（假设不交易时权重随行业指数漂移，实际与反事实之差才是交易）；'
           f'单只基金变化超过 ±0.1pp 才计数。'
           f'加仓占比的分母是<b>加仓 + 减仓</b>（有实质变动的基金），不是全部样本。'
+          f'<b>怎么看</b>：横轴 50% 以右＝多数持有者在加；纵轴 0 以上＝净买入。'
+          f'圆点越大＝持有该行业的基金越多，灰点＝小样本（不评级、不进结论）。'
           f'样本 {br.attrs["n_funds"]:,} 只。</div>')
         # 广度排名要剔除小样本：几十只基金里 3 只加仓就能把占比推到 80%，
         # 也可能因为 1 只减仓把「最低」安到一个只有 0.1% 仓位的行业上。

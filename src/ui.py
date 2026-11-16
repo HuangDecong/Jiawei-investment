@@ -49,7 +49,7 @@ def concl_board(items: list[str], accent: str | None = None,
 
 
 def analysis(h, fact: str, econ: str = "", invest: str = "",
-             tag1: str = "数据", tag2: str = "含义", tag3: str = "动作") -> None:
+             tag1: str = "读数", tag2: str = "为什么", tag3: str = "怎么做") -> None:
     """图下方的读数卡：**左栏数据、右栏含义与动作**。
 
     为什么从「竖着叠三段」改成两栏

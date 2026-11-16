@@ -350,3 +350,40 @@ def test_A22_asset_identity_uses_two_decimals():
     src = open(os.path.join(ROOT, "src", "qreport_page.py"), encoding="utf-8").read()
     assert "股票 {stock:.2f}% ＋ 现金 {cash:.2f}%" in src, \
         "资产合计用一位小数会出现 84.1+18.8=102.9≠102.8"
+
+
+# ---------------------------------------------------------------------------
+# A23 每张图后面必须有解读卡：图能画、但读者看不懂，等于没画
+# 2026-11-16 读者反馈「图表需要有专业解读，不然我看不懂」——上一版为了「简洁」
+# 把三段式压成一行 11px 灰字，数字、编码说明、机制混在一起，等于把解读删了。
+# 规则：每张图后 80 行内必须有 _read/_an；成对出现的图（趋势+分位、同行两张）
+# 允许共用一张卡——这时第二张图之后 80 行内必须有卡。
+# ---------------------------------------------------------------------------
+def test_A23_every_chart_has_a_reading_card():
+    import re
+    _call = re.compile(r"(?<!def )\b(?:_read|_an)\(")
+
+    def _has_read(lines, i, n=80):
+        return any(_call.search(l) for l in lines[i:i + n])
+
+    for name in ("report_page.py", "map_page.py", "fund_page.py", "qreport_page.py"):
+        lines = open(os.path.join(ROOT, "src", name), encoding="utf-8").read().splitlines()
+        for i, line in enumerate(lines):
+            if "st.plotly_chart(" not in line:
+                continue
+            if _has_read(lines, i):
+                continue
+            nxt = next((j for j in range(i + 1, min(i + 80, len(lines)))
+                        if "st.plotly_chart(" in lines[j]), None)
+            assert nxt is not None and _has_read(lines, nxt), \
+                f"{name}:{i + 1} 这张图后面 80 行内没有解读卡"
+
+
+def test_A23b_reading_card_is_two_column_not_one_line():
+    """解读不能用 `tiny` 一行小字糊过去（那正是上一版的问题）。"""
+    for name in ("report_page.py", "map_page.py", "fund_page.py"):
+        src = open(os.path.join(ROOT, "src", name), encoding="utf-8").read()
+        assert "ui.analysis(h, fact, econ, invest" in src, \
+            f"{name} 的 _read 没有走两栏解读卡"
+        assert "'　'.join(parts)" not in src, \
+            f"{name} 又把解读压回一行灰字了"

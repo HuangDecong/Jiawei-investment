@@ -493,14 +493,9 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     # ② 这只基金：全部行业的结构漂移
     # =====================================================================
     h('<div class="sec">② 再看这一只：它的 31 个行业结构漂移</div>')
-    _c1, _c2 = st.columns([0.72, 0.28], gap="small")
-    with _c1:
-        _maxi = st.radio("显示方式", ["前 10 大行业 + 其他", "全部 31 个行业"],
-                         horizontal=True, key="fund_struct_mode",
-                         help="「全部 31 个」按该基金最新占比降序堆叠；悬停一次列出该季全部行业")
-    with _c2:
-        _qsel = st.selectbox("看哪一季的全部行业", list(hist.index)[::-1],
-                             index=0, key="fund_q_pick")
+    _maxi = st.radio("显示方式", ["前 10 大行业 + 其他", "全部 31 个行业"],
+                     horizontal=True, key="fund_struct_mode",
+                     help="「全部 31 个」按该基金最新占比降序堆叠；悬停一次列出该季全部行业")
     _mi = 10 if _maxi.startswith("前 10") else None
     _deg = rc.structure_conclusion(hist)
     if _deg:
@@ -542,24 +537,8 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
             _ht.insert(1, "历史峰值", hist.max().round(2))
             st.dataframe(_ht, width="stretch", height=320)
 
-    # ---- 同季度横向：这一季 31 个行业各占多少，一次全看到 ----
-    h('<div style="font-size:14px;font-weight:700;margin:12px 0 4px">'
-      f'{_qsel}：这只基金全部行业的占比（一次列全，不用逐个悬停）</div>')
-    _row = hist.loc[_qsel].dropna().sort_values(ascending=False)
-    _row = _row[_row >= 0.05]
-    _fig_bar = go.Figure(go.Bar(
-        y=list(_row.index)[::-1], x=list(_row.values)[::-1], orientation="h",
-        marker_color=[rc.ind_color(i) for i in list(_row.index)[::-1]],
-        text=[f"{v:.1f}%" for v in list(_row.values)[::-1]], textposition="outside",
-        textfont=dict(size=10.5),
-        hovertemplate="<b>%{y}</b><br>%{x:.2f}%<extra></extra>"))
-    _fig_bar.update_xaxes(title_text="占前十大 %" if basis == "top10" else "占净值 %",
-                          range=[0, max(5, float(_row.max()) * 1.18)],
-                          tickfont=dict(size=11))
-    _fig_bar.update_yaxes(tickfont=dict(size=11))
-    st.plotly_chart(_base(_fig_bar, "", max(320, 22 * len(_row))),
-                    width="stretch", config={"displayModeBar": False})
-
+    # 不再单独画「这一季各行业占比」的条形图：它的数据和上面堆叠图的最新一根柱子、
+    # 左侧图例（最新占比）+ 下面的逐期表格完全一致，等于把同一组数字画两遍。
     _up = (_last - _first).dropna().sort_values()
     _big_up, _big_dn = _up.tail(2).iloc[::-1], _up.head(2)
     _share_last = _last.nlargest(4)

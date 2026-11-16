@@ -82,15 +82,12 @@ def _num(v, nd: int = 0, dash: str = "—") -> str:
 
 
 def _read(h, fact: str, econ: str = "", invest: str = "") -> None:
-    """图下读数：一行式（事实 → 含义 → 动作）。
+    """图下方解读卡：左栏「读数」、右栏「为什么 + 怎么做」。
 
-    2026-11-16 精简：八张图各一张三段式卡片，整页多出约 1600px 纯文字；
-    改成一行后仍保留全部数字与判断，只是不再用卡片分栏。
+    2026-11-16 第二轮：一行式把数字与机制挤成 11px 灰字，读者反馈「看不懂」。
+    恢复两栏卡片，字号 13.5px，层次清楚；高度仍比三段竖排省四成。
     """
-    parts = [p for p in (fact, econ, invest) if p]
-    if parts:
-        h(f'<div class="tiny" style="margin:2px 0 13px;line-height:1.95">'
-          + '　'.join(parts) + '</div>')
+    ui.analysis(h, fact, econ, invest, tag1="读数", tag2="为什么", tag3="怎么做")
 
 
 def _rank_sort(df: pd.DataFrame, level_col: str = "等级") -> pd.DataFrame:
@@ -719,20 +716,24 @@ def render(h) -> None:
                     width="stretch", config={"displayModeBar": False})
 
     _act = r.get("平均主动pp", np.nan)
-    h(f'<div class="cg-note">{sel} 本期配置 <b>{r["配置_前十"]:.2f}%</b>（前十大口径），'
-      f'比上一季 <b>{r["Δ上季pp"]:+.2f}pp</b>、比去年同季 '
-      f'<b>{r["Δ上年pp"]:+.2f}pp</b>；放在 {len(M)} 期历史里排第 '
-      f'<b>{r["历史分位"]:.0f}</b> 分位。'
-      + (f' 价格中性后，本期净买卖 <b>{_act:+.2f}pp</b>，'
-         f'{r["加仓占比"]:.0f}% 的变动基金在加（分母是「有实质变动的基金」，'
-         f'不是全部样本）。' if np.isfinite(_act) else '')
-      + (f' 全持仓口径（{qf0}→{qf}）配置 {r["配置_全持仓"]:.2f}%，'
-         f'其中机构主动 {r["主动pp"]:+.2f}pp、价格 {r["被动pp"]:+.2f}pp。'
-         if np.isfinite(r.get("主动pp", np.nan)) else '')
-      + (f'<br><b>怎么用</b>：本行业为小样本，本页<b>不给买卖判断</b>——'
-         f'上面对分位的所有解读都不适用于它，请只当作「它在自己的历史里排在什么位置」来看，'
-         f'不要据此加减仓。'
-         if r.get("可靠") == "小样本" else f'<br><b>怎么用</b>：{_verdict(r)}') + '</div>')
+    _fact = (f'{sel} 本期配置 <b>{r["配置_前十"]:.2f}%</b>（前十大口径），'
+             f'比上一季 <b>{r["Δ上季pp"]:+.2f}pp</b>、比去年同季 '
+             f'<b>{r["Δ上年pp"]:+.2f}pp</b>；放在 {len(M)} 期历史里排第 '
+             f'<b>{r["历史分位"]:.0f}</b> 分位。'
+             + (f' 价格中性后，本期净买卖 <b>{_act:+.2f}pp</b>，'
+                f'{r["加仓占比"]:.0f}% 的变动基金在加（分母是「有实质变动的基金」，'
+                f'不是全部样本）。' if np.isfinite(_act) else '')
+             + (f' 全持仓口径（{qf0}→{qf}）配置 {r["配置_全持仓"]:.2f}%，'
+                f'其中机构主动 {r["主动pp"]:+.2f}pp、价格 {r["被动pp"]:+.2f}pp。'
+                if np.isfinite(r.get("主动pp", np.nan)) else ''))
+    _econ = (f'这一条线是它自己 {len(M)} 期的配置轨迹：往上走＝越来越重，往下走＝在减。'
+             '但线抬起来有两种原因——<b>主动买</b>与<b>价格涨</b>，'
+             '单看这条线分不出是哪一种，要配合上面的主动项和 ② 的环比看。'
+             '历史分位只回答「现在在它自己的历史上算什么位置」，不回答「该不该买」。')
+    _use = ('本行业为小样本，本页<b>不给买卖判断</b>——上面对分位的解读都不适用于它，'
+            '只当作「它在自己的历史里排在什么位置」来看，不要据此加减仓。'
+            if r.get("可靠") == "小样本" else f'{_verdict(r)}')
+    _read(h, _fact, _econ, _use)
 
     _hist = pd.DataFrame({"配置%": M[sel]}).dropna().tail(8)
     _hist["环比pp"] = _hist["配置%"].diff().round(2)
@@ -803,6 +804,11 @@ def render(h) -> None:
                 if "等级" in comp.columns else comp)
     st.plotly_chart(rc.fig_dual_percentile(_comp_ok, _comp_ok["横截面分位"]),
                     width="stretch", config={"displayModeBar": False})
+    h(f'<div class="tiny"><b>怎么看</b>：条形＝这个行业<b>在自己历史上</b>的配置分位'
+      f'（0＝{_nq_cfg} 期里最轻，100＝最重）；菱形＝<b>当期 31 个行业之间</b>的排名分位'
+      '（100＝当期最重仓的那个行业）。两者都是 0–100 的排名分，'
+      '虚线 20 / 80 是「很轻 / 很重」的经验线。条形长、菱形靠左＝小行业里的相对极端，'
+      '对组合影响有限；两个都靠右才是真拥挤。</div>')
     _both_high = _comp_ok[(_comp_ok["历史分位"] >= CAL.THR_CROWD) & (_comp_ok["横截面分位"] >= CAL.THR_CROWD)]
     _self_only = _comp_ok[(_comp_ok["历史分位"] >= CAL.THR_CROWD) & (_comp_ok["横截面分位"] < 50)]
     _mt_high = _comp_ok[(_comp_ok["历史分位"] < 50) & (_comp_ok["横截面分位"] >= 70)]
