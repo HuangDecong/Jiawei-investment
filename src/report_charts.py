@@ -741,8 +741,21 @@ def fig_breadth_vs_move(d: pd.DataFrame,
     cmap = {"共识形成": C.COLOR["up"], "系统性撤离": C.COLOR["down"],
             "多空对撞": "#E8710A", "分歧": C.COLOR["text_dim"]}
     # 只在「明显偏离中心」的点上写字：31 个点里有一半挤在 (55%, 0) 附近，
-    # 全标会叠成一团黑字，反而看不清。小样本一律标（它们是灰色的，需要识别）。
-    notable = ((d["加仓占比"] - 50).abs() >= 15) | (d[_y].abs() >= 1.0) | d["_sm"]
+    # 全标会叠成一团黑字。按「离中心多远」打分取前 10，小样本优先；
+    # 再按坐标做一次去重（|Δx|<5 且 |Δy|<0.3 视为会叠字，只留一个），
+    # 否则会出现「社会服务†」和「煤炭」印在同一处、谁也读不出来的情况。
+    _score = (((d["加仓占比"] - 50).abs() / 15).clip(lower=0)
+              + (d[_y].abs() / 1.0).fillna(0))
+    _keep = list(_score.nlargest(10).index) + [i for i in d.index[d["_sm"]]
+                                               if i not in _score.nlargest(10).index]
+    _placed, _lab_idx = [], []
+    for i in _keep:
+        _x, _yy = float(d.loc[i, "加仓占比"]), float(d.loc[i, _y])
+        if any(abs(_x - px) < 5 and abs(_yy - py) < 0.3 for px, py in _placed):
+            continue
+        _placed.append((_x, _yy))
+        _lab_idx.append(i)
+    notable = pd.Series(d.index.isin(_lab_idx), index=d.index)
     fig = go.Figure()
     for tag, g in d.groupby("判读", dropna=False):
         lab = [str(nm) + ("†" if sm else "") if notable.get(ix, False) else ""
@@ -755,8 +768,11 @@ def fig_breadth_vs_move(d: pd.DataFrame,
                         opacity=0.85, line=dict(width=0.8, color="#FFFFFF")),
             text=lab, textposition="top center",
             textfont=dict(size=11, color="#37485C"),
-            customdata=np.stack([g["加仓基金数"], g["减仓基金数"], g["持有基金数"]], axis=-1),
-            hovertemplate=("<b>%{text}</b><br>加仓基金占比 %{x:.1f}%<br>"
+            # 行业名走 customdata，不能只放在 text 里：没被标注的点 text 是空串，
+            # 悬停会变成一行没有名字的数字（读者不知道说的是哪个行业）。
+            customdata=np.stack([g["加仓基金数"], g["减仓基金数"], g["持有基金数"],
+                                 g["_nm"]], axis=-1),
+            hovertemplate=("<b>%{customdata[3]}</b><br>加仓基金占比 %{x:.1f}%<br>"
                            "价格中性净额 %{y:+.2f}pp<br>"
                            "加 %{customdata[0]:.0f} / 减 %{customdata[1]:.0f}"
                            "（持有 %{customdata[2]:.0f}）<extra></extra>"),
@@ -871,7 +887,7 @@ def fig_level_history(M: pd.DataFrame, industry: str,
 # 9. 分位双轴：相对自己 vs 相对同行
 # ---------------------------------------------------------------------------
 def fig_dual_percentile(comp: pd.DataFrame, cs: pd.Series) -> go.Figure:
-    """横条＝自身历史分位（左轴），折线＝当期横截面分位（右轴）。
+    """一根横条＝自身历史分位，同一行上的菱形＝当期横截面分位（同一把 0–100 的尺子）。
 
     两把尺子量的是不同的事：
     · 自身分位高＝「它自己历史上从没这么重过」；
@@ -879,31 +895,31 @@ def fig_dual_percentile(comp: pd.DataFrame, cs: pd.Series) -> go.Figure:
     只有两者都高，才是「又重又在历史极值」的真拥挤；
     自身高、横截面低（如石油石化），是「小行业里的相对极端」，
     对组合的影响远小于电子这种大行业。
+
+    2026-11-16：原来用双轴（左轴条形、右轴菱形），但两条轴都是 0–104，
+    等于把同一把尺子画两遍，读者会以为菱形在另一套坐标里。改成单轴。
     """
     d = comp.copy()
     d["横截面"] = cs.reindex(d.index)
     d = d.dropna(subset=["历史分位"]).sort_values("历史分位")
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig = go.Figure()
     fig.add_trace(go.Bar(
-        y=d.index, x=d["历史分位"], orientation="h", name="自身历史分位（左轴）",
+        y=d.index, x=d["历史分位"], orientation="h", name="自身历史分位（条形）",
         marker_color=[C.COLOR["up"] if v >= CAL.THR_CROWD else
                       "#E8A33D" if v >= 60 else
                       "#B7C1CC" if v >= 40 else
                       "#7FA8DC" if v >= 20 else C.COLOR["down"]
                       for v in d["历史分位"]],
-        hovertemplate="<b>%{y}</b><br>自身历史分位 %{x:.0f}<extra></extra>"),
-        secondary_y=False)
+        hovertemplate="<b>%{y}</b><br>自身历史分位 %{x:.0f}<extra></extra>"))
     fig.add_trace(go.Scatter(
-        y=d.index, x=d["横截面"], mode="markers", name="全市场横截面分位（右轴）",
-        marker=dict(symbol="diamond", size=8, color=C.COLOR["accent"],
-                    line=dict(width=0.8, color="#FFFFFF")),
-        hovertemplate="<b>%{y}</b><br>横截面分位 %{x:.0f}<extra></extra>"),
-        secondary_y=True)
+        y=d.index, x=d["横截面"], mode="markers", name="全市场横截面分位（菱形）",
+        marker=dict(symbol="diamond", size=9, color=C.COLOR["accent"],
+                    line=dict(width=0.9, color="#FFFFFF")),
+        hovertemplate="<b>%{y}</b><br>横截面分位 %{x:.0f}<extra></extra>"))
     for v in (20, 80):
         fig.add_vline(x=v, line=dict(color=C.COLOR["line"], width=1, dash="dot"))
     fig.update_xaxes(title_text="分位（0＝历史最低，100＝历史最高）", range=[0, 104])
-    fig.update_yaxes(title_text="", secondary_y=False)
-    fig.update_yaxes(title_text="横截面分位", range=[0, 104], secondary_y=True)
+    fig.update_yaxes(title_text="")
     return _base(fig, "", 720, legend=True)
 
 
