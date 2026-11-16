@@ -64,6 +64,7 @@ MIN_LABEL_PCT = 4.0     # 段内写数值的最小占比（低于它写字会压
 RESID_MIN_PCT = 0.5     # 残差带/合并的最小占比
 MERGE_CUR_PCT = 1.0     # 合并阈值①：当期占比 < 1%
 MERGE_PEAK_PCT = 3.0    # 合并阈值②：历史峰值 < 3%（两条同时满足才并入「其他」）
+HOVER_MAX_ROWS = 32     # 悬浮框最多行数：31 个行业 + 期次标题，再多就不走统一悬浮
 
 
 @dataclass(frozen=True)

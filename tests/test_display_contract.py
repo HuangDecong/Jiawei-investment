@@ -273,3 +273,47 @@ def test_A17_csi_one_decimal_everywhere():
     assert '{v:.1f}" for v in hi["CSI"]' in pb, "首页结论的 CSI 又回到整数了"
     mp = open(os.path.join(ROOT, "src", "map_page.py"), encoding="utf-8").read()
     assert '("当前 CSI", f"{_cur:.1f}"' in mp
+
+
+# ---------------------------------------------------------------------------
+# A18「全部 31 个行业」模式：悬浮一次列全，且画布放得下整框（r52.3）
+# 2026-11-16 读者截图：切到 31 个反而只显示一行；改统一悬浮后又被画布
+# 裁掉顶部 5 行（只看到 27 个）。两条都必须锁住。
+# ---------------------------------------------------------------------------
+def test_A18_all31_hover_lists_every_industry():
+    cols = [f"行业{i:02d}" for i in range(1, 32)]
+    w = np.arange(31, 0, -1, dtype=float)
+    vals = w / w.sum() * 100
+    M = pd.DataFrame([vals, vals], index=["2024Q4", "2025Q1"], columns=cols)
+    fig = rc.fig_ind_structure(M, "测试", max_items=None)
+    assert fig.layout.hovermode == "x unified", "31 行业模式又退回单行 closest 了"
+    assert len(fig.data) == 31, "31 个行业没有全部画出来"
+    # 悬浮框 = 31 行业 + 期次标题 = 32 行；行高 19px、顶部留 44px
+    assert fig.layout.height >= 44 + 19 * 32, "画布太矮，悬浮框顶部会被裁掉"
+
+
+# ---------------------------------------------------------------------------
+# A19 已清空行业的历史必须留在图里（灰显），不能被残差吞成「港股/未映射」
+# 2026-11-16 读者截图：2021Q1 显示「电子 7% + 其他（港股/未映射）93%」，
+# 实际是 基础化工 55%、石油石化 19% 被漏画——数据没缺，读起来像缺了。
+# ---------------------------------------------------------------------------
+def test_A19_dormant_history_is_drawn_not_residual():
+    M = pd.DataFrame({"银行": [50.0, 0.0], "地产": [50.0, 0.0],
+                      "电子": [0.0, 60.0], "医药": [0.0, 40.0]},
+                     index=["2020Q1", "2021Q1"])
+    fig = rc.fig_ind_structure(M, "测试", max_items=10)
+    names = [t.name for t in fig.data]
+    # 前 10 模式：已清空的行业并入「其他 N 个行业」，不能变成「其他（港股/未映射）」
+    assert "其他 2 个行业" in names, "已清空行业被漏画，历史会被算成残差"
+    assert not any(str(n).startswith("其他（") for n in names), \
+        "历史持仓被误标成「港股/未映射」"
+    tr = {t.name: list(t.y) for t in fig.data}
+    assert tr["其他 2 个行业"][0] == 100.0, "2020Q1 的银行+地产没有进图"
+    assert set(fig.layout.meta["dormant"]) == {"银行", "地产"}
+    assert fig.layout.meta["active"] == ["电子", "医药"]
+
+    # 全部 31 个模式：已清空的行业按行业色画出来（不是灰块）
+    fig2 = rc.fig_ind_structure(M, "测试", max_items=None)
+    assert "银行" in [t.name for t in fig2.data]
+    bank = [t for t in fig2.data if t.name == "银行"][0]
+    assert bank.marker.color != "#C9D3DE", "全部模式里历史行业又被灰掉了"

@@ -410,12 +410,17 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
     ------------------------------------------------------------
     1. **0 值不进图、不进悬浮**：把 0 画成 NaN，x-unified 悬浮就不会再列出
        「XX 0.00%」——它本来就没有那一段，列出来只会淹没真正有值的行。
-    2. **图例只列当期 >0**：当期没持有的行业不再占一个色位；它们如果历史上
-       持有过，整段灰化并折叠成一行「历史曾持有（n）：A、B…」，由页面渲染。
-    3. **合并用双阈值**：当期 <1% **且** 历史峰值 <3% 才并入「其他」；
+    2. **图例只列当期 >0**：当期没持有的行业不再占一个色位。它们如果历史上
+       持有过：前 10 模式并进「其他 N 个行业」（标明含已清空），全部 31 个模式
+       仍按行业色画在历史里——**不能漏画**，否则早年 90% 的仓位会被算成
+       残差「其他（港股/未映射）」，看起来像数据缺失（2026-11-16 读者截图）。
+    3. **合并用双阈值**：当期 <1% **且** 历史峰值 <3% 优先并入「其他」；
        两者只要有一个够大就单独画（当期小但历史重仓过，是有信息量的）。
        兜底从「取前 N 个」改为「至少留最大的那一个」——否则全部低于阈值时
        会退化成「其他 31 个行业」，图上一条灰柱、等于没画。
+    4. **「全部 31 个」模式必须能一屏读全**：31 条 trace 一律 x-unified 悬浮，
+       一次列出该季所有有值的行业（按最新占比降序），不再退化成「指哪看哪」
+       的单行 closest——读者反馈「切到 31 个反而只看到一个」。
     """
     if M.empty:
         return _base(go.Figure(), "数据未就绪")
@@ -430,12 +435,17 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
     dormant = [c for c in d.columns if c not in active]
 
     if max_items is None:
-        # 「全部 31 个」模式：历史出现过的都画（否则过去几期会凭空少一块）
-        order = sorted(d.columns, key=lambda c: -float(peak.get(c, 0)))
+        # 「全部 31 个」模式：历史出现过的都画（否则过去几期会凭空少一块）。
+        # 排序用「最新一期占比」而不是历史峰值：悬浮框从上到下就是当期排行榜，
+        # 读者不用在 31 行里自己找谁最大。
+        order = sorted(d.columns, key=lambda c: -float(cur.get(c, 0)))
         merged_label = None
         draw = d[order].copy()
     else:
-        order = sorted(active, key=lambda c: -float(peak.get(c, 0)))
+        # 「前 10 大」按**最新一期**排序，不按历史峰值：图例脚注写的是
+        # 「按最新占比降序」，两者必须一致；否则读图例要自己重排。
+        order = sorted(active, key=lambda c: (-float(cur.get(c, 0)),
+                                              -float(peak.get(c, 0))))
         merged_label = None
         if len(order) > max_items:
             keep = [c for c in order
@@ -443,29 +453,37 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
                     and float(peak.get(c, 0)) >= CAL.MERGE_PEAK_PCT][:max_items]
             if not keep:                       # 全部低于阈值：留最大的一个
                 keep = [order[0]]
-            rest = [c for c in d.columns if c not in keep]
+        else:
+            keep = list(order)
+        # 剩下的（当期的小行业 + 历史持有、当期已清空）一律并入「其他 N 个行业」。
+        # 不能只画 active：基金早年可能 90% 都在已清空的行业里，漏画就会
+        # 被算成残差「其他（港股/未映射）」——数据没缺，读起来像缺了。
+        rest = [c for c in d.columns if c not in keep]
+        if rest:
             merged_label = f"其他 {len(rest)} 个行业"
             order = keep + [merged_label]
             draw = d[keep].copy()
             draw[merged_label] = d[rest].sum(axis=1)
         else:
+            order = keep
             draw = d[order].copy()
-        # 当期没持有、也没被合并的（理论上只会在 order 为空时出现）
-        dormant = [c for c in dormant if c not in order]
 
     _cmap = (stack_palette(order, merged_label) if len(order) <= CAL.LEGEND_MAX_ITEMS
              else {i: ("#C9D3DE" if i == merged_label else ind_color(i)) for i in order})
-    if dormant:
-        for c in dormant:
-            _cmap[c] = "#C9D3DE"               # 历史曾持有：灰
 
     fig = go.Figure()
     _n = len(draw)
-    _unified = len(order) + 1 <= CAL.LEGEND_MAX_ITEMS
+    # 悬浮框行数 = 任一期「有值」的行业数 + 期次标题（0 值不列，故不是轨迹数）
+    _hover_rows = int((draw.fillna(0) > 0).sum(axis=1).max()) if len(draw) else 0
+    _unified = _hover_rows + 1 <= CAL.HOVER_MAX_ROWS
+    _many = _hover_rows > CAL.LEGEND_MAX_ITEMS
+    _resid = (100 - draw.sum(axis=1)).clip(lower=0)
+    _has_resid = float(_resid.max()) > CAL.RESID_MIN_PCT
     _tpl = ("%{y:.2f}%<extra>" if _unified else "%{x}　%{y:.2f}%<extra>")
     _last_q = draw.index[-1]
     for ind in order:
-        s_ = draw[ind]
+        # 0 值画成 NaN：柱子里本来就没有这一段，悬浮也不该列「0.00%」
+        s_ = draw[ind].where(draw[ind] > 0)
         _txt = [""] * _n
         _v = s_.iloc[-1]
         if np.isfinite(_v) and float(_v) >= CAL.MIN_LABEL_PCT:
@@ -477,8 +495,7 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
             textfont=dict(size=10, color=_text_on(_cmap[ind])),
             hovertemplate=_tpl + ind + "</extra>"))
 
-    _resid = (100 - draw.sum(axis=1)).clip(lower=0)
-    if float(_resid.max()) > CAL.RESID_MIN_PCT:
+    if _has_resid:
         # 残差为 0 的期次也要变 NaN：否则悬浮里会出现「其他 0.00%」这一行
         fig.add_trace(go.Bar(
             x=list(draw.index), y=_resid.where(_resid > 0).values, name=residual_label,
@@ -486,20 +503,27 @@ def fig_ind_structure(M: pd.DataFrame, title: str = "",
             hovertemplate=_tpl + residual_label + "</extra>"))
 
     fig.update_layout(barmode="stack", bargap=0.18,
-                      hovermode="x unified" if _unified else "closest",
-                      hoverlabel=dict(bgcolor="rgba(255,255,255,0.98)", font_size=11,
-                                      bordercolor=C.COLOR["line"], align="left",
-                                      namelength=-1))
+                      hovermode="x unified" if _unified else "closest")
     fig.update_yaxes(title_text="占前十大 %" if residual_label.startswith("其他")
                      else "占净值比 %", range=[0, 100], tickfont=dict(size=11))
     _ticks = list(draw.index)
     fig.update_xaxes(tickmode="array", tickvals=_ticks, ticktext=_ticks,
                      tickangle=-90, tickfont=dict(size=9, color="#40505F"))
-    fig = _base(fig, title, 520)
-    fig.update_layout(margin=dict(l=8, r=14, t=44, b=56))
+    # 画布高度要放得下整个悬浮框：plotly 行高固定 19px（改字号无效），
+    # 行数 = 有值的行业 + 期次标题 + 残差行。520 只能放 25 行，
+    # 31 行会被裁掉顶部（读者只看到 27 个行业）。
+    _rows = _hover_rows + 1 + int(_has_resid)
+    fig = _base(fig, title, max(520, 44 + 19 * _rows + 6))
+    # hoverlabel 必须放在 _base 之后：_base 会把 font_size 重置回 11。
+    # 字号只影响框宽，不影响行距；完整可见靠上面的画布高度。
+    fig.update_layout(margin=dict(l=8, r=14, t=44, b=56),
+                      hoverlabel=dict(bgcolor="rgba(255,255,255,0.98)",
+                                      font_size=10 if _many else 11,
+                                      bordercolor=C.COLOR["line"], align="left",
+                                      namelength=-1))
     fig.layout.meta = {"ind_colors": _cmap, "merged": merged_label or "",
                        "order": list(order), "dormant": list(dormant),
-                       "active": [c for c in order if c != merged_label],
+                       "active": [c for c in order if c in active],
                        "last_quarter": str(_last_q)}
     return fig
 

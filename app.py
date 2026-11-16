@@ -461,7 +461,7 @@ def load_backtest(fp: str):
 FP = dl.fingerprint()
 
 # 构建版本：每次实质更新时手动递增，页头展示，用于确认「线上跑的是哪一版」
-APP_VERSION = "2026.11.13-r52.2"
+APP_VERSION = "2026.11.16-r52.3"
 
 
 def _fp_short() -> str:

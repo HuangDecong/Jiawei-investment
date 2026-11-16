@@ -254,7 +254,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     if not Mkt.empty:
         _mk_mode = st.radio("显示方式", ["前 10 大行业 + 其他", "全部 31 个行业"],
                             horizontal=True, key="mkt_struct_mode",
-                            help="31 个色块叠加时后 20 个只有 1–3pp，默认合并显示")
+                            help="「全部 31 个」按最新占比降序堆叠；悬停一次列出该季全部行业")
         _mk_last = Mkt.iloc[-1]
         _mk_chg_all = (Mkt.iloc[-1] - Mkt.iloc[0]).dropna()
         _mk_fig = rc.fig_ind_structure(
@@ -263,6 +263,10 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
             max_items=10 if _mk_mode.startswith("前 10") else None)
         st.plotly_chart(_mk_fig, width="stretch",
                         config={"displayModeBar": False})
+        if _mk_mode.startswith("全部"):
+            h('<div class="tiny" style="margin:-8px 0 6px">'
+              '悬停任意一根柱子：<b>一次列出该季全部 31 个行业</b>的占比，'
+              '按最新一期高低排序，不用逐个去指；0 持仓的行业不占行。</div>')
         _mk_meta = _mk_fig.layout.meta or {}
         # 图例只列「当期 >0」（配色与柱子同源）；当期已清空但历史持有的行业
         # 折成一行灰字，不再各占一个色块——那是「十行 0.00%」的来源。
@@ -272,7 +276,9 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         if _mk_meta.get("dormant"):
             h(f'<div class="tiny" style="margin:-2px 0 6px">'
               f'历史曾持有（{len(_mk_meta["dormant"])}）：'
-              f'{"、".join(_mk_meta["dormant"])}　·　当期已清空，图上灰显</div>')
+              f'{"、".join(_mk_meta["dormant"])}　·　当期已清空，'
+              + (f'并入「{_mk_meta["merged"]}」' if _mk_meta.get("merged")
+                 else '图上仍按行业色显示') + '</div>')
         with st.expander("看表格：每期各行业占比", expanded=False):
             _mt = Mkt.round(2).T
             _mt.insert(0, "最新一期", Mkt.iloc[-1].round(2))
@@ -486,8 +492,7 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
     with _c1:
         _maxi = st.radio("显示方式", ["前 10 大行业 + 其他", "全部 31 个行业"],
                          horizontal=True, key="fund_struct_mode",
-                         help="31 个色块叠在一起时，后面 20 个只有 1–3pp，看不清；"
-                              "默认合并成「其他 N 个行业」")
+                         help="「全部 31 个」按该基金最新占比降序堆叠；悬停一次列出该季全部行业")
     with _c2:
         _qsel = st.selectbox("看哪一季的全部行业", list(hist.index)[::-1],
                              index=0, key="fund_q_pick")
@@ -505,6 +510,10 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
                             else "现金/债券/港股及其他"),
             label_top=4, max_items=_mi)
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        if _maxi.startswith("全部"):
+            h('<div class="tiny" style="margin:-8px 0 6px">'
+              '悬停任意一根柱子：<b>一次列出该季它持有的全部行业</b>（按最新一期排序）；'
+              '当期已清空的行业仍按行业色画在历史里，方便看它换过哪些赛道。</div>')
         _meta = fig.layout.meta or {}
         # 图例即表格：只用「当期 >0」的行业，颜色与柱子同源
         _last = hist.iloc[-1]
@@ -516,7 +525,9 @@ def render(h, code: str | None = None, show_picker: bool = True) -> None:
         if _meta.get("dormant"):
             h(f'<div class="tiny" style="margin:-2px 0 6px">'
               f'历史曾持有（{len(_meta["dormant"])}）：'
-              f'{"、".join(_meta["dormant"])}　·　当期已清空，图上灰显</div>')
+              f'{"、".join(_meta["dormant"])}　·　当期已清空，'
+              + (f'并入「{_meta["merged"]}」' if _meta.get("merged")
+                 else '图上仍按行业色显示') + '</div>')
         h('<div class="tiny" style="margin:-4px 0 8px">图例右侧：'
           '<b>黑字</b>＝最新一期占比；<b>红/绿小字</b>＝相对 '
           f'{hist.index[0]} 的变化（pp）。按最新占比降序。</div>')
