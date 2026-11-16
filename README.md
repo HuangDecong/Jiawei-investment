@@ -50,6 +50,11 @@ streamlit run app.py
 
 浏览器打开 `http://localhost:8501`。
 
+> **Windows 本地预览建议用包装器启动**：`python tools/serve_local.py 8509`。
+> 直接用 `streamlit run` 时，浏览器标签页被强制关闭会让 uvicorn 的 Proactor
+> 回调抛 `ConnectionResetError(10054)`，整个进程退出；包装器把事件循环换成
+> Selector 即可避免。线上（Streamlit Cloud，Linux）不受影响，仍用 `streamlit run app.py`。
+
 ### 1.2 日常使用（只需两步）
 
 ```bash
